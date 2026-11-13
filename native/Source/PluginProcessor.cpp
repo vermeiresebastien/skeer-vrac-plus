@@ -1,0 +1,1089 @@
+#include "PluginProcessor.h"
+#include "PluginEditor.h"
+
+#include <algorithm>
+#include <cmath>
+
+namespace
+{
+    constexpr int kMaxRecordBytes = 48 * 1024 * 1024;
+}
+
+VRACPlusAudioProcessor::VRACPlusAudioProcessor()
+    : AudioProcessor (BusesProperties()
+                          .withInput ("Sidechain", juce::AudioChannelSet::stereo(), false)
+                          .withOutput ("Output 1", juce::AudioChannelSet::stereo(), true)
+                          .withOutput ("Output 2", juce::AudioChannelSet::stereo(), true)
+                          .withOutput ("Output 3", juce::AudioChannelSet::stereo(), true)
+                          .withOutput ("Output 4", juce::AudioChannelSet::stereo(), true)
+                          .withOutput ("Output 5", juce::AudioChannelSet::stereo(), true)
+                          .withOutput ("Output 6", juce::AudioChannelSet::stereo(), true)
+                          .withOutput ("Output 7", juce::AudioChannelSet::stereo(), true)
+                          .withOutput ("Output 8", juce::AudioChannelSet::stereo(), true)),
+      apvts (*this, nullptr, "VRACPlus", vrac::createParameterLayout())
+{
+    parameterCache.connect (apvts);
+    for (auto& start : padStarts)
+        start.store (0.0f, std::memory_order_relaxed);
+    for (auto& stamp : padHitStamps)
+        stamp.store (0, std::memory_order_relaxed);
+    for (auto& mapping : ccMappings)
+        mapping.clear();
+
+    sequencerData.store (vrac::makeDefaultSequencerData(), std::memory_order_release);
+    seqRandom.setSeed (0x51E3A9C7u);
+
+    currentProgramIndex.store (0);
+    applyFactoryPresetInternal (0, true);
+}
+
+VRACPlusAudioProcessor::~VRACPlusAudioProcessor() = default;
+
+juce::AudioProcessorEditor* VRACPlusAudioProcessor::createEditor()
+{
+    auto* editor = new VRACPlusAudioProcessorEditor (*this);
+    return editor;
+}
+
+bool VRACPlusAudioProcessor::isBusesLayoutSupported (const BusesLayout& layouts) const
+{
+    if (layouts.outputBuses.size() != vrac::kNumBuses)
+        return false;
+    if (layouts.getMainOutputChannelSet() != juce::AudioChannelSet::stereo())
+        return false;
+    for (int i = 0; i < vrac::kNumBuses; ++i)
+    {
+        const auto set = layouts.getChannelSet (false, i);
+        if (! set.isDisabled() && set != juce::AudioChannelSet::stereo())
+            return false;
+    }
+    if (layouts.inputBuses.size() > 1)
+        return false;
+    if (layouts.inputBuses.size() == 1)
+    {
+        const auto input = layouts.getChannelSet (true, 0);
+        if (! input.isDisabled() && input != juce::AudioChannelSet::mono()
+            && input != juce::AudioChannelSet::stereo())
+            return false;
+    }
+    return true;
+}
+
+void VRACPlusAudioProcessor::prepareToPlay (double sampleRate, int samplesPerBlock)
+{
+    currentSampleRate = sampleRate;
+    maxBlockSize = juce::jmax (32, samplesPerBlock);
+    engine.prepare (sampleRate, maxBlockSize);
+    engine.setSample (engine.getSample());
+    recordSampleRate = (int) std::round (sampleRate);
+    sidechainActive.store (getBus (true, 0) != nullptr && getBus (true, 0)->isEnabled(), std::memory_order_relaxed);
+    seqInternalPlaying.store (false, std::memory_order_relaxed);
+    seqResetRequested.store (false, std::memory_order_relaxed);
+    resetSequencerPlayback();
+    wasPrepared = true;
+}
+
+void VRACPlusAudioProcessor::releaseResources()
+{
+    wasPrepared = false;
+}
+
+int VRACPlusAudioProcessor::getNumPrograms()
+{
+    return (int) vrac::factoryPresets().size();
+}
+
+int VRACPlusAudioProcessor::getCurrentProgram()
+{
+    return juce::jlimit (0, getNumPrograms() - 1, currentProgramIndex.load (std::memory_order_relaxed));
+}
+
+void VRACPlusAudioProcessor::setCurrentProgram (int index)
+{
+    if (index < 0 || index >= getNumPrograms())
+        return;
+    if (! restoringState && index == currentProgramIndex.load (std::memory_order_relaxed))
+        return;
+    applyFactoryPresetInternal (index, true);
+}
+
+const juce::String VRACPlusAudioProcessor::getProgramName (int index)
+{
+    if (index < 0 || index >= getNumPrograms())
+        return {};
+    return vrac::factoryPresets()[(size_t) index].name;
+}
+
+void VRACPlusAudioProcessor::changeProgramName (int, const juce::String&)
+{
+}
+
+void VRACPlusAudioProcessor::applyFactoryPresetInternal (int index, bool clearHistory)
+{
+    const auto& presets = vrac::factoryPresets();
+    if (index < 0 || index >= (int) presets.size())
+        return;
+    const auto& preset = presets[(size_t) index];
+
+    auto sample = vrac::loadFactorySource (preset.sourceId);
+    if (sample != nullptr)
+    {
+        engine.setSample (sample);
+        sourceId = preset.sourceId;
+        sourceName = sample->name;
+        sourceIsFactory = true;
+        customSamplePcm.reset();
+        const auto sensitivity = juce::jlimit (0.0f, 1.0f, preset.sensitivity);
+        setParameterValue ("source.sensitivity", sensitivity);
+        slices = vrac::detectSlices (*sample, sensitivity);
+        const auto starts = vrac::padStartsFromSlices (slices);
+        for (int i = 0; i < vrac::kNumPads; ++i)
+            padStarts[(size_t) i].store ((float) starts[(size_t) i], std::memory_order_relaxed);
+    }
+
+    auto pads = vrac::makeDefaultPads();
+    for (int i = 0; i < vrac::kNumPads; ++i)
+    {
+        const auto& o = preset.pads[(size_t) i];
+        auto& pad = pads[(size_t) i];
+        if (o.modelIndex >= 0)
+            pad.modelIndex = juce::jlimit (0, vrac::kNumModels - 1, o.modelIndex);
+        if (std::isfinite (o.drumify)) pad.drumify = o.drumify;
+        if (std::isfinite (o.length)) pad.length = o.length;
+        if (std::isfinite (o.pitch)) pad.pitch = o.pitch;
+        if (std::isfinite (o.pan)) pad.pan = o.pan;
+        if (o.choke >= 0) pad.choke = o.choke;
+        if (std::isfinite (o.drumifiedGain)) pad.drumifiedGain = o.drumifiedGain;
+        if (std::isfinite (o.originalGain)) pad.originalGain = o.originalGain;
+        parameterCache.writePad (i, pad);
+    }
+    parameterCache.writeGlobal (preset.global);
+    selectedPad.store (juce::jlimit (0, vrac::kNumPads - 1, preset.selectedPad), std::memory_order_relaxed);
+    currentPresetName = preset.name;
+    currentProgramIndex.store (index, std::memory_order_relaxed);
+    if (clearHistory)
+    {
+        undoStack.clear();
+        redoStack.clear();
+    }
+    postUiChange();
+}
+
+void VRACPlusAudioProcessor::setParameterValue (const juce::String& id, float value)
+{
+    if (auto* parameter = apvts.getParameter (id))
+    {
+        const auto& range = parameter->getNormalisableRange();
+        parameter->setValueNotifyingHost (range.convertTo0to1 (value));
+    }
+}
+
+void VRACPlusAudioProcessor::setParameterNormalised (const juce::String& id, float value)
+{
+    if (auto* parameter = apvts.getParameter (id))
+        parameter->setValueNotifyingHost (juce::jlimit (0.0f, 1.0f, value));
+}
+
+void VRACPlusAudioProcessor::buildRuntime()
+{
+    vrac::EngineRuntime runtime;
+    bool anySolo = false;
+    for (int i = 0; i < vrac::kNumPads; ++i)
+    {
+        runtime.pads[(size_t) i] = parameterCache.readPad (i);
+        anySolo = anySolo || runtime.pads[(size_t) i].solo;
+    }
+    for (int i = 0; i < vrac::kNumPads; ++i)
+    {
+        const auto& pad = runtime.pads[(size_t) i];
+        runtime.audible[(size_t) i] = ! pad.mute && (! anySolo || pad.solo);
+        runtime.padStarts[(size_t) i] = padStarts[(size_t) i].load (std::memory_order_relaxed);
+    }
+    runtime.global = parameterCache.readGlobal();
+    engine.setRuntime (runtime);
+}
+
+void VRACPlusAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, juce::MidiBuffer& midiMessages)
+{
+    juce::ScopedNoDenormals noDenormals;
+    const int numSamples = buffer.getNumSamples();
+    if (! wasPrepared)
+    {
+        buffer.clear();
+        midiMessages.clear();
+        return;
+    }
+
+    auto* sidechainBus = getBus (true, 0);
+    sidechainActive.store (sidechainBus != nullptr && sidechainBus->isEnabled(), std::memory_order_relaxed);
+
+    // Record before the process block buffer is cleared (input and output share it).
+    juce::AudioBuffer<float> inputBuffer;
+    bool hasInput = false;
+    if (sidechainBus != nullptr && sidechainBus->isEnabled())
+    {
+        inputBuffer = getBusBuffer (buffer, true, 0);
+        hasInput = inputBuffer.getNumChannels() > 0;
+    }
+    serviceRecording (hasInput ? &inputBuffer : nullptr, numSamples);
+
+    buildRuntime();
+    if (chokeRequested.exchange (false, std::memory_order_relaxed))
+        engine.chokeAll();
+    if (seqResetRequested.exchange (false, std::memory_order_relaxed))
+        resetSequencerPlayback();
+
+    buffer.clear();
+    engine.clearBusBuffers (numSamples);
+
+    struct PlaybackEvent
+    {
+        int sampleOffset = 0;
+        int pad = 0;
+        float velocity = 0.8f;
+        bool followAutoSelection = true;
+        bool hasLocks = false;
+        vrac::StepLocks locks {};
+    };
+    std::array<PlaybackEvent, 1024> playbackEvents {};
+    int playbackEventCount = 0;
+    auto addPlaybackEvent = [&playbackEvents, &playbackEventCount] (int offset, int pad, float velocity,
+                                                                     bool followSelection,
+                                                                     const vrac::StepLocks* locks = nullptr)
+    {
+        if (playbackEventCount >= (int) playbackEvents.size())
+            return;
+        auto& event = playbackEvents[(size_t) playbackEventCount++];
+        event.sampleOffset = juce::jmax (0, offset);
+        event.pad = pad;
+        event.velocity = juce::jlimit (0.0f, 1.0f, velocity);
+        event.followAutoSelection = followSelection;
+        event.hasLocks = locks != nullptr && locks->enabled;
+        if (event.hasLocks)
+            event.locks = *locks;
+    };
+
+    // UI triggers are scheduled at the start of the block.
+    {
+        auto readHandle = uiTriggerFifo.read (uiTriggerFifo.getNumReady());
+        auto fire = [&addPlaybackEvent] (const UiTrigger& trigger)
+        {
+            addPlaybackEvent (0, trigger.pad, trigger.velocity, true);
+        };
+        for (int i = 0; i < readHandle.blockSize1; ++i)
+            fire (uiTriggerData[(size_t) (readHandle.startIndex1 + i)]);
+        for (int i = 0; i < readHandle.blockSize2; ++i)
+            fire (uiTriggerData[(size_t) (readHandle.startIndex2 + i)]);
+    }
+
+    // Host transport information for the step sequencer.
+    vrac::SeqHostInfo hostInfo;
+    if (auto* playhead = getPlayHead())
+    {
+        if (const auto position = playhead->getPosition())
+        {
+            if (const auto ppq = position->getPpqPosition())
+            {
+                hostInfo.valid = true;
+                hostInfo.ppq = *ppq;
+                hostInfo.playing = position->getIsPlaying();
+                if (const auto bpm = position->getBpm())
+                    hostInfo.bpm = juce::jmax (20.0, *bpm);
+            }
+        }
+    }
+
+    const auto sequence = sequencerData.load (std::memory_order_acquire);
+    vrac::SeqBlockOutput sequenceOutput;
+    if (sequence != nullptr)
+        vrac::processSequencerBlock (*sequence, hostInfo, seqInternalPlaying.load (std::memory_order_relaxed),
+                                     currentSampleRate, numSamples, seqRandom, seqPlaybackState, sequenceOutput);
+
+    seqHostPlaying.store (sequenceOutput.hostPlaying, std::memory_order_relaxed);
+    seqTransportPlaying.store (sequenceOutput.transportPlaying, std::memory_order_relaxed);
+    seqPlayheadStep.store (sequenceOutput.playheadStep, std::memory_order_relaxed);
+    seqHostBpm.store (sequenceOutput.hostBpm, std::memory_order_relaxed);
+
+    for (int i = 0; i < sequenceOutput.triggerCount; ++i)
+    {
+        const auto& trigger = sequenceOutput.triggers[(size_t) i];
+        addPlaybackEvent (trigger.sampleOffset, trigger.pad, trigger.velocity, false,
+                          trigger.hasLocks ? &trigger.locks : nullptr);
+    }
+
+    // MIDI CC is handled asynchronously on the message thread; note events join the
+    // sample-accurate playback event list.
+    for (const auto metadata : midiMessages)
+    {
+        const auto message = metadata.getMessage();
+        const int eventPos = juce::jlimit (0, juce::jmax (0, numSamples - 1), (int) metadata.samplePosition);
+
+        if (message.isController())
+        {
+            const auto writeHandle = ccFifo.write (1);
+            const CcEvent event { message.getControllerNumber(), message.getControllerValue() / 127.0f };
+            if (writeHandle.blockSize1 > 0)
+                ccData[(size_t) writeHandle.startIndex1] = event;
+            else if (writeHandle.blockSize2 > 0)
+                ccData[(size_t) writeHandle.startIndex2] = event;
+            triggerAsyncUpdate();
+        }
+        else if (message.isAllNotesOff() || message.isAllSoundOff())
+        {
+            engine.chokeAll();
+        }
+
+        if (message.isNoteOn() && message.getVelocity() > 0)
+        {
+            const auto note = message.getNoteNumber();
+            const auto pad = note - vrac::kPadMidiBase;
+            if (pad >= 0 && pad < vrac::kNumPads)
+                addPlaybackEvent (eventPos, pad, message.getVelocity() / 127.0f, true);
+        }
+    }
+
+    std::sort (playbackEvents.begin(), playbackEvents.begin() + playbackEventCount,
+               [] (const PlaybackEvent& a, const PlaybackEvent& b)
+               {
+                   return a.sampleOffset < b.sampleOffset;
+               });
+
+    int cursor = 0;
+    for (int i = 0; i < playbackEventCount; ++i)
+    {
+        const auto& event = playbackEvents[(size_t) i];
+        const auto offset = juce::jlimit (0, juce::jmax (0, numSamples - 1), event.sampleOffset);
+        if (offset > cursor)
+        {
+            engine.processSegment (cursor, offset - cursor);
+            cursor = offset;
+        }
+        if (event.hasLocks)
+        {
+            auto settings = engine.getRuntime().pads[(size_t) event.pad];
+            settings.pitch = event.locks.pitch;
+            settings.volume = event.locks.volume;
+            settings.pan = event.locks.pan;
+            settings.toneShift = event.locks.tone;
+            settings.length = event.locks.length;
+            engine.trigger (event.pad, event.velocity, &settings);
+        }
+        else
+        {
+            engine.trigger (event.pad, event.velocity);
+        }
+        updatePadHit (event.pad, event.followAutoSelection);
+    }
+    if (cursor < numSamples)
+        engine.processSegment (cursor, numSamples - cursor);
+
+    engine.processMaster (numSamples);
+    copyEngineBusesToHost (buffer, numSamples);
+    midiMessages.clear();
+}
+
+void VRACPlusAudioProcessor::copyEngineBusesToHost (juce::AudioBuffer<float>& buffer, int numSamples)
+{
+    auto* mainBus = getBus (false, 0);
+    if (mainBus == nullptr || ! mainBus->isEnabled())
+        return;
+
+    bool folded = false;
+    auto addBusTo = [] (const juce::AudioBuffer<float>& source, juce::AudioBuffer<float>& destination)
+    {
+        const auto n = juce::jmin (source.getNumSamples(), destination.getNumSamples());
+        if (destination.getNumChannels() >= 2)
+        {
+            destination.addFrom (0, 0, source, 0, 0, n);
+            destination.addFrom (1, 0, source, 1, 0, n);
+        }
+        else if (destination.getNumChannels() == 1)
+        {
+            for (int i = 0; i < n; ++i)
+                destination.addSample (0, i, (source.getSample (0, i) + source.getSample (1, i)) * 0.5f);
+        }
+    };
+
+    for (int bus = 0; bus < vrac::kNumBuses; ++bus)
+    {
+        auto* hostBus = getBus (false, bus);
+        auto& source = engine.getBusBuffer (bus);
+        if (hostBus != nullptr && hostBus->isEnabled())
+        {
+            auto destination = getBusBuffer (buffer, false, bus);
+            addBusTo (source, destination);
+        }
+        else
+        {
+            auto destination = getBusBuffer (buffer, false, 0);
+            addBusTo (source, destination);
+            folded = true;
+        }
+    }
+
+    if (folded)
+    {
+        auto main = getBusBuffer (buffer, false, 0);
+        for (int channel = 0; channel < main.getNumChannels(); ++channel)
+        {
+            auto* data = main.getWritePointer (channel);
+            for (int i = 0; i < numSamples; ++i)
+                data[i] = std::tanh (data[i]);
+        }
+    }
+}
+
+void VRACPlusAudioProcessor::serviceRecording (const juce::AudioBuffer<float>* input, int numSamples)
+{
+    if (recordingActive.load (std::memory_order_relaxed))
+    {
+        audioWasRecording = true;
+        if (input != nullptr && input->getNumSamples() > 0 && recordBuffer.getNumSamples() > 0)
+        {
+            const auto writePos = recordedSamples.load (std::memory_order_relaxed);
+            const auto available = recordBuffer.getNumSamples() - writePos;
+            const auto toWrite = juce::jmin (numSamples, juce::jmin (input->getNumSamples(), available));
+            if (toWrite > 0)
+            {
+                const auto inputChannels = input->getNumChannels();
+                for (int i = 0; i < toWrite; ++i)
+                {
+                    const auto left = input->getSample (0, i);
+                    const auto right = inputChannels > 1 ? input->getSample (1, i) : left;
+                    recordBuffer.setSample (0, writePos + i, left);
+                    recordBuffer.setSample (1, writePos + i, right);
+                }
+                recordedSamples.store (writePos + toWrite, std::memory_order_relaxed);
+            }
+            if (recordedSamples.load (std::memory_order_relaxed) >= recordBuffer.getNumSamples())
+                recordingActive.store (false, std::memory_order_relaxed);
+        }
+    }
+    else if (audioWasRecording)
+    {
+        audioWasRecording = false;
+        if (recordedSamples.load (std::memory_order_relaxed) > 0)
+            recordingTakeReady.store (true, std::memory_order_relaxed);
+    }
+}
+
+void VRACPlusAudioProcessor::updatePadHit (int pad, bool followAutoSelection)
+{
+    if (pad < 0 || pad >= vrac::kNumPads)
+        return;
+    padHitStamps[(size_t) pad].store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+    if (followAutoSelection)
+    {
+        lastTriggeredPad.store (pad, std::memory_order_relaxed);
+        triggerStamp.fetch_add (1, std::memory_order_relaxed);
+    }
+}
+
+void VRACPlusAudioProcessor::resetSequencerPlayback()
+{
+    seqPlaybackState = {};
+    seqHostPlaying.store (false, std::memory_order_relaxed);
+    seqTransportPlaying.store (false, std::memory_order_relaxed);
+    seqPlayheadStep.store (-1, std::memory_order_relaxed);
+}
+
+std::shared_ptr<const vrac::SequencerData> VRACPlusAudioProcessor::getSequencerData() const
+{
+    return sequencerData.load (std::memory_order_acquire);
+}
+
+void VRACPlusAudioProcessor::setSequencerData (std::shared_ptr<const vrac::SequencerData> data)
+{
+    if (data == nullptr)
+        return;
+    const auto previous = sequencerData.load (std::memory_order_acquire);
+    auto next = std::move (data);
+    sequencerData.store (next, std::memory_order_release);
+    if (previous != nullptr && next != nullptr
+        && (previous->division != next->division || previous->hostSync != next->hostSync))
+        seqResetRequested.store (true, std::memory_order_relaxed);
+    markHostStateDirty();
+}
+
+void VRACPlusAudioProcessor::setSequencerInternalPlaying (bool shouldPlay)
+{
+    seqInternalPlaying.store (shouldPlay, std::memory_order_relaxed);
+    if (! shouldPlay)
+    {
+        seqTransportPlaying.store (false, std::memory_order_relaxed);
+        seqPlayheadStep.store (-1, std::memory_order_relaxed);
+    }
+}
+
+void VRACPlusAudioProcessor::markHostStateDirty()
+{
+    hostStateChanged.store (true, std::memory_order_relaxed);
+    triggerAsyncUpdate();
+}
+
+void VRACPlusAudioProcessor::handleAsyncUpdate()
+{
+    auto readHandle = ccFifo.read (ccFifo.getNumReady());
+    auto process = [this] (const CcEvent& event)
+    {
+        applyCcOnMessageThread (event.cc, event.value);
+    };
+    for (int i = 0; i < readHandle.blockSize1; ++i)
+        process (ccData[(size_t) (readHandle.startIndex1 + i)]);
+    for (int i = 0; i < readHandle.blockSize2; ++i)
+        process (ccData[(size_t) (readHandle.startIndex2 + i)]);
+
+    if (hostStateChanged.exchange (false, std::memory_order_relaxed))
+        updateHostDisplay (juce::AudioProcessorListener::ChangeDetails()
+                               .withNonParameterStateChanged (true));
+}
+
+void VRACPlusAudioProcessor::applyCcOnMessageThread (int cc, float value)
+{
+    lastCcSeen.store (juce::Time::getMillisecondCounter(), std::memory_order_relaxed);
+    if (midiLearnTarget.isNotEmpty())
+    {
+        if (cc >= 0 && cc < 128)
+        {
+            ccMappings[(size_t) cc] = midiLearnTarget;
+            midiLearnTarget.clear();
+            postUiChange();
+        }
+        return;
+    }
+    if (cc >= 0 && cc < 128 && ccMappings[(size_t) cc].isNotEmpty())
+        setParameterNormalised (ccMappings[(size_t) cc], value);
+}
+
+void VRACPlusAudioProcessor::setSelectedPad (int pad)
+{
+    pad = juce::jlimit (0, vrac::kNumPads - 1, pad);
+    if (selectedPad.load (std::memory_order_relaxed) == pad)
+        return;
+    selectedPad.store (pad, std::memory_order_relaxed);
+    postUiChange();
+}
+
+void VRACPlusAudioProcessor::triggerPad (int pad, float velocity)
+{
+    if (pad < 0 || pad >= vrac::kNumPads)
+        return;
+    auto writeHandle = uiTriggerFifo.write (1);
+    if (writeHandle.blockSize1 > 0)
+        uiTriggerData[(size_t) writeHandle.startIndex1] = { pad, juce::jlimit (0.0f, 1.0f, velocity) };
+    else if (writeHandle.blockSize2 > 0)
+        uiTriggerData[(size_t) writeHandle.startIndex2] = { pad, juce::jlimit (0.0f, 1.0f, velocity) };
+    updatePadHit (pad);
+}
+
+void VRACPlusAudioProcessor::chokeAll()
+{
+    chokeRequested.store (true, std::memory_order_relaxed);
+}
+
+double VRACPlusAudioProcessor::getPadStart (int pad) const
+{
+    pad = juce::jlimit (0, vrac::kNumPads - 1, pad);
+    return padStarts[(size_t) pad].load (std::memory_order_relaxed);
+}
+
+void VRACPlusAudioProcessor::setPadStart (int pad, double seconds)
+{
+    pad = juce::jlimit (0, vrac::kNumPads - 1, pad);
+    const auto sample = engine.getSample();
+    const auto duration = sample != nullptr ? sample->getDurationSeconds() : 0.0;
+    padStarts[(size_t) pad].store ((float) juce::jlimit (0.0, juce::jmax (0.0, duration - 0.001), seconds),
+                                   std::memory_order_relaxed);
+    postUiChange();
+}
+
+juce::String VRACPlusAudioProcessor::getSourceName() const { return sourceName; }
+juce::String VRACPlusAudioProcessor::getSourceId() const { return sourceId; }
+juce::String VRACPlusAudioProcessor::getPresetName() const { return currentPresetName; }
+juce::String VRACPlusAudioProcessor::getMidiLearnTarget() const { return midiLearnTarget; }
+
+juce::String VRACPlusAudioProcessor::getMidiMappingForCc (int cc) const
+{
+    if (cc < 0 || cc >= 128)
+        return {};
+    return ccMappings[(size_t) cc];
+}
+
+uint32_t VRACPlusAudioProcessor::getPadHitStamp (int pad) const
+{
+    if (pad < 0 || pad >= vrac::kNumPads)
+        return 0;
+    return padHitStamps[(size_t) pad].load (std::memory_order_relaxed);
+}
+
+float VRACPlusAudioProcessor::getBusPeak (int bus) const
+{
+    return engine.getBusPeak (bus);
+}
+
+void VRACPlusAudioProcessor::loadFactorySource (const juce::String& newSourceId)
+{
+    auto sample = vrac::loadFactorySource (newSourceId);
+    if (sample == nullptr)
+        return;
+    engine.setSample (sample);
+    sourceId = newSourceId;
+    sourceName = sample->name;
+    sourceIsFactory = true;
+    customSamplePcm.reset();
+    resliceAndAssignStarts (false);
+    undoStack.clear();
+    redoStack.clear();
+    postUiChange();
+}
+
+bool VRACPlusAudioProcessor::loadUserSampleFromFile (const juce::File& file)
+{
+    auto sample = vrac::loadAudioFile (file);
+    if (sample == nullptr)
+        return false;
+    engine.setSample (sample);
+    sourceId = "custom-" + juce::String (juce::Time::currentTimeMillis());
+    sourceName = sample->name;
+    sourceIsFactory = false;
+    customSamplePcm = vrac::encodePcm16 (*sample);
+    resliceAndAssignStarts (false);
+    undoStack.clear();
+    redoStack.clear();
+    postUiChange();
+    return true;
+}
+
+void VRACPlusAudioProcessor::onSensitivityChanged()
+{
+    resliceAndAssignStarts (true);
+}
+
+void VRACPlusAudioProcessor::resliceAndAssignStarts (bool remapExisting)
+{
+    const auto sample = engine.getSample();
+    if (sample == nullptr)
+        return;
+    const auto oldSlices = slices;
+    const auto sensitivity = juce::jlimit (0.0f, 1.0f, parameterCache.readSensitivity());
+    auto newSlices = vrac::detectSlices (*sample, sensitivity);
+    std::array<double, vrac::kNumPads> newStarts {};
+    if (remapExisting && ! oldSlices.empty() && ! newSlices.empty())
+    {
+        for (int pad = 0; pad < vrac::kNumPads; ++pad)
+        {
+            const auto current = (double) padStarts[(size_t) pad].load (std::memory_order_relaxed);
+            int nearest = 0;
+            double best = std::numeric_limits<double>::max();
+            for (int i = 0; i < (int) oldSlices.size(); ++i)
+            {
+                const auto d = std::abs (oldSlices[(size_t) i].time - current);
+                if (d < best)
+                {
+                    best = d;
+                    nearest = i;
+                }
+            }
+            const auto ratio = oldSlices.size() > 1 ? (double) nearest / (double) (oldSlices.size() - 1) : 0.0;
+            const auto target = juce::jlimit (0, (int) newSlices.size() - 1, (int) std::round (ratio * (double) (newSlices.size() - 1)));
+            newStarts[(size_t) pad] = newSlices[(size_t) target].time;
+        }
+    }
+    else
+    {
+        const auto starts = vrac::padStartsFromSlices (newSlices);
+        for (int i = 0; i < vrac::kNumPads; ++i)
+            newStarts[(size_t) i] = starts[(size_t) i];
+    }
+    slices = std::move (newSlices);
+    for (int i = 0; i < vrac::kNumPads; ++i)
+        padStarts[(size_t) i].store ((float) newStarts[(size_t) i], std::memory_order_relaxed);
+    postUiChange();
+}
+
+void VRACPlusAudioProcessor::addSliceAt (double seconds)
+{
+    if (seconds < 0.0)
+        return;
+    for (const auto& slice : slices)
+        if (std::abs (slice.time - seconds) < 0.004)
+            return;
+    slices.push_back ({ seconds, 0.6f });
+    std::sort (slices.begin(), slices.end(), [] (const vrac::Slice& a, const vrac::Slice& b) { return a.time < b.time; });
+    postUiChange();
+}
+
+void VRACPlusAudioProcessor::deleteNearestSlice (double seconds)
+{
+    if (slices.empty())
+        return;
+    int nearest = 0;
+    double best = std::numeric_limits<double>::max();
+    for (int i = 0; i < (int) slices.size(); ++i)
+    {
+        const auto d = std::abs (slices[(size_t) i].time - seconds);
+        if (d < best)
+        {
+            best = d;
+            nearest = i;
+        }
+    }
+    slices.erase (slices.begin() + nearest);
+    postUiChange();
+}
+
+void VRACPlusAudioProcessor::applyFactoryPresetFromUi (int index)
+{
+    applyFactoryPresetInternal (index, true);
+}
+
+void VRACPlusAudioProcessor::randomizePads()
+{
+    pushUndoSnapshot();
+    vrac::Rng rng ((uint32_t) juce::Time::currentTimeMillis());
+    auto pads = vrac::makeDefaultPads();
+    const int roles[] { 0, 0, 1, 3, 1, 2, 2, 2, 2, 2, 3, 3, 2, 2, 1, 3 };
+    const float lengths[] { 0.20f, 0.55f, 0.10f, 0.42f };
+    for (int i = 0; i < vrac::kNumPads; ++i)
+    {
+        auto& pad = pads[(size_t) i];
+        const auto family = roles[i];
+        pad.modelIndex = family * vrac::kModelsPerFamily + rng.rangeInt (0, vrac::kModelsPerFamily - 1);
+        pad.drumify = rng.range (0.34f, 0.96f);
+        pad.length = lengths[(size_t) family] + rng.range (-0.05f, 0.18f);
+        pad.pitch = rng.chance (0.35f) ? (float) rng.rangeInt (-4, 4) : 0.0f;
+        pad.pan = family == vrac::hat || family == vrac::clap ? rng.range (-0.35f, 0.35f) : rng.range (-0.1f, 0.1f);
+        pad.choke = family == vrac::hat ? 2 : 0;
+        pad.warp = rng.range (0.0f, 0.65f);
+        pad.impact = rng.range (0.1f, 0.8f);
+        pad.instability = rng.range (0.0f, 0.3f);
+        pad.super = rng.range (0.0f, 0.55f);
+        pad.velocityAmount = rng.range (0.35f, 0.9f);
+        parameterCache.writePad (i, pad);
+    }
+    auto global = parameterCache.readGlobal();
+    global.tone = juce::jlimit (-12.0f, 12.0f, global.tone + rng.range (-3.0f, 3.0f));
+    global.filter = juce::jlimit (-0.5f, 0.5f, global.filter + rng.range (-0.12f, 0.12f));
+    global.width = juce::jlimit (0.0f, 1.0f, global.width + rng.range (-0.2f, 0.2f));
+    parameterCache.writeGlobal (global);
+    currentPresetName = "RANDOM KIT";
+    postUiChange();
+}
+
+void VRACPlusAudioProcessor::pushUndoSnapshot()
+{
+    if (restoringState)
+        return;
+    Snapshot snapshot;
+    snapshot.parameterState = apvts.copyState();
+    snapshot.slices = slices;
+    for (int i = 0; i < vrac::kNumPads; ++i)
+        snapshot.starts[(size_t) i] = padStarts[(size_t) i].load (std::memory_order_relaxed);
+    snapshot.selectedPad = selectedPad.load (std::memory_order_relaxed);
+    snapshot.presetName = currentPresetName;
+    snapshot.programIndex = currentProgramIndex.load (std::memory_order_relaxed);
+    snapshot.sequencer = sequencerData.load (std::memory_order_acquire);
+    undoStack.push_back (std::move (snapshot));
+    if (undoStack.size() > 50)
+        undoStack.erase (undoStack.begin());
+    redoStack.clear();
+}
+
+void VRACPlusAudioProcessor::restoreSnapshot (Snapshot snapshot)
+{
+    restoringState = true;
+    apvts.replaceState (snapshot.parameterState);
+    slices = std::move (snapshot.slices);
+    for (int i = 0; i < vrac::kNumPads; ++i)
+        padStarts[(size_t) i].store (snapshot.starts[(size_t) i], std::memory_order_relaxed);
+    selectedPad.store (juce::jlimit (0, vrac::kNumPads - 1, snapshot.selectedPad), std::memory_order_relaxed);
+    currentPresetName = snapshot.presetName.isNotEmpty() ? snapshot.presetName : currentPresetName;
+    currentProgramIndex.store (juce::jlimit (0, getNumPrograms() - 1, snapshot.programIndex),
+                               std::memory_order_relaxed);
+    if (snapshot.sequencer != nullptr)
+    {
+        sequencerData.store (snapshot.sequencer, std::memory_order_release);
+        seqResetRequested.store (true, std::memory_order_relaxed);
+    }
+    markHostStateDirty();
+    restoringState = false;
+    postUiChange();
+}
+
+void VRACPlusAudioProcessor::undo()
+{
+    if (undoStack.empty())
+        return;
+    Snapshot current;
+    current.parameterState = apvts.copyState();
+    current.slices = slices;
+    for (int i = 0; i < vrac::kNumPads; ++i)
+        current.starts[(size_t) i] = padStarts[(size_t) i].load (std::memory_order_relaxed);
+    current.selectedPad = selectedPad.load (std::memory_order_relaxed);
+    current.presetName = currentPresetName;
+    current.programIndex = currentProgramIndex.load (std::memory_order_relaxed);
+    current.sequencer = sequencerData.load (std::memory_order_acquire);
+    redoStack.push_back (std::move (current));
+    auto snapshot = std::move (undoStack.back());
+    undoStack.pop_back();
+    restoreSnapshot (std::move (snapshot));
+}
+
+void VRACPlusAudioProcessor::redo()
+{
+    if (redoStack.empty())
+        return;
+    Snapshot current;
+    current.parameterState = apvts.copyState();
+    current.slices = slices;
+    for (int i = 0; i < vrac::kNumPads; ++i)
+        current.starts[(size_t) i] = padStarts[(size_t) i].load (std::memory_order_relaxed);
+    current.selectedPad = selectedPad.load (std::memory_order_relaxed);
+    current.presetName = currentPresetName;
+    current.programIndex = currentProgramIndex.load (std::memory_order_relaxed);
+    current.sequencer = sequencerData.load (std::memory_order_acquire);
+    undoStack.push_back (std::move (current));
+    auto snapshot = std::move (redoStack.back());
+    redoStack.pop_back();
+    restoreSnapshot (std::move (snapshot));
+}
+
+void VRACPlusAudioProcessor::armMidiLearn (const juce::String& parameterId)
+{
+    midiLearnTarget = parameterId;
+    postUiChange();
+}
+
+void VRACPlusAudioProcessor::cancelMidiLearn()
+{
+    midiLearnTarget.clear();
+    postUiChange();
+}
+
+void VRACPlusAudioProcessor::toggleRecording()
+{
+    if (recordingActive.load (std::memory_order_relaxed))
+    {
+        recordingActive.store (false, std::memory_order_relaxed);
+        postUiChange();
+        return;
+    }
+
+    const auto maxSamples = juce::jmax (1, kMaxRecordBytes / (2 * (int) sizeof (float)));
+    const auto wanted = juce::jmax (1, (int) std::round (currentSampleRate * 120.0));
+    recordBuffer.setSize (2, juce::jmin (maxSamples, wanted), false, true, false);
+    recordBuffer.clear();
+    recordedSamples.store (0, std::memory_order_relaxed);
+    recordingTakeReady.store (false, std::memory_order_relaxed);
+    audioWasRecording = false;
+    recordSampleRate = (int) std::round (currentSampleRate);
+    recordingActive.store (true, std::memory_order_relaxed);
+    postUiChange();
+}
+
+double VRACPlusAudioProcessor::getRecordingSeconds() const
+{
+    return recordSampleRate > 0 ? (double) recordedSamples.load (std::memory_order_relaxed) / (double) recordSampleRate : 0.0;
+}
+
+void VRACPlusAudioProcessor::adoptRecordingTake()
+{
+    if (! recordingTakeReady.load (std::memory_order_relaxed))
+        return;
+    const auto numSamples = recordedSamples.load (std::memory_order_relaxed);
+    if (numSamples <= 0)
+    {
+        discardRecordingTake();
+        return;
+    }
+    auto sample = std::make_shared<vrac::SampleData>();
+    sample->name = "RECORDED INPUT";
+    sample->id = "custom-" + juce::String (juce::Time::currentTimeMillis());
+    sample->sampleRate = (double) recordSampleRate;
+    sample->buffer.setSize (2, numSamples);
+    for (int i = 0; i < numSamples; ++i)
+    {
+        sample->buffer.setSample (0, i, recordBuffer.getSample (0, i));
+        sample->buffer.setSample (1, i, recordBuffer.getSample (1, i));
+    }
+    sample->buildPeaks();
+    engine.setSample (sample);
+    sourceId = sample->id;
+    sourceName = sample->name;
+    sourceIsFactory = false;
+    customSamplePcm = vrac::encodePcm16 (*sample);
+    resliceAndAssignStarts (false);
+    undoStack.clear();
+    redoStack.clear();
+    recordingTakeReady.store (false, std::memory_order_relaxed);
+    postUiChange();
+}
+
+void VRACPlusAudioProcessor::discardRecordingTake()
+{
+    recordingTakeReady.store (false, std::memory_order_relaxed);
+    recordedSamples.store (0, std::memory_order_relaxed);
+    postUiChange();
+}
+
+void VRACPlusAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
+{
+    auto state = apvts.copyState();
+    auto extra = state.getChildWithName ("VRAC_EXTRA");
+    if (extra.isValid())
+        state.removeChild (extra, nullptr);
+
+    extra = juce::ValueTree ("VRAC_EXTRA");
+    extra.setProperty ("sourceId", sourceId, nullptr);
+    extra.setProperty ("sourceName", sourceName, nullptr);
+    extra.setProperty ("sourceIsFactory", sourceIsFactory, nullptr);
+    extra.setProperty ("program", currentProgramIndex.load (std::memory_order_relaxed), nullptr);
+    extra.setProperty ("presetName", currentPresetName, nullptr);
+    extra.setProperty ("selectedPad", selectedPad.load (std::memory_order_relaxed), nullptr);
+    if (! sourceIsFactory && customSamplePcm.getSize() > 0)
+    {
+        extra.setProperty ("customPcm", customSamplePcm, nullptr);
+        if (const auto sample = engine.getSample())
+            extra.setProperty ("customSampleRate", sample->sampleRate, nullptr);
+    }
+
+    juce::ValueTree sliceTree ("SLICES");
+    for (const auto& slice : slices)
+    {
+        juce::ValueTree s ("SLICE");
+        s.setProperty ("time", slice.time, nullptr);
+        s.setProperty ("strength", slice.strength, nullptr);
+        sliceTree.addChild (s, -1, nullptr);
+    }
+    extra.addChild (sliceTree, -1, nullptr);
+
+    juce::ValueTree starts ("STARTS");
+    for (int i = 0; i < vrac::kNumPads; ++i)
+        starts.setProperty ("s" + juce::String (i), (double) padStarts[(size_t) i].load (std::memory_order_relaxed), nullptr);
+    extra.addChild (starts, -1, nullptr);
+
+    juce::ValueTree mappings ("MAPPINGS");
+    for (int cc = 0; cc < 128; ++cc)
+    {
+        if (ccMappings[(size_t) cc].isNotEmpty())
+        {
+            juce::ValueTree map ("MAP");
+            map.setProperty ("cc", cc, nullptr);
+            map.setProperty ("param", ccMappings[(size_t) cc], nullptr);
+            mappings.addChild (map, -1, nullptr);
+        }
+    }
+    extra.addChild (mappings, -1, nullptr);
+
+    if (const auto sequence = sequencerData.load (std::memory_order_acquire))
+        extra.setProperty ("sequencer", vrac::serialiseSequencer (*sequence), nullptr);
+
+    state.addChild (extra, -1, nullptr);
+
+    juce::MemoryOutputStream stream (destData, false);
+    state.writeToStream (stream);
+}
+
+void VRACPlusAudioProcessor::setStateInformation (const void* data, int sizeInBytes)
+{
+    auto state = juce::ValueTree::readFromData (data, (size_t) juce::jmax (0, sizeInBytes));
+    if (! state.isValid())
+        return;
+
+    restoringState = true;
+    auto extra = state.getChildWithName ("VRAC_EXTRA");
+    auto parameterState = state.createCopy();
+    if (extra.isValid())
+        parameterState.removeChild (extra, nullptr);
+    else
+        extra = juce::ValueTree ("VRAC_EXTRA");
+    apvts.replaceState (parameterState);
+
+    sourceId = extra.getProperty ("sourceId", "foley").toString();
+    sourceName = extra.getProperty ("sourceName", "FOLEY TRASH").toString();
+    sourceIsFactory = (bool) extra.getProperty ("sourceIsFactory", true);
+    currentProgramIndex.store (juce::jlimit (0, getNumPrograms() - 1, (int) extra.getProperty ("program", 0)),
+                               std::memory_order_relaxed);
+    currentPresetName = extra.getProperty ("presetName", getProgramName (currentProgramIndex.load())).toString();
+    selectedPad.store (juce::jlimit (0, vrac::kNumPads - 1, (int) extra.getProperty ("selectedPad", 3)),
+                       std::memory_order_relaxed);
+
+    vrac::SamplePtr sample;
+    customSamplePcm.reset();
+    if (sourceIsFactory)
+    {
+        sample = vrac::loadFactorySource (sourceId);
+    }
+    else
+    {
+        if (auto* pcm = extra.getProperty ("customPcm").getBinaryData())
+        {
+            customSamplePcm = *pcm;
+            sample = vrac::decodePcm16 (customSamplePcm, 2, extra.getProperty ("customSampleRate", 48000.0), sourceName);
+        }
+        if (sample == nullptr)
+        {
+            sample = vrac::loadFactorySource (sourceId.isNotEmpty() ? sourceId : "foley");
+            sourceIsFactory = sample != nullptr && ! sourceId.startsWith ("custom-");
+        }
+    }
+    if (sample != nullptr)
+    {
+        engine.setSample (sample);
+        sourceName = sample->name;
+    }
+
+    slices.clear();
+    if (auto sliceTree = extra.getChildWithName ("SLICES"); sliceTree.isValid())
+        for (int i = 0; i < sliceTree.getNumChildren(); ++i)
+        {
+            const auto child = sliceTree.getChild (i);
+            slices.push_back ({ (double) child.getProperty ("time", 0.0), (float) child.getProperty ("strength", 0.5f) });
+        }
+    if (slices.empty() && sample != nullptr)
+        slices = vrac::detectSlices (*sample, juce::jlimit (0.0f, 1.0f, parameterCache.readSensitivity()));
+
+    auto starts = extra.getChildWithName ("STARTS");
+    for (int i = 0; i < vrac::kNumPads; ++i)
+    {
+        float start = 0.0f;
+        if (starts.isValid())
+            start = (float) (double) starts.getProperty ("s" + juce::String (i), 0.0);
+        else if (! slices.empty())
+            start = (float) slices[(size_t) juce::jmin ((int) slices.size() - 1, i)].time;
+        padStarts[(size_t) i].store (start, std::memory_order_relaxed);
+    }
+
+    for (auto& mapping : ccMappings)
+        mapping.clear();
+    if (auto mappings = extra.getChildWithName ("MAPPINGS"); mappings.isValid())
+        for (int i = 0; i < mappings.getNumChildren(); ++i)
+        {
+            const auto child = mappings.getChild (i);
+            const int cc = (int) child.getProperty ("cc", -1);
+            if (cc >= 0 && cc < 128)
+                ccMappings[(size_t) cc] = child.getProperty ("param", "").toString();
+        }
+
+    std::shared_ptr<vrac::SequencerData> loadedSequence;
+    if (auto* sequenceBlob = extra.getProperty ("sequencer").getBinaryData())
+        loadedSequence = vrac::deserialiseSequencer (*sequenceBlob);
+    if (loadedSequence == nullptr)
+        loadedSequence = vrac::cloneSequencerData (*vrac::makeDefaultSequencerData());
+    sequencerData.store (loadedSequence, std::memory_order_release);
+    seqInternalPlaying.store (false, std::memory_order_relaxed);
+    seqResetRequested.store (true, std::memory_order_relaxed);
+
+    midiLearnTarget.clear();
+    restoringState = false;
+    postUiChange();
+}
+
+juce::AudioProcessor* JUCE_CALLTYPE createPluginFilter()
+{
+    return new VRACPlusAudioProcessor();
+}
+
+
+
+

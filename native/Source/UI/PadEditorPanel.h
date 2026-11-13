@@ -1,0 +1,52 @@
+﻿#pragma once
+
+#include <JuceHeader.h>
+#include "../PluginProcessor.h"
+#include "WaveformDisplay.h"
+#include "Controls.h"
+
+namespace vrac::ui
+{
+    class PadEditorPanel final : public juce::Component
+    {
+    public:
+        explicit PadEditorPanel (VRACPlusAudioProcessor&);
+        void paint (juce::Graphics&) override;
+        void resized() override;
+
+        void setSelectedPad (int pad);
+        void refreshFromProcessor();
+        int getSelectedPad() const noexcept { return selectedPad; }
+        std::function<void (int)> onSelectedPadChanged;
+
+    private:
+        void updateParameterIds();
+        void updateButtonStates();
+        void setPadParam (const juce::String& suffix, float value);
+        void setModel (int modelIndex);
+        void audition();
+        void copyPad();
+        void pastePad();
+        void resetPad();
+
+        VRACPlusAudioProcessor& processorRef;
+        int selectedPad = 0;
+        WaveformDisplay waveform;
+        ParamKnob originalKnob;
+        ParamKnob drumifyKnob;
+        ParamKnob drumifiedKnob;
+        std::array<std::unique_ptr<ParamKnob>, 6> controlKnobs;
+        std::array<std::unique_ptr<ParamKnob>, 4> sculptKnobs;
+        std::array<std::unique_ptr<ParamKnob>, 3> eqKnobs;
+        juce::TextButton auditionButton { "PLAY" };
+        juce::TextButton copyButton { "COPY" };
+        juce::TextButton pasteButton { "PASTE" };
+        juce::TextButton resetButton { "RESET" };
+        std::array<juce::TextButton, 5> chokeButtons;
+        std::array<juce::TextButton, 8> busButtons;
+        std::array<juce::TextButton, 16> modelButtons;
+        PadSettings copiedPad;
+        bool hasCopiedPad = false;
+    };
+} // namespace vrac::ui
+

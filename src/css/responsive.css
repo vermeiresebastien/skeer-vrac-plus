@@ -1,0 +1,788 @@
+/* ================================================================== *
+ * Size tuning and responsive layout
+ * ================================================================== */
+
+/* The editor is the densest panel; keep its controls compact so the whole
+ * instrument fits a 1440 × 900 window without scrolling. */
+.pad-editor {
+  padding-bottom: 10px;
+}
+
+.pad-editor .section-head {
+  margin-bottom: 5px;
+  min-height: 15px;
+}
+
+.pad-editor .panel-rule {
+  margin: 7px 0;
+}
+
+.pad-editor .pad-control-grid .knob {
+  --knob-size: 41px;
+}
+
+.pad-editor .pad-control-grid {
+  gap: 4px 2px;
+  margin-bottom: 6px;
+}
+
+.pad-editor .morph-main .knob--lg {
+  --knob-size: 77px;
+}
+
+.pad-editor .morph-block {
+  padding: 4px 4px 3px;
+  margin-bottom: 6px;
+}
+
+.pad-editor .model-cell {
+  height: 23px;
+}
+
+.pad-editor .model-row {
+  gap: 3px;
+}
+
+.pad-editor .model-matrix {
+  gap: 3px;
+}
+
+.pad-editor .sculpt-grid {
+  grid-template-columns: repeat(4, minmax(0, 1fr));
+  margin-bottom: 5px;
+}
+
+.pad-editor .sculpt-grid .knob {
+  --knob-size: 35px;
+}
+
+.pad-editor .eq-block {
+  padding: 4px 8px;
+}
+
+.pad-editor .pad-title {
+  font-size: 23px;
+}
+
+.pad-editor .pad-editor-head {
+  margin-bottom: 5px;
+}
+
+.pad-editor .pad-wave-card {
+  margin-bottom: 6px;
+  padding: 4px 6px 3px;
+}
+
+.pad-editor .pad-wave-card .waveform {
+  height: 44px;
+}
+
+.pad-editor .pad-utility-row {
+  margin-bottom: 4px;
+}
+
+.pad-editor .choke-block .segmented button,
+.pad-editor .bus-block .segmented button {
+  height: 17px;
+}
+
+.source-panel .global-knobs .knob {
+  --knob-size: 46px;
+}
+
+.global-knobs .knob-value {
+  font-size: 8px;
+}
+
+/* 1600px and down: tighten the shell */
+@media (max-width: 1600px) {
+  .workspace {
+    grid-template-columns: minmax(295px, 0.9fr) minmax(390px, 1.24fr) minmax(360px, 1.02fr);
+  }
+
+  .app-header {
+    gap: 9px;
+  }
+
+  .brand {
+    min-width: 170px;
+  }
+
+  .preset-current {
+    min-width: 198px;
+  }
+}
+
+@media (max-width: 1440px) {
+  .app {
+    padding: 10px;
+  }
+
+  .app-shell {
+    height: calc(100dvh - 20px);
+    min-height: 620px;
+  }
+
+  .app-header {
+    padding: 0 12px;
+    height: 60px;
+  }
+
+  .workspace {
+    gap: 10px;
+    padding: 10px;
+  }
+
+  .panel {
+    padding: 11px;
+  }
+
+  .footer-meta {
+    gap: 8px;
+  }
+}
+
+@media (max-width: 1280px) {
+  .brand-sub,
+  .pads-count,
+  .footer-chip:last-child {
+    display: none;
+  }
+
+  .brand {
+    min-width: 140px;
+  }
+
+  .workspace {
+    grid-template-columns: minmax(285px, 0.9fr) minmax(360px, 1.15fr) minmax(338px, 1fr);
+  }
+
+  .preset-active,
+  .preset-tag {
+    display: none;
+  }
+
+  .preset-current {
+    min-width: 168px;
+    grid-template-columns: 1fr auto;
+  }
+
+  .pad-editor .sculpt-grid .knob {
+    --knob-size: 35px;
+  }
+
+  .pad-editor .pad-control-grid .knob {
+    --knob-size: 40px;
+  }
+
+  .pad-editor .morph-main .knob--lg {
+    --knob-size: 74px;
+  }
+
+  .pad-editor .morph-block {
+    grid-template-columns: 74px minmax(0, 1fr) 74px;
+  }
+
+  .model-row {
+    grid-template-columns: 46px minmax(0, 1fr);
+  }
+
+  .model-cell .model-code {
+    display: none;
+  }
+
+  .source-actions-hint {
+    display: none;
+  }
+
+  .footer-tip {
+    flex: 1;
+  }
+
+  .footer-meta {
+    display: none;
+  }
+}
+
+/* Below this width three columns stop being usable. The source and the pads
+ * sit side-by-side, the editor gets its own row. */
+@media (max-width: 1120px) {
+  .app {
+    padding: 0;
+  }
+
+  .app-shell {
+    height: auto;
+    min-height: 100dvh;
+    border-radius: 0;
+    border-left: none;
+    border-right: none;
+    max-width: none;
+  }
+
+  .workspace {
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1.15fr);
+    grid-template-rows: minmax(540px, auto) auto;
+    align-items: stretch;
+    padding: 10px;
+    gap: 10px;
+  }
+
+  .source-panel {
+    max-height: 660px;
+  }
+
+  .pads-panel {
+    min-height: 560px;
+  }
+
+  .pad-editor {
+    grid-column: 1 / -1;
+    overflow: visible;
+    display: grid;
+    grid-template-columns: minmax(0, 1fr) minmax(0, 1fr);
+    gap: 0 22px;
+    align-items: start;
+  }
+
+  .pad-editor > * {
+    grid-column: span 1;
+  }
+
+  .pad-editor > .section-head,
+  .pad-editor > .pad-wave-card,
+  .pad-editor > .morph-block,
+  .pad-editor > .pad-utility-row,
+  .pad-editor > .panel-rule,
+  .pad-editor > .eq-block {
+    grid-column: 1 / -1;
+  }
+
+  .pad-editor-head {
+    margin-bottom: 8px;
+  }
+
+  .pad-editor > .pad-control-grid {
+    grid-column: 1;
+  }
+
+  .pad-editor > .panel-rule:nth-of-type(2) {
+    grid-column: 1 / -1;
+  }
+
+  .pad-editor .model-matrix {
+    grid-column: 2;
+  }
+
+  .pad-editor > .sculpt-grid {
+    grid-column: 1 / -1;
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+    max-width: 560px;
+  }
+
+  .pad-editor > .eq-block {
+    max-width: none;
+  }
+
+  .pad-editor > .section-head:nth-of-type(2) {
+    display: none;
+  }
+
+  .pads-stage {
+    padding: 10px 2px;
+  }
+
+  .pad {
+    aspect-ratio: 1.1 / 1;
+  }
+}
+
+@media (max-width: 860px) {
+  .app-header {
+    height: auto;
+    min-height: 58px;
+    flex-wrap: wrap;
+    padding: 8px 12px;
+    gap: 7px;
+  }
+
+  .brand {
+    min-width: 0;
+    flex: 1;
+  }
+
+  .preset-browser {
+    order: 5;
+    width: 100%;
+    height: 36px;
+    justify-content: space-between;
+  }
+
+  .preset-current {
+    flex: 1;
+    min-width: 0;
+    max-width: none;
+  }
+
+  .preset-menu {
+    left: 0;
+    right: 0;
+    width: auto;
+  }
+
+  .header-divider,
+  .history-buttons {
+    display: none;
+  }
+
+  .header-actions {
+    gap: 0;
+  }
+
+  .audio-status {
+    margin-right: 0;
+  }
+
+  .workspace {
+    grid-template-columns: minmax(0, 1fr);
+    grid-template-rows: auto auto auto;
+  }
+
+  .source-panel {
+    max-height: none;
+    overflow: visible;
+  }
+
+  .pads-panel {
+    min-height: 0;
+  }
+
+  .pad-editor {
+    display: flex;
+    grid-column: 1;
+    gap: 0;
+  }
+
+  .pad-editor > .section-head:nth-of-type(2) {
+    display: flex;
+  }
+
+  .pad-editor .model-matrix {
+    grid-column: auto;
+  }
+
+  .pad-editor > .sculpt-grid {
+    grid-template-columns: repeat(5, minmax(0, 1fr));
+  }
+
+  .global-knobs {
+    grid-template-columns: repeat(4, minmax(0, 1fr));
+  }
+
+  .source-panel .global-knobs .knob {
+    --knob-size: 48px;
+  }
+
+  .pad-grid {
+    max-width: 560px;
+  }
+
+  .pad {
+    aspect-ratio: 1.08 / 1;
+  }
+
+  .pads-foot {
+    flex-direction: column;
+    align-items: flex-start;
+  }
+
+  .pad-legend {
+    justify-content: flex-start;
+  }
+
+  .app-footer {
+    height: auto;
+    min-height: 34px;
+    padding: 8px 12px;
+    flex-wrap: wrap;
+  }
+
+  .footer-meta {
+    display: flex;
+    order: 3;
+    width: 100%;
+  }
+
+  .footer-brand {
+    margin-left: auto;
+  }
+
+  .guide-grid,
+  .about-columns,
+  .about-library {
+    grid-template-columns: 1fr;
+    gap: 16px;
+  }
+
+  .keys-guide {
+    grid-template-columns: 1fr;
+    gap: 18px;
+  }
+
+  .about-workflow {
+    grid-template-columns: 1fr;
+  }
+
+  .library-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-backdrop {
+    padding: 8px;
+  }
+
+  .modal {
+    max-height: 94dvh;
+  }
+
+  .modal--wide {
+    width: 100%;
+  }
+
+  .about-stats {
+    grid-template-columns: repeat(2, minmax(0, 1fr));
+  }
+}
+
+@media (max-width: 560px) {
+  .brand-mark {
+    width: 28px;
+    height: 28px;
+  }
+
+  .brand-name {
+    font-size: 19px;
+  }
+
+  .brand-sub {
+    display: none;
+  }
+
+  .icon-button {
+    width: 28px;
+    height: 28px;
+  }
+
+  .header-actions {
+    gap: 0;
+  }
+
+  .audio-status {
+    padding: 0 6px;
+  }
+
+  .audio-status span:last-child {
+    display: none;
+  }
+
+  .workspace {
+    padding: 8px;
+    gap: 8px;
+  }
+
+  .panel {
+    padding: 10px;
+    border-radius: 10px;
+  }
+
+  .source-panel .global-knobs .knob {
+    --knob-size: 42px;
+  }
+
+  .pad-cell {
+    grid-template-columns: minmax(0, 1fr) 18px;
+    gap: 3px;
+  }
+
+  .pad-note {
+    font-size: 15px;
+    left: 8px;
+    bottom: 7px;
+  }
+
+  .pad-code {
+    display: none;
+  }
+
+  .output-strip {
+    padding: 6px;
+  }
+
+  .bus-meters {
+    gap: 4px;
+  }
+
+  .pads-head-actions .pads-count {
+    display: none;
+  }
+
+  .keyboard-keys {
+    display: none;
+  }
+
+  .pad-editor .sculpt-grid .knob {
+    --knob-size: 34px;
+  }
+
+  .pad-editor .morph-main .knob--lg {
+    --knob-size: 72px;
+  }
+
+  .pad-editor .pad-control-grid .knob {
+    --knob-size: 42px;
+  }
+
+  .morph-block {
+    grid-template-columns: 70px minmax(0, 1fr) 70px;
+  }
+
+  .model-cell {
+    justify-content: center;
+  }
+
+  .model-cell .model-code {
+    display: none;
+  }
+
+  .model-row {
+    grid-template-columns: 42px minmax(0, 1fr);
+  }
+
+  .help-tabs {
+    overflow-x: auto;
+  }
+
+  .guide-list {
+    grid-template-columns: 1fr;
+  }
+
+  .library-grid {
+    grid-template-columns: 1fr;
+  }
+
+  .export-option {
+    grid-template-columns: 14px minmax(0, 1fr);
+  }
+
+  .export-size {
+    display: none;
+  }
+
+  .export-summary {
+    grid-template-columns: 1fr;
+  }
+
+  .modal-foot {
+    flex-wrap: wrap;
+  }
+
+  .modal-foot-note {
+    flex-basis: 100%;
+  }
+
+  .toast-stack {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    width: auto;
+  }
+
+  .learn-float {
+    left: 10px;
+    right: 10px;
+    bottom: 10px;
+    transform: none;
+    white-space: normal;
+    border-radius: 8px;
+  }
+
+  .record-device-row {
+    flex-direction: column;
+    align-items: stretch;
+  }
+
+  .record-deck {
+    grid-template-columns: 46px 1fr;
+  }
+
+  .record-button {
+    width: 44px;
+    height: 44px;
+  }
+}
+
+/* Short desktop windows: keep the important controls above the fold. */
+@media (max-height: 820px) and (min-width: 1121px) {
+  .app-header {
+    height: 56px;
+  }
+
+  .workspace {
+    padding: 9px;
+  }
+
+  .panel {
+    padding: 10px;
+  }
+
+  .source-wave-card .waveform {
+    height: 92px;
+  }
+
+  .source-panel .quickstart-head,
+  .source-panel .quickstart,
+  .source-panel .source-note {
+    display: none;
+  }
+
+  .source-panel .source-info {
+    margin-top: 2px;
+  }
+
+  .source-panel .panel-rule {
+    margin: 8px 0;
+  }
+
+  .pad-editor .morph-main .knob--lg {
+    --knob-size: 68px;
+  }
+
+  .pad-editor .morph-side .knob {
+    --knob-size: 40px;
+  }
+
+  .pad-editor .pad-control-grid .knob {
+    --knob-size: 36px;
+  }
+
+  .pad-editor .pad-control-grid {
+    gap: 2px;
+  }
+
+  .pad-editor .sculpt-grid .knob {
+    --knob-size: 31px;
+  }
+
+  .pad-editor .model-cell {
+    height: 21px;
+  }
+
+  .pad-editor .pad-wave-card .waveform {
+    height: 36px;
+  }
+
+  .pad-editor .pad-wave-card {
+    margin-bottom: 5px;
+  }
+
+  .pad-editor .panel-rule {
+    margin: 4px 0;
+  }
+
+  .pad-editor .section-head {
+    margin-bottom: 3px;
+  }
+
+  .pad-editor .morph-block {
+    margin-bottom: 4px;
+    padding-top: 2px;
+  }
+
+  .pad-editor .model-matrix {
+    gap: 2px;
+  }
+
+  .pad-editor .eq-head {
+    display: none;
+  }
+
+  .pad-editor .eq-block {
+    padding: 4px 8px 3px;
+  }
+
+  .pad-editor .pad-utility-row {
+    margin-bottom: 2px;
+  }
+
+  .source-panel .global-knobs .knob {
+    --knob-size: 42px;
+  }
+
+  .pad-note {
+    font-size: 18px;
+  }
+
+  .pads-foot {
+    margin-top: 6px;
+  }
+
+  .output-strip {
+    margin-top: 7px;
+  }
+}
+
+@media (max-height: 760px) and (min-width: 1121px) {
+  .pad-editor .pad-wave-card {
+    display: none;
+  }
+
+  .pad-editor .pad-editor-head {
+    margin-bottom: 3px;
+  }
+
+  .pad-editor .morph-main .knob--lg {
+    --knob-size: 62px;
+  }
+
+  .pad-editor .pad-control-grid .knob {
+    --knob-size: 33px;
+  }
+
+  .pad-editor .pad-control-grid {
+    gap: 1px;
+  }
+
+  .pad-editor .model-cell {
+    height: 20px;
+  }
+
+  .pad-editor .sculpt-grid .knob {
+    --knob-size: 29px;
+  }
+
+  .pad-editor .section-head {
+    margin-bottom: 2px;
+  }
+
+  .pad-editor .panel-rule {
+    margin: 3px 0;
+  }
+
+  .pad-editor .morph-block {
+    grid-template-columns: 68px minmax(0, 1fr) 68px;
+  }
+
+  .pad-editor .morph-caption {
+    display: none;
+  }
+}
+
+@media (prefers-reduced-motion: reduce) {
+  *,
+  *::before,
+  *::after {
+    animation-duration: 0.001ms !important;
+    animation-iteration-count: 1 !important;
+    transition-duration: 0.001ms !important;
+  }
+}
