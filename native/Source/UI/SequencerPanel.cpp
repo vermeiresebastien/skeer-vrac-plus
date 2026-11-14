@@ -202,7 +202,13 @@ namespace sliceforge::ui
             button.setButtonText (juce::String::charToString ((juce::juce_wchar) ('A' + i)));
             styleChip (button, i == 0);
             addAndMakeVisible (button);
-            button.onClick = [this, i] { setActivePattern (i); };
+            button.onClick = [this, i]
+            {
+                // A right-click that opened the copy menu must not also select the pattern.
+                if (chipClickToIgnore == i)
+                    return;
+                setActivePattern (i);
+            };
             button.setTooltip ("Pattern " + juce::String::charToString ((juce::juce_wchar) ('A' + i))
                                    + "  -  click to play it, right-click to copy it to another pattern");
             chipPopups[(size_t) i] = std::make_unique<ChipPopupMenu> (i, this);
@@ -691,7 +697,12 @@ namespace sliceforge::ui
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (targetComponent),
                             [safe] (int result)
                             {
-                                if (safe == nullptr || result <= 0)
+                                if (safe == nullptr)
+                                    return;
+                                // The menu is closed, so no chip click is pending suppression any
+                                // more - this runs for a choice and for a dismissal alike.
+                                safe->chipClickToIgnore = -1;
+                                if (result <= 0)
                                     return;
                                 const auto chosen = result - 1;
                                 safe->applyPatternCopy (chosen / sliceforge::kSeqPatterns,
@@ -701,10 +712,19 @@ namespace sliceforge::ui
 
     void SequencerPanel::applyPatternCopy (int source, int target)
     {
-        edit ([source, target] (sliceforge::SequencerData& d)
-              {
-                  sliceforge::copyPatternTo (d, source, target);
-              }, true);
+        if (data == nullptr)
+            return;
+
+        // Not edit(): the undo snapshot has to be conditional. A rejected pair would otherwise
+        // spend an undo step on nothing, and copyPatternTo is the only place that knows whether a
+        // pair is legal. The processor still holds the pre-edit state here, so taking the snapshot
+        // after mutating the local copy is still taking it before the edit.
+        auto copy = sliceforge::cloneSequencerData (*data);
+        if (! sliceforge::copyPatternTo (*copy, source, target))
+            return;
+
+        pushUndo();
+        commit (std::move (copy), true);
     }
 
     void SequencerPanel::clearCurrentPattern()

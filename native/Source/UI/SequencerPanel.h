@@ -14,7 +14,15 @@ namespace sliceforge::ui
     {
     public:
         explicit SequencerPanel (SliceForgeAudioProcessor&);
-        ~SequencerPanel() override { stopTimer(); }
+        ~SequencerPanel() override
+        {
+            stopTimer();
+            // ~MouseListener does not unregister itself in JUCE 8, and chipPopups is declared
+            // after patternButtons, so it is destroyed first and would leave dangling listener
+            // pointers in buttons that are still alive for a few more destructors.
+            for (int i = 0; i < sliceforge::kSeqPatterns; ++i)
+                patternButtons[(size_t) i].removeMouseListener (chipPopups[(size_t) i].get());
+        }
 
         void refreshFromProcessor();
         void refreshPlayhead();
@@ -62,9 +70,12 @@ namespace sliceforge::ui
         int laneLengthForSelected() const;
 
         /** Right-clicking an A/B/C/D chip opens the copy menu with that pattern already picked as
-            the source, so copying *from* any pattern needs no separate picker. The listeners are
-            owned by the panel and are removed with the buttons it is built from, so the raw
-            back-pointer can never outlive its target. */
+            the source, so copying *from* any pattern needs no separate picker.
+            JUCE 8's Button::mouseUp fires onClick without checking the popup modifier, so the
+            right-click that opened this menu can also arrive at the button as an ordinary click and
+            silently switch the pattern you are hearing. mouseDown records which chip is expecting
+            to be clicked through, and the menu's completion callback clears it whichever way the
+            menu closes - chosen, dismissed, or never released. */
         struct ChipPopupMenu final : public juce::MouseListener
         {
             ChipPopupMenu (int patternIndex, SequencerPanel* owner)
@@ -72,13 +83,19 @@ namespace sliceforge::ui
 
             void mouseDown (const juce::MouseEvent& event) override
             {
-                if (event.mods.isPopupMenu ())
-                    panel->showPatternCopyMenu (index, event.eventComponent);
+                if (! event.mods.isPopupMenu ())
+                    return;
+                panel->chipClickToIgnore = index;
+                panel->showPatternCopyMenu (index, event.eventComponent);
             }
 
             int index;
             SequencerPanel* panel;
         };
+
+        /** Index of the chip whose onClick must be swallowed because a right-click, not a
+            selection, opened the copy menu. -1 when nothing is pending. */
+        int chipClickToIgnore = -1;
 
         SliceForgeAudioProcessor& processorRef;
         std::shared_ptr<const sliceforge::SequencerData> data;
