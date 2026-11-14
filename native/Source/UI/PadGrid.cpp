@@ -1,16 +1,16 @@
 #include "PadGrid.h"
 #include "Theme.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
-    PadGrid::PadGrid (VRACPlusAudioProcessor& processor) : processorRef (processor)
+    PadGrid::PadGrid (SliceForgeAudioProcessor& processor) : processorRef (processor)
     {
         setMouseCursor (juce::MouseCursor::PointingHandCursor);
     }
 
     void PadGrid::setSelectedPad (int pad)
     {
-        pad = juce::jlimit (0, vrac::kNumPads - 1, pad);
+        pad = juce::jlimit (0, sliceforge::kNumPads - 1, pad);
         if (pad != selected)
         {
             selected = pad;
@@ -49,7 +49,7 @@ namespace vrac::ui
     void PadGrid::mouseDown (const juce::MouseEvent& event)
     {
         const auto position = event.position;
-        for (int pad = 0; pad < vrac::kNumPads; ++pad)
+        for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
         {
             if (muteRects[(size_t) pad].contains (position))
             {
@@ -64,7 +64,7 @@ namespace vrac::ui
                 return;
             }
         }
-        for (int pad = 0; pad < vrac::kNumPads; ++pad)
+        for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
         {
             if (! padRects[(size_t) pad].contains (position))
                 continue;
@@ -90,13 +90,13 @@ namespace vrac::ui
     {
         const auto& c = palette();
         const auto now = juce::Time::getMillisecondCounter();
-        for (int pad = 0; pad < vrac::kNumPads; ++pad)
+        for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
         {
             const auto& r = padRects[(size_t) pad];
             const auto settings = processorRef.getParameterCache().readPad (pad);
-            const auto family = vrac::familyForModel (settings.modelIndex);
-            const auto model = vrac::localModelForIndex (settings.modelIndex);
-            const auto accent = vrac::ui::familyColour (family);
+            const auto family = sliceforge::familyForModel (settings.modelIndex);
+            const auto model = sliceforge::localModelForIndex (settings.modelIndex);
+            const auto accent = sliceforge::ui::familyColour (family);
             const auto hitAge = now - processorRef.getPadHitStamp (pad);
             const bool active = hitAge < 180;
             const bool muted = settings.mute;
@@ -143,17 +143,17 @@ namespace vrac::ui
             g.fillEllipse (padBounds.getX() + 32.0f, padBounds.getY() + 10.0f, 4.0f, 4.0f);
 
             // Model name and note.
-            const auto name = vrac::modelBank()[(size_t) family][(size_t) model].name;
+            const auto name = sliceforge::modelBank()[(size_t) family][(size_t) model].name;
             g.setColour (muted ? c.muted : c.ink);
             g.setFont (font (13.0f, true));
             g.drawFittedText (name, padBounds.toNearestInt().reduced (12, 12), juce::Justification::centred, 1);
 
             g.setColour (c.muted);
             g.setFont (mono (7.0f));
-            g.drawText (vrac::padNotes()[(size_t) pad], (int) padBounds.getX() + 8,
+            g.drawText (sliceforge::padNotes()[(size_t) pad], (int) padBounds.getX() + 8,
                         (int) padBounds.getBottom() - 17, 48, 10, juce::Justification::centredLeft, false);
 
-            const auto code = vrac::modelBank()[(size_t) family][(size_t) model].code;
+            const auto code = sliceforge::modelBank()[(size_t) family][(size_t) model].code;
             g.drawText (juce::String (code) + " " + juce::String ((int) std::round (settings.drumify * 100.0f)),
                         (int) padBounds.getRight() - 58, (int) padBounds.getBottom() - 17,
                         50, 10, juce::Justification::centredRight, false);
@@ -173,5 +173,5 @@ namespace vrac::ui
             drawToggle (soloRects[(size_t) pad], "S", settings.solo);
         }
     }
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

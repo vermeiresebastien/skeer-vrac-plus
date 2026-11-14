@@ -1,6 +1,6 @@
 /* AudioWorklet entry point — bundled by scripts/build-worklet.mjs. */
 
-import { VracEngine } from './engineCore';
+import { SliceForgeEngine } from './engineCore';
 import type { FromEngineMessage, ToEngineMessage } from './protocol';
 
 declare const sampleRate: number;
@@ -21,12 +21,12 @@ declare function registerProcessor(
   },
 ): void;
 
-class VracProcessor extends AudioWorkletProcessor {
-  private readonly engine: VracEngine;
+class SliceForgeProcessor extends AudioWorkletProcessor {
+  private readonly engine: SliceForgeEngine;
 
   constructor() {
     super();
-    this.engine = new VracEngine(sampleRate);
+    this.engine = new SliceForgeEngine(sampleRate);
     this.port.onmessage = (event: MessageEvent<ToEngineMessage>) => {
       const msg = event.data;
       switch (msg.type) {
@@ -67,4 +67,4 @@ class VracProcessor extends AudioWorkletProcessor {
   }
 }
 
-registerProcessor('vrac-engine', VracProcessor);
+registerProcessor('sliceforge-engine', SliceForgeProcessor);

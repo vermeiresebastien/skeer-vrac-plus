@@ -3,15 +3,15 @@
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     class FooterBar final : public juce::Component
     {
     public:
-        explicit FooterBar (VRACPlusAudioProcessor&);
+        explicit FooterBar (SliceForgeAudioProcessor&);
         void paint (juce::Graphics&) override;
     private:
-        VRACPlusAudioProcessor& processorRef;
+        SliceForgeAudioProcessor& processorRef;
     };
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

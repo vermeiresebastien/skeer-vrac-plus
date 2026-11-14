@@ -1,9 +1,9 @@
 #include "PadEditorPanel.h"
 #include "Theme.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
-    PadEditorPanel::PadEditorPanel (VRACPlusAudioProcessor& processor)
+    PadEditorPanel::PadEditorPanel (SliceForgeAudioProcessor& processor)
         : processorRef (processor),
           originalKnob (processor, "ORIGINAL", "p01_original", 44),
           drumifyKnob (processor, "DRUMIFY", "p01_drumify", 80),
@@ -38,7 +38,7 @@ namespace vrac::ui
         for (int i = 0; i < 6; ++i)
         {
             controlKnobs[(size_t) i] = std::make_unique<ParamKnob> (processor, controlLabels[i],
-                                                                    vrac::padParamId (0, controlIds[i]), 44);
+                                                                    sliceforge::padParamId (0, controlIds[i]), 44);
             addAndMakeVisible (*controlKnobs[(size_t) i]);
         }
         const char* sculptIds[] { "warp", "impact", "instability", "super" };
@@ -46,7 +46,7 @@ namespace vrac::ui
         for (int i = 0; i < 4; ++i)
         {
             sculptKnobs[(size_t) i] = std::make_unique<ParamKnob> (processor, sculptLabels[i],
-                                                                   vrac::padParamId (0, sculptIds[i]), 38);
+                                                                   sliceforge::padParamId (0, sculptIds[i]), 38);
             addAndMakeVisible (*sculptKnobs[(size_t) i]);
         }
         const char* eqIds[] { "eqLow", "eqMid", "eqHigh" };
@@ -54,7 +54,7 @@ namespace vrac::ui
         for (int i = 0; i < 3; ++i)
         {
             eqKnobs[(size_t) i] = std::make_unique<ParamKnob> (processor, eqLabels[i],
-                                                               vrac::padParamId (0, eqIds[i]), 34);
+                                                               sliceforge::padParamId (0, eqIds[i]), 34);
             addAndMakeVisible (*eqKnobs[(size_t) i]);
         }
 
@@ -73,13 +73,13 @@ namespace vrac::ui
             busButtons[(size_t) i].onClick = [this, i] { setPadParam ("bus", (float) (i + 1)); updateButtonStates(); };
         }
 
-        for (int family = 0; family < vrac::kNumFamilies; ++family)
+        for (int family = 0; family < sliceforge::kNumFamilies; ++family)
         {
-            for (int model = 0; model < vrac::kModelsPerFamily; ++model)
+            for (int model = 0; model < sliceforge::kModelsPerFamily; ++model)
             {
-                const auto index = family * vrac::kModelsPerFamily + model;
+                const auto index = family * sliceforge::kModelsPerFamily + model;
                 auto& button = modelButtons[(size_t) index];
-                button.setButtonText (vrac::modelBank()[(size_t) family][(size_t) model].name);
+                button.setButtonText (sliceforge::modelBank()[(size_t) family][(size_t) model].name);
                 button.setColour (juce::TextButton::buttonOnColourId, palette().accent);
                 addAndMakeVisible (button);
                 button.onClick = [this, index] { setModel (index); };
@@ -92,7 +92,7 @@ namespace vrac::ui
 
     void PadEditorPanel::setSelectedPad (int pad)
     {
-        const auto next = juce::jlimit (0, vrac::kNumPads - 1, pad);
+        const auto next = juce::jlimit (0, sliceforge::kNumPads - 1, pad);
         const bool changed = next != selectedPad;
         selectedPad = next;
         if (changed)
@@ -104,18 +104,18 @@ namespace vrac::ui
 
     void PadEditorPanel::updateParameterIds()
     {
-        originalKnob.setParameterId (vrac::padParamId (selectedPad, "original"));
-        drumifyKnob.setParameterId (vrac::padParamId (selectedPad, "drumify"));
-        drumifiedKnob.setParameterId (vrac::padParamId (selectedPad, "drumified"));
+        originalKnob.setParameterId (sliceforge::padParamId (selectedPad, "original"));
+        drumifyKnob.setParameterId (sliceforge::padParamId (selectedPad, "drumify"));
+        drumifiedKnob.setParameterId (sliceforge::padParamId (selectedPad, "drumified"));
         const char* ids[] { "pitch", "length", "velocity", "pan", "volume", "tone" };
         for (int i = 0; i < 6; ++i)
-            controlKnobs[(size_t) i]->setParameterId (vrac::padParamId (selectedPad, ids[i]));
+            controlKnobs[(size_t) i]->setParameterId (sliceforge::padParamId (selectedPad, ids[i]));
         const char* sculptIds[] { "warp", "impact", "instability", "super" };
         for (int i = 0; i < 4; ++i)
-            sculptKnobs[(size_t) i]->setParameterId (vrac::padParamId (selectedPad, sculptIds[i]));
+            sculptKnobs[(size_t) i]->setParameterId (sliceforge::padParamId (selectedPad, sculptIds[i]));
         const char* eqIds[] { "eqLow", "eqMid", "eqHigh" };
         for (int i = 0; i < 3; ++i)
-            eqKnobs[(size_t) i]->setParameterId (vrac::padParamId (selectedPad, eqIds[i]));
+            eqKnobs[(size_t) i]->setParameterId (sliceforge::padParamId (selectedPad, eqIds[i]));
         updateButtonStates();
     }
 
@@ -153,7 +153,7 @@ namespace vrac::ui
     void PadEditorPanel::setPadParam (const juce::String& suffix, float value)
     {
         processorRef.pushUndoSnapshot();
-        if (auto* parameter = processorRef.getValueTreeState().getParameter (vrac::padParamId (selectedPad, suffix.toRawUTF8())))
+        if (auto* parameter = processorRef.getValueTreeState().getParameter (sliceforge::padParamId (selectedPad, suffix.toRawUTF8())))
         {
             const auto& range = parameter->getNormalisableRange();
             parameter->setValueNotifyingHost (range.convertTo0to1 (value));
@@ -193,7 +193,7 @@ namespace vrac::ui
     void PadEditorPanel::resetPad()
     {
         processorRef.pushUndoSnapshot();
-        processorRef.getParameterCache().writePad (selectedPad, vrac::makeDefaultPad (selectedPad));
+        processorRef.getParameterCache().writePad (selectedPad, sliceforge::makeDefaultPad (selectedPad));
         refreshFromProcessor();
     }
 
@@ -256,15 +256,15 @@ namespace vrac::ui
         drawSectionLabel (g, { 13, 6 }, "03 / SELECTED PAD");
 
         const auto pad = processorRef.getParameterCache().readPad (selectedPad);
-        const auto family = vrac::familyForModel (pad.modelIndex);
-        const auto model = vrac::localModelForIndex (pad.modelIndex);
+        const auto family = sliceforge::familyForModel (pad.modelIndex);
+        const auto model = sliceforge::localModelForIndex (pad.modelIndex);
 
         g.setColour (c.ink);
         g.setFont (display (25.0f));
-        g.drawText (vrac::familyName (family), 10, 18, 120, 24, juce::Justification::centredLeft, false);
+        g.drawText (sliceforge::familyName (family), 10, 18, 120, 24, juce::Justification::centredLeft, false);
         g.setColour (c.accent);
         g.setFont (mono (8.0f));
-        g.drawText (vrac::padNotes()[(size_t) selectedPad], 12, 40, 60, 10, juce::Justification::centredLeft, false);
+        g.drawText (sliceforge::padNotes()[(size_t) selectedPad], 12, 40, 60, 10, juce::Justification::centredLeft, false);
         juce::Rectangle<int> modelBadge (122, 26, 58, 13);
         g.setColour (c.panel);
         g.fillRoundedRectangle (modelBadge.toFloat(), 2.5f);
@@ -272,7 +272,7 @@ namespace vrac::ui
         g.drawRoundedRectangle (modelBadge.toFloat().reduced (0.5f), 2.5f, 1.0f);
         g.setColour (c.muted);
         g.setFont (font (6.8f, true));
-        g.drawText (vrac::modelBank()[(size_t) family][(size_t) model].name, modelBadge, juce::Justification::centred, false);
+        g.drawText (sliceforge::modelBank()[(size_t) family][(size_t) model].name, modelBadge, juce::Justification::centred, false);
 
         auto wave = juce::Rectangle<int> (8, 44, getWidth() - 16, 62);
         drawInsetBackground (g, wave.toFloat());
@@ -303,9 +303,9 @@ namespace vrac::ui
         auto labels = modelArea.removeFromLeft (42);
         for (int f = 0; f < 4; ++f)
         {
-            g.setColour (vrac::ui::familyColour (f));
+            g.setColour (sliceforge::ui::familyColour (f));
             g.setFont (font (6.5f, true));
-            g.drawText (vrac::familyName (f), labels.getX(), labels.getY() + f * 30 + 8, 42, 10,
+            g.drawText (sliceforge::familyName (f), labels.getX(), labels.getY() + f * 30 + 8, 42, 10,
                         juce::Justification::centredLeft, false);
         }
 
@@ -314,7 +314,7 @@ namespace vrac::ui
         g.fillRect (summary.getX(), summary.getY(), summary.getWidth(), 1);
         g.setColour (c.muted);
         g.setFont (narrow (6.8f, true));
-        const auto blurb = vrac::modelBank()[(size_t) family][(size_t) model].blurb;
+        const auto blurb = sliceforge::modelBank()[(size_t) family][(size_t) model].blurb;
         g.drawText (juce::String (blurb), summary.getX() + 1, summary.getY() + 5, summary.getWidth() - 2, 10,
                     juce::Justification::centredLeft, false);
         g.setColour (c.inkSoft);
@@ -326,5 +326,5 @@ namespace vrac::ui
                     summary.getX() + 1, summary.getY() + 15, summary.getWidth() - 2, 10,
                     juce::Justification::centredLeft, false);
     }
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

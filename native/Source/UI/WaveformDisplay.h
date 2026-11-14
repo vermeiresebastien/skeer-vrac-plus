@@ -4,7 +4,7 @@
 #include "../Engine/SampleData.h"
 #include "../Engine/Slicer.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     class WaveformDisplay final : public juce::Component
     {
@@ -42,5 +42,5 @@ namespace vrac::ui
         juce::Colour accent;
         bool dragging = false;
     };
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

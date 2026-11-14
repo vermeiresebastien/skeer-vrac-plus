@@ -29,8 +29,8 @@ namespace
 int main()
 {
     juce::ScopedJuceInitialiser_GUI gui;
-    vrac::ui::setThemeMode (vrac::ui::ThemeMode::light, false);
-    VRACPlusAudioProcessor processor;
+    sliceforge::ui::setThemeMode (sliceforge::ui::ThemeMode::light, false);
+    SliceForgeAudioProcessor processor;
     processor.prepareToPlay (48000.0, 512);
     auto editor = std::unique_ptr<juce::AudioProcessorEditor> (processor.createEditor());
     editor->setSize (1260, 840);
@@ -86,8 +86,8 @@ int main()
         return 1;
     }
 
-    auto* vracEditor = dynamic_cast<VRACPlusAudioProcessorEditor*> (editor.get());
-    if (vracEditor == nullptr)
+    auto* sliceforgeEditor = dynamic_cast<SliceForgeAudioProcessorEditor*> (editor.get());
+    if (sliceforgeEditor == nullptr)
     {
         std::cout << "FAIL editor has unexpected type\n";
         return 1;
@@ -105,7 +105,7 @@ int main()
 
     // Sequencer page at base size and scaled size. Run a short internal
     // preview so the green playhead and transport state appear in the shots.
-    vracEditor->showSequencerPage (true);
+    sliceforgeEditor->showSequencerPage (true);
     editor->setSize (1260, 840);
     processor.setSequencerInternalPlaying (true);
     {
@@ -129,7 +129,7 @@ int main()
 
     // Step inspector: launch it through the same path as a right-click and
     // snapshot the page with the callout open.
-    if (auto* sequencer = findComponentOfType<vrac::ui::SequencerPanel> (*editor))
+    if (auto* sequencer = findComponentOfType<sliceforge::ui::SequencerPanel> (*editor))
     {
         sequencer->showStepInspectorForTesting (0, 0);
         juce::MessageManager::getInstance()->runDispatchLoopUntil (120);
@@ -155,10 +155,10 @@ int main()
     if (! png.writeImageToStream (sequencerLarge, sequencerLargeStream))
         return 1;
 
-    vracEditor->showVaultPage (true);
+    sliceforgeEditor->showVaultPage (true);
     editor->setSize (1260, 840);
     juce::MessageManager::getInstance()->runDispatchLoopUntil (180);
-    if (auto* vault = findComponentOfType<vrac::ui::VaultPanel> (*editor))
+    if (auto* vault = findComponentOfType<sliceforge::ui::VaultPanel> (*editor))
     {
         vault->searchForTesting ("KICK");
         vault->selectFirstAnalysedRowForTesting();
@@ -172,8 +172,8 @@ int main()
         return 1;
 
     // Dark theme snapshots.
-    vracEditor->setDarkThemeForTesting (true);
-    vracEditor->showSequencerPage (false);
+    sliceforgeEditor->setDarkThemeForTesting (true);
+    sliceforgeEditor->showSequencerPage (false);
     editor->setSize (1260, 840);
     juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
     auto darkKit = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
@@ -183,7 +183,7 @@ int main()
     if (! png.writeImageToStream (darkKit, darkKitStream))
         return 1;
 
-    vracEditor->showSequencerPage (true);
+    sliceforgeEditor->showSequencerPage (true);
     juce::MessageManager::getInstance()->runDispatchLoopUntil (100);
     auto darkSequencer = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
     auto darkSequencerFile = shots.getChildFile ("sequencer-dark.png");
@@ -192,7 +192,7 @@ int main()
     if (! png.writeImageToStream (darkSequencer, darkSequencerStream))
         return 1;
 
-    if (auto* sequencer = findComponentOfType<vrac::ui::SequencerPanel> (*editor))
+    if (auto* sequencer = findComponentOfType<sliceforge::ui::SequencerPanel> (*editor))
     {
         sequencer->showStepInspectorForTesting (0, 0);
         juce::MessageManager::getInstance()->runDispatchLoopUntil (120);
@@ -209,9 +209,9 @@ int main()
         }
     }
 
-    vracEditor->showVaultPage (true);
+    sliceforgeEditor->showVaultPage (true);
     juce::MessageManager::getInstance()->runDispatchLoopUntil (120);
-    if (auto* vault = findComponentOfType<vrac::ui::VaultPanel> (*editor))
+    if (auto* vault = findComponentOfType<sliceforge::ui::VaultPanel> (*editor))
     {
         vault->searchForTesting ("KICK");
         vault->selectFirstAnalysedRowForTesting();

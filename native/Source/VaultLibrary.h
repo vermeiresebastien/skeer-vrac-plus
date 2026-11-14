@@ -5,7 +5,7 @@
 #include <cstdint>
 #include <vector>
 
-namespace vrac
+namespace sliceforge
 {
     struct VaultTrack
     {
@@ -28,7 +28,7 @@ namespace vrac
         bool analyzed = false;
 
         // Filled only by queryTrackDetails(); sourced from the vault's indexed
-        // waveform peaks so VRAC can preview a sample without decoding it.
+        // waveform peaks so SliceForge can preview a sample without decoding it.
         std::vector<float> waveformMin;
         std::vector<float> waveformMax;
     };
@@ -87,4 +87,4 @@ namespace vrac
     private:
         VaultStatus status;
     };
-} // namespace vrac
+} // namespace sliceforge

@@ -687,7 +687,7 @@
       this.warpHighCoef = 1 - Math.exp(-TWO_PI * 4200 / sr);
     }
   };
-  var VracEngine = class {
+  var SliceForgeEngine = class {
     sampleRate;
     pads = createDefaultPads();
     global;
@@ -711,7 +711,9 @@
         length: 1,
         tone: 0,
         filter: 0,
-        width: 0.65
+        width: 0.65,
+        clip: 0,
+        outGain: 0
       };
       for (let i = 0; i < MAX_VOICES; i++) {
         const voice = new Voice();
@@ -870,11 +872,11 @@
   };
 
   // src/audio/worklet.ts
-  var VracProcessor = class extends AudioWorkletProcessor {
+  var SliceForgeProcessor = class extends AudioWorkletProcessor {
     engine;
     constructor() {
       super();
-      this.engine = new VracEngine(sampleRate);
+      this.engine = new SliceForgeEngine(sampleRate);
       this.port.onmessage = (event) => {
         const msg = event.data;
         switch (msg.type) {
@@ -909,5 +911,5 @@
       return true;
     }
   };
-  registerProcessor("vrac-engine", VracProcessor);
+  registerProcessor("sliceforge-engine", SliceForgeProcessor);
 })();

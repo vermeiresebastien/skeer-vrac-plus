@@ -5,7 +5,7 @@
 #include <array>
 #include <vector>
 
-namespace vrac
+namespace sliceforge
 {
     struct Slice
     {
@@ -22,4 +22,4 @@ namespace vrac
         std::array<double, kNumPads> padStarts {};
         std::array<int, kNumPads> padSliceIndices {};
     };
-} // namespace vrac
+} // namespace sliceforge

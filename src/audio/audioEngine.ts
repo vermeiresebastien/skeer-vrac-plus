@@ -13,7 +13,7 @@ export type AudioStatus = 'idle' | 'starting' | 'ready' | 'suspended' | 'error';
 type StatusListener = (status: AudioStatus, detail?: string) => void;
 type MeterListener = (buses: number[]) => void;
 
-const WORKLET_URL = `${import.meta.env.BASE_URL}vrac-worklet.js`;
+const WORKLET_URL = `${import.meta.env.BASE_URL}sliceforge-worklet.js`;
 
 export class AudioEngine {
   private ctx: AudioContext | null = null;
@@ -104,7 +104,7 @@ export class AudioEngine {
       this.chain.connect(this.analyser);
       this.analyser.connect(ctx.destination);
 
-      const node = new AudioWorkletNode(ctx, 'vrac-engine', {
+      const node = new AudioWorkletNode(ctx, 'sliceforge-engine', {
         numberOfInputs: 0,
         numberOfOutputs: BUS_COUNT,
         outputChannelCount: new Array(BUS_COUNT).fill(2) as number[],
@@ -143,7 +143,7 @@ export class AudioEngine {
         if (this.ctx.state === 'suspended' && this.status === 'ready') this.setStatus('suspended');
       };
     } catch (error) {
-      console.error('[VRAC+] audio failed to start', error);
+      console.error('[SliceForge] audio failed to start', error);
       this.setStatus('error', error instanceof Error ? error.message : String(error));
     }
   }
@@ -159,7 +159,7 @@ export class AudioEngine {
     try {
       this.node.port.postMessage(message);
     } catch (error) {
-      console.error('[VRAC+] could not send sample to worklet', error);
+      console.error('[SliceForge] could not send sample to worklet', error);
     }
   }
 

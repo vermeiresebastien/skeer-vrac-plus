@@ -5,12 +5,12 @@
 #include "WaveformDisplay.h"
 #include "Controls.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     class PadEditorPanel final : public juce::Component
     {
     public:
-        explicit PadEditorPanel (VRACPlusAudioProcessor&);
+        explicit PadEditorPanel (SliceForgeAudioProcessor&);
         void paint (juce::Graphics&) override;
         void resized() override;
 
@@ -29,7 +29,7 @@ namespace vrac::ui
         void pastePad();
         void resetPad();
 
-        VRACPlusAudioProcessor& processorRef;
+        SliceForgeAudioProcessor& processorRef;
         int selectedPad = 0;
         WaveformDisplay waveform;
         ParamKnob originalKnob;
@@ -48,5 +48,5 @@ namespace vrac::ui
         PadSettings copiedPad;
         bool hasCopiedPad = false;
     };
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

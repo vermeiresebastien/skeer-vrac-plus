@@ -3,7 +3,7 @@
 
 #include <BinaryData.h>
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     namespace
     {
@@ -14,29 +14,29 @@ namespace vrac::ui
 
         juce::Typeface::Ptr plexRegular()
         {
-            static const auto face = typeface (VRACAssets::IBMPlexSansRegular_ttf,
-                                               VRACAssets::IBMPlexSansRegular_ttfSize);
+            static const auto face = typeface (SliceForgeAssets::IBMPlexSansRegular_ttf,
+                                               SliceForgeAssets::IBMPlexSansRegular_ttfSize);
             return face;
         }
 
         juce::Typeface::Ptr plexBold()
         {
-            static const auto face = typeface (VRACAssets::IBMPlexSansBold_ttf,
-                                               VRACAssets::IBMPlexSansBold_ttfSize);
+            static const auto face = typeface (SliceForgeAssets::IBMPlexSansBold_ttf,
+                                               SliceForgeAssets::IBMPlexSansBold_ttfSize);
             return face;
         }
 
         juce::Typeface::Ptr plexMonoRegular()
         {
-            static const auto face = typeface (VRACAssets::IBMPlexMonoRegular_ttf,
-                                               VRACAssets::IBMPlexMonoRegular_ttfSize);
+            static const auto face = typeface (SliceForgeAssets::IBMPlexMonoRegular_ttf,
+                                               SliceForgeAssets::IBMPlexMonoRegular_ttfSize);
             return face;
         }
 
         juce::Typeface::Ptr barlowBold()
         {
-            static const auto face = typeface (VRACAssets::BarlowCondensedBold_ttf,
-                                               VRACAssets::BarlowCondensedBold_ttfSize);
+            static const auto face = typeface (SliceForgeAssets::BarlowCondensedBold_ttf,
+                                               SliceForgeAssets::BarlowCondensedBold_ttfSize);
             return face;
         }
 
@@ -72,7 +72,7 @@ namespace vrac::ui
         juce::File themeSettingsFile()
         {
             return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                .getChildFile ("VRACPlus")
+                .getChildFile ("SliceForge")
                 .getChildFile ("theme.txt");
         }
 
@@ -151,8 +151,8 @@ namespace vrac::ui
         return makeFont (plexMonoRegular(), height, juce::Font::plain);
     }
 
-    juce::Colour familyColour (int family) { return vrac::familyColour (family); }
-    juce::Colour familyColourDim (int family) { return vrac::familyColourDim (family); }
+    juce::Colour familyColour (int family) { return sliceforge::familyColour (family); }
+    juce::Colour familyColourDim (int family) { return sliceforge::familyColourDim (family); }
 
     void drawPanelBackground (juce::Graphics& g, juce::Rectangle<float> bounds, bool raised)
     {
@@ -224,6 +224,6 @@ namespace vrac::ui
     {
         return (value > 0.0f ? "+" : "") + juce::String (value, 0) + " ct";
     }
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 
 

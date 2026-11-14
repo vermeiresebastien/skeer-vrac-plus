@@ -20,10 +20,8 @@ export function Footer({ audioStatus, sampleRate }: { audioStatus: AudioStatus; 
         <span className="footer-chip">{audioStatus === 'ready' ? `${(sampleRate / 1000).toFixed(1)} kHz` : '48 kHz'} · 24-BIT EXPORT</span>
         <span className="footer-chip">LOCAL · NO UPLOAD</span>
       </div>
-      <div className="footer-brand" aria-label="VRAC+ web edition">
-        <span className="footer-wordmark">
-          VRAC<span>+</span>
-        </span>
+      <div className="footer-brand" aria-label="SliceForge web edition">
+        <span className="footer-wordmark">SliceForge</span>
         <span className="footer-sub">WEB EDITION · 1.0</span>
       </div>
     </footer>

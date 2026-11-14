@@ -1,7 +1,7 @@
 #include "SampleData.h"
 #include "BinaryData.h"
 
-namespace vrac
+namespace sliceforge
 {
     const std::vector<SourceInfo>& factorySources()
     {
@@ -92,12 +92,12 @@ namespace vrac
     SamplePtr loadFactorySource (const juce::String& id)
     {
         static const std::map<juce::String, std::pair<const char*, int>> assets {
-            { "foley", { VRACAssets::foley_wav, VRACAssets::foley_wavSize } },
-            { "kitchen", { VRACAssets::kitchen_wav, VRACAssets::kitchen_wavSize } },
-            { "body", { VRACAssets::body_wav, VRACAssets::body_wavSize } },
-            { "scrap", { VRACAssets::scrap_wav, VRACAssets::scrap_wavSize } },
-            { "circuit", { VRACAssets::circuit_wav, VRACAssets::circuit_wavSize } },
-            { "vinyl", { VRACAssets::vinyl_wav, VRACAssets::vinyl_wavSize } }
+            { "foley", { SliceForgeAssets::foley_wav, SliceForgeAssets::foley_wavSize } },
+            { "kitchen", { SliceForgeAssets::kitchen_wav, SliceForgeAssets::kitchen_wavSize } },
+            { "body", { SliceForgeAssets::body_wav, SliceForgeAssets::body_wavSize } },
+            { "scrap", { SliceForgeAssets::scrap_wav, SliceForgeAssets::scrap_wavSize } },
+            { "circuit", { SliceForgeAssets::circuit_wav, SliceForgeAssets::circuit_wavSize } },
+            { "vinyl", { SliceForgeAssets::vinyl_wav, SliceForgeAssets::vinyl_wavSize } }
         };
         const auto it = assets.find (id);
         if (it == assets.end())
@@ -174,4 +174,4 @@ namespace vrac
         stream.release(); // writer owns it now
         return writer->writeFromAudioSampleBuffer (buffer, 0, buffer.getNumSamples());
     }
-} // namespace vrac
+} // namespace sliceforge

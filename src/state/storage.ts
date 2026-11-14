@@ -33,7 +33,7 @@ export function writeSavedKits(kits: SavedKit[]): void {
   try {
     localStorage.setItem(PRESET_KEY, JSON.stringify(kits));
   } catch (error) {
-    console.warn('[VRAC+] could not save presets', error);
+    console.warn('[SliceForge] could not save presets', error);
   }
 }
 

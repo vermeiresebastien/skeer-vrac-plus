@@ -2,7 +2,7 @@
 #include "Theme.h"
 #include "Controls.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     namespace
     {
@@ -15,12 +15,21 @@ namespace vrac::ui
             slider.setColour (juce::Slider::textBoxOutlineColourId, palette().line);
             slider.setPopupMenuEnabled (false);
         }
+
+        bool patternHasNotes (const sliceforge::SeqPattern& pattern)
+        {
+            for (const auto& row : pattern.rows)
+                for (const auto& step : row)
+                    if (step.on)
+                        return true;
+            return false;
+        }
         class StepInspector final : public juce::Component
         {
         public:
-            StepInspector (int pad, int stepNumber, const vrac::SeqStep& initial,
-                           const vrac::PadSettings& baseSettings,
-                           std::function<void (const vrac::SeqStep&)> changedCallback)
+            StepInspector (int pad, int stepNumber, const sliceforge::SeqStep& initial,
+                           const sliceforge::PadSettings& baseSettings,
+                           std::function<void (const sliceforge::SeqStep&)> changedCallback)
                 : step (initial), base (baseSettings), onChanged (std::move (changedCallback)),
                   padIndex (pad), stepIndex (stepNumber)
             {
@@ -85,7 +94,7 @@ namespace vrac::ui
                 drawPanelBackground (g, getLocalBounds().toFloat(), true);
                 g.setColour (c.ink);
                 g.setFont (font (11.0f, true));
-                g.drawText ("STEP " + juce::String (stepIndex + 1) + "  /  " + vrac::padNotes()[(size_t) padIndex],
+                g.drawText ("STEP " + juce::String (stepIndex + 1) + "  /  " + sliceforge::padNotes()[(size_t) padIndex],
                             12, 8, getWidth() - 24, 16, juce::Justification::centredLeft, false);
 
                 g.setColour (c.muted);
@@ -133,9 +142,9 @@ namespace vrac::ui
                     onChanged (step);
             }
 
-            vrac::SeqStep step;
-            vrac::PadSettings base;
-            std::function<void (const vrac::SeqStep&)> onChanged;
+            sliceforge::SeqStep step;
+            sliceforge::PadSettings base;
+            std::function<void (const sliceforge::SeqStep&)> onChanged;
             int padIndex = 0;
             int stepIndex = 0;
             juce::TextButton lockButton { "PARAMETER LOCK" };
@@ -144,40 +153,40 @@ namespace vrac::ui
         };
     } // namespace
 
-    SequencerPanel::SequencerPanel (VRACPlusAudioProcessor& processor)
+    SequencerPanel::SequencerPanel (SliceForgeAudioProcessor& processor)
         : processorRef (processor), grid (processor)
     {
         addAndMakeVisible (grid);
         grid.setEditMode (editMode);
         grid.onGestureStart = [this] { pushUndo(); };
-        grid.onStepChanged = [this] (int pad, int step, const vrac::SeqStep& newStep)
+        grid.onStepChanged = [this] (int pad, int step, const sliceforge::SeqStep& newStep)
         {
             if (data == nullptr)
                 return;
-            auto copy = vrac::cloneSequencerData (*data);
-            const auto pattern = juce::jlimit (0, vrac::kSeqPatterns - 1, copy->activePattern);
+            auto copy = sliceforge::cloneSequencerData (*data);
+            const auto pattern = juce::jlimit (0, sliceforge::kSeqPatterns - 1, copy->activePattern);
             copy->patterns[(size_t) pattern].rows[(size_t) pad][(size_t) step] = newStep;
             commit (copy, false);
         };
         grid.onLaneMuteClicked = [this] (int pad)
         {
-            edit ([pad] (vrac::SequencerData& d)
+            edit ([pad] (sliceforge::SequencerData& d)
                   {
-                      auto& p = d.patterns[(size_t) juce::jlimit (0, vrac::kSeqPatterns - 1, d.activePattern)];
+                      auto& p = d.patterns[(size_t) juce::jlimit (0, sliceforge::kSeqPatterns - 1, d.activePattern)];
                       p.laneMute[(size_t) pad] = ! p.laneMute[(size_t) pad];
                   }, true);
         };
         grid.onLaneSoloClicked = [this] (int pad)
         {
-            edit ([pad] (vrac::SequencerData& d)
+            edit ([pad] (sliceforge::SequencerData& d)
                   {
-                      auto& p = d.patterns[(size_t) juce::jlimit (0, vrac::kSeqPatterns - 1, d.activePattern)];
+                      auto& p = d.patterns[(size_t) juce::jlimit (0, sliceforge::kSeqPatterns - 1, d.activePattern)];
                       p.laneSolo[(size_t) pad] = ! p.laneSolo[(size_t) pad];
                   }, true);
         };
         grid.onLaneSelected = [this] (int pad)
         {
-            selectedLane = juce::jlimit (0, vrac::kNumPads - 1, pad);
+            selectedLane = juce::jlimit (0, sliceforge::kNumPads - 1, pad);
             grid.setSelectedLane (selectedLane);
             updateControls();
             repaint();
@@ -187,13 +196,17 @@ namespace vrac::ui
             openStepInspector (pad, step, screenPosition);
         };
 
-        for (int i = 0; i < vrac::kSeqPatterns; ++i)
+        for (int i = 0; i < sliceforge::kSeqPatterns; ++i)
         {
             auto& button = patternButtons[(size_t) i];
             button.setButtonText (juce::String::charToString ((juce::juce_wchar) ('A' + i)));
             styleChip (button, i == 0);
             addAndMakeVisible (button);
             button.onClick = [this, i] { setActivePattern (i); };
+            button.setTooltip ("Pattern " + juce::String::charToString ((juce::juce_wchar) ('A' + i))
+                                   + "  -  click to play it, right-click to copy it to another pattern");
+            chipPopups[(size_t) i] = std::make_unique<ChipPopupMenu> (i, this);
+            button.addMouseListener (chipPopups[(size_t) i].get(), false);
         }
 
         styleChip (playButton, false);
@@ -207,12 +220,12 @@ namespace vrac::ui
         {
             if (updatingControls)
                 return;
-            edit ([this] (vrac::SequencerData& d) { d.hostSync = hostButton.getToggleState(); }, true);
+            edit ([this] (sliceforge::SequencerData& d) { d.hostSync = hostButton.getToggleState(); }, true);
         };
 
         bpmSlider.setRange (40.0, 300.0, 1.0);
         swingSlider.setRange (0.0, 66.0, 1.0);
-        lengthSlider.setRange (1.0, (double) vrac::kSeqSteps, 1.0);
+        lengthSlider.setRange (1.0, (double) sliceforge::kSeqSteps, 1.0);
         styleSeqSlider (bpmSlider);
         styleSeqSlider (swingSlider);
         styleSeqSlider (lengthSlider);
@@ -229,19 +242,19 @@ namespace vrac::ui
         {
             if (updatingControls)
                 return;
-            edit ([this] (vrac::SequencerData& d) { d.bpm = bpmSlider.getValue(); }, false);
+            edit ([this] (sliceforge::SequencerData& d) { d.bpm = bpmSlider.getValue(); }, false);
         };
         swingSlider.onValueChange = [this]
         {
             if (updatingControls)
                 return;
-            edit ([this] (vrac::SequencerData& d) { d.swing = (float) (swingSlider.getValue() / 100.0); }, false);
+            edit ([this] (sliceforge::SequencerData& d) { d.swing = (float) (swingSlider.getValue() / 100.0); }, false);
         };
         lengthSlider.onValueChange = [this]
         {
             if (updatingControls)
                 return;
-            edit ([this] (vrac::SequencerData& d) { d.length = juce::jlimit (1, vrac::kSeqSteps, (int) lengthSlider.getValue()); }, false);
+            edit ([this] (sliceforge::SequencerData& d) { d.length = juce::jlimit (1, sliceforge::kSeqSteps, (int) lengthSlider.getValue()); }, false);
         };
 
         divisionBox.addItem ("1/8", 2);
@@ -257,7 +270,7 @@ namespace vrac::ui
             const auto division = divisionBox.getSelectedId();
             if (division <= 0)
                 return;
-            edit ([division] (vrac::SequencerData& d) { d.division = division; }, true);
+            edit ([division] (sliceforge::SequencerData& d) { d.division = division; }, true);
         };
 
         const char* modeNames[] { "DRAW", "VELOCITY", "PROB", "RATCHET", "NUDGE", "FLAM" };
@@ -270,7 +283,7 @@ namespace vrac::ui
             button.onClick = [this, i] { setEditMode ((SequencerGrid::EditMode) i); };
         }
 
-        for (auto* button : { &randomButton, &clearButton, &copyButton, &pasteButton,
+        for (auto* button : { &randomButton, &clearButton, &copyButton, &pasteButton, &copyToButton,
                               &laneRandomButton, &euclidButton, &songButton,
                               &patternPresetButton, &midiButton })
         {
@@ -281,6 +294,15 @@ namespace vrac::ui
         clearButton.onClick = [this] { clearCurrentPattern(); };
         copyButton.onClick = [this] { copyCurrentPattern(); };
         pasteButton.onClick = [this] { pasteCurrentPattern(); };
+        copyToButton.onClick = [this]
+        {
+            showPatternCopyMenu (data != nullptr
+                                     ? juce::jlimit (0, sliceforge::kSeqPatterns - 1, data->activePattern)
+                                     : 0,
+                                 &copyToButton);
+        };
+        copyToButton.setTooltip ("Copy the pattern you are editing to another of the four slots. "
+                                 "The destination is replaced; one undo step brings back what was there.");
         laneRandomButton.onClick = [this] { randomizeLane (selectedLane, 0.5f); };
         euclidButton.onClick = [this] { euclidLane (5); };
         songButton.setClickingTogglesState (true);
@@ -292,7 +314,7 @@ namespace vrac::ui
         patternPresetButton.onClick = [this] { showPatternPresetMenu(); };
         midiButton.onClick = [this] { showMidiMenu(); };
 
-        for (int i = 0; i < vrac::kSeqChainLength; ++i)
+        for (int i = 0; i < sliceforge::kSeqChainLength; ++i)
         {
             auto& button = chainButtons[(size_t) i];
             styleChip (button, false);
@@ -301,7 +323,7 @@ namespace vrac::ui
         }
 
         laneLengthBox.addItem ("GLOBAL", 1);
-        for (int length = 1; length <= vrac::kSeqSteps; ++length)
+        for (int length = 1; length <= sliceforge::kSeqSteps; ++length)
             laneLengthBox.addItem (juce::String (length), length + 1);
         addAndMakeVisible (laneLengthBox);
         laneLengthBox.onChange = [this]
@@ -311,7 +333,7 @@ namespace vrac::ui
             const auto id = laneLengthBox.getSelectedId();
             if (id <= 0)
                 return;
-            setLaneLength (id == 1 ? 0 : juce::jlimit (1, vrac::kSeqSteps, id - 1));
+            setLaneLength (id == 1 ? 0 : juce::jlimit (1, sliceforge::kSeqSteps, id - 1));
         };
 
         refreshFromProcessor();
@@ -336,7 +358,7 @@ namespace vrac::ui
         data = processorRef.getSequencerData();
         if (data == nullptr)
             return;
-        selectedLane = juce::jlimit (0, vrac::kNumPads - 1, selectedLane);
+        selectedLane = juce::jlimit (0, sliceforge::kNumPads - 1, selectedLane);
         grid.setData (data);
         grid.setSelectedLane (selectedLane);
         updateControls();
@@ -399,7 +421,7 @@ namespace vrac::ui
         processorRef.pushUndoSnapshot();
     }
 
-    void SequencerPanel::commit (std::shared_ptr<vrac::SequencerData> newData, bool refreshControls)
+    void SequencerPanel::commit (std::shared_ptr<sliceforge::SequencerData> newData, bool refreshControls)
     {
         data = std::move (newData);
         processorRef.setSequencerData (data);
@@ -409,13 +431,13 @@ namespace vrac::ui
         repaint();
     }
 
-    void SequencerPanel::edit (const std::function<void (vrac::SequencerData&)>& mutation, bool undo)
+    void SequencerPanel::edit (const std::function<void (sliceforge::SequencerData&)>& mutation, bool undo)
     {
         if (data == nullptr)
             return;
         if (undo)
             pushUndo();
-        auto copy = vrac::cloneSequencerData (*data);
+        auto copy = sliceforge::cloneSequencerData (*data);
         mutation (*copy);
         commit (std::move (copy), true);
     }
@@ -426,14 +448,14 @@ namespace vrac::ui
             return;
         updatingControls = true;
 
-        const int activePattern = juce::jlimit (0, vrac::kSeqPatterns - 1, data->activePattern);
-        for (int i = 0; i < vrac::kSeqPatterns; ++i)
+        const int activePattern = juce::jlimit (0, sliceforge::kSeqPatterns - 1, data->activePattern);
+        for (int i = 0; i < sliceforge::kSeqPatterns; ++i)
             styleChip (patternButtons[(size_t) i], i == activePattern);
 
         bpmSlider.setValue (juce::jlimit (40.0, 300.0, data->bpm), juce::dontSendNotification);
         swingSlider.setValue (juce::jlimit (0.0, 66.0, (double) data->swing * 100.0),
                               juce::dontSendNotification);
-        lengthSlider.setValue (juce::jlimit (1, vrac::kSeqSteps, data->length), juce::dontSendNotification);
+        lengthSlider.setValue (juce::jlimit (1, sliceforge::kSeqSteps, data->length), juce::dontSendNotification);
         const auto division = data->division == 2 || data->division == 3 || data->division == 4
                                   || data->division == 6 || data->division == 8
                               ? data->division : 4;
@@ -446,16 +468,16 @@ namespace vrac::ui
         for (int i = 0; i < 6; ++i)
             styleChip (modeButtons[(size_t) i], (int) editMode == i);
 
-        for (int i = 0; i < vrac::kSeqChainLength; ++i)
+        for (int i = 0; i < sliceforge::kSeqChainLength; ++i)
         {
-            const auto value = juce::jlimit (0, vrac::kSeqPatterns - 1, data->chainPatterns[(size_t) i]);
+            const auto value = juce::jlimit (0, sliceforge::kSeqPatterns - 1, data->chainPatterns[(size_t) i]);
             chainButtons[(size_t) i].setButtonText (
                 juce::String::charToString ((juce::juce_wchar) ('A' + value)));
             styleChip (chainButtons[(size_t) i], false);
         }
 
         const auto& pattern = data->patterns[(size_t) activePattern];
-        const auto laneLength = juce::jlimit (0, vrac::kSeqSteps,
+        const auto laneLength = juce::jlimit (0, sliceforge::kSeqSteps,
                                               pattern.laneLength[(size_t) selectedLane]);
         laneLengthBox.setSelectedId (laneLength == 0 ? 1 : laneLength + 1,
                                      juce::dontSendNotification);
@@ -473,10 +495,10 @@ namespace vrac::ui
 
     void SequencerPanel::setActivePattern (int pattern)
     {
-        pattern = juce::jlimit (0, vrac::kSeqPatterns - 1, pattern);
+        pattern = juce::jlimit (0, sliceforge::kSeqPatterns - 1, pattern);
         if (data == nullptr || pattern == data->activePattern)
             return;
-        edit ([pattern] (vrac::SequencerData& d) { d.activePattern = pattern; }, true);
+        edit ([pattern] (sliceforge::SequencerData& d) { d.activePattern = pattern; }, true);
     }
 
     void SequencerPanel::setEditMode (SequencerGrid::EditMode mode)
@@ -534,43 +556,43 @@ namespace vrac::ui
         }
 
         pushUndo();
-        auto copy = vrac::cloneSequencerData (*data);
-        auto& pattern = copy->patterns[(size_t) juce::jlimit (0, vrac::kSeqPatterns - 1, copy->activePattern)];
+        auto copy = sliceforge::cloneSequencerData (*data);
+        auto& pattern = copy->patterns[(size_t) juce::jlimit (0, sliceforge::kSeqPatterns - 1, copy->activePattern)];
         juce::Random random;
         random.setSeed ((juce::int64) juce::Time::currentTimeMillis());
 
-        std::array<int, vrac::kNumPads> families {};
-        for (int pad = 0; pad < vrac::kNumPads; ++pad)
-            families[(size_t) pad] = vrac::familyForModel (processorRef.getParameterCache().readPad (pad).modelIndex);
+        std::array<int, sliceforge::kNumPads> families {};
+        for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
+            families[(size_t) pad] = sliceforge::familyForModel (processorRef.getParameterCache().readPad (pad).modelIndex);
 
         if (choice >= 1 && choice <= 3)
         {
             const float density = choice == 1 ? 0.32f : (choice == 2 ? 0.5f : 0.72f);
-            vrac::randomizePattern (pattern, copy->length, families, density, random);
+            sliceforge::randomizePattern (pattern, copy->length, families, density, random);
         }
         else if (choice == 4)
         {
-            vrac::mutatePattern (pattern, copy->length, 0.055f, random);
+            sliceforge::mutatePattern (pattern, copy->length, 0.055f, random);
         }
         else if (choice == 5)
         {
-            vrac::humanizePattern (pattern, copy->length, random);
+            sliceforge::humanizePattern (pattern, copy->length, random);
         }
         else if (choice == 6)
         {
-            vrac::accentDownbeats (pattern, copy->length);
+            sliceforge::accentDownbeats (pattern, copy->length);
         }
         else if (choice == 7)
         {
-            vrac::rotatePattern (pattern, copy->length, -1);
+            sliceforge::rotatePattern (pattern, copy->length, -1);
         }
         else if (choice == 8)
         {
-            vrac::rotatePattern (pattern, copy->length, 1);
+            sliceforge::rotatePattern (pattern, copy->length, 1);
         }
         else if (choice == 13)
         {
-            vrac::clearPattern (pattern);
+            sliceforge::clearPattern (pattern);
         }
         else
         {
@@ -584,17 +606,17 @@ namespace vrac::ui
     {
         if (data == nullptr)
             return;
-        pad = juce::jlimit (0, vrac::kNumPads - 1, pad);
+        pad = juce::jlimit (0, sliceforge::kNumPads - 1, pad);
         pushUndo();
-        auto copy = vrac::cloneSequencerData (*data);
-        auto& pattern = copy->patterns[(size_t) juce::jlimit (0, vrac::kSeqPatterns - 1, copy->activePattern)];
-        std::array<int, vrac::kNumPads> families {};
-        for (int i = 0; i < vrac::kNumPads; ++i)
-            families[(size_t) i] = vrac::familyForModel (processorRef.getParameterCache().readPad (i).modelIndex);
+        auto copy = sliceforge::cloneSequencerData (*data);
+        auto& pattern = copy->patterns[(size_t) juce::jlimit (0, sliceforge::kSeqPatterns - 1, copy->activePattern)];
+        std::array<int, sliceforge::kNumPads> families {};
+        for (int i = 0; i < sliceforge::kNumPads; ++i)
+            families[(size_t) i] = sliceforge::familyForModel (processorRef.getParameterCache().readPad (i).modelIndex);
         juce::Random random;
         random.setSeed ((juce::int64) juce::Time::currentTimeMillis());
-        vrac::SeqPattern temp;
-        vrac::randomizePattern (temp, copy->length, families, density, random);
+        sliceforge::SeqPattern temp;
+        sliceforge::randomizePattern (temp, copy->length, families, density, random);
         pattern.rows[(size_t) pad] = temp.rows[(size_t) pad];
         pattern.laneMute[(size_t) pad] = false;
         pattern.laneSolo[(size_t) pad] = false;
@@ -607,9 +629,9 @@ namespace vrac::ui
         if (data == nullptr)
             return;
         pushUndo();
-        auto copy = vrac::cloneSequencerData (*data);
-        auto& pattern = copy->patterns[(size_t) juce::jlimit (0, vrac::kSeqPatterns - 1, copy->activePattern)];
-        vrac::euclideanLane (pattern, selectedLane, copy->length, pulses, 0, 0.82f);
+        auto copy = sliceforge::cloneSequencerData (*data);
+        auto& pattern = copy->patterns[(size_t) juce::jlimit (0, sliceforge::kSeqPatterns - 1, copy->activePattern)];
+        sliceforge::euclideanLane (pattern, selectedLane, copy->length, pulses, 0, 0.82f);
         commit (std::move (copy), true);
     }
 
@@ -617,7 +639,7 @@ namespace vrac::ui
     {
         if (data == nullptr)
             return;
-        patternClipboard = data->patterns[(size_t) juce::jlimit (0, vrac::kSeqPatterns - 1, data->activePattern)];
+        patternClipboard = data->patterns[(size_t) juce::jlimit (0, sliceforge::kSeqPatterns - 1, data->activePattern)];
         pasteButton.setEnabled (true);
         repaint();
     }
@@ -627,17 +649,70 @@ namespace vrac::ui
         if (data == nullptr || ! patternClipboard.has_value())
             return;
         pushUndo();
-        auto copy = vrac::cloneSequencerData (*data);
-        copy->patterns[(size_t) juce::jlimit (0, vrac::kSeqPatterns - 1, copy->activePattern)] = *patternClipboard;
+        auto copy = sliceforge::cloneSequencerData (*data);
+        copy->patterns[(size_t) juce::jlimit (0, sliceforge::kSeqPatterns - 1, copy->activePattern)] = *patternClipboard;
         commit (std::move (copy), true);
+    }
+
+    void SequencerPanel::showPatternCopyMenu (int sourcePattern, juce::Component* targetComponent)
+    {
+        if (data == nullptr)
+            return;
+
+        sourcePattern = juce::jlimit (0, sliceforge::kSeqPatterns - 1, sourcePattern);
+        const auto letter = [] (int index)
+                            {
+                                return juce::String::charToString ((juce::juce_wchar) ('A' + index));
+                            };
+
+        const auto& source = data->patterns[(size_t) sourcePattern];
+        const juce::String sourceEmpty = patternHasNotes (source)
+                                             ? juce::String()
+                                             : juce::String ("  (empty)");
+
+        juce::PopupMenu menu;
+        menu.addItem (1, "Copy pattern " + letter (sourcePattern) + sourceEmpty, false, false);
+        menu.addSeparator();
+
+        for (int target = 0; target < sliceforge::kSeqPatterns; ++target)
+        {
+            if (target == sourcePattern)
+                continue;
+
+            const auto replaces = patternHasNotes (data->patterns[(size_t) target])
+                                      ? "  (replaces " + letter (target) + ")"
+                                      : juce::String();
+            // +1 keeps every id above zero, which showMenuAsync uses for "nothing chosen".
+            menu.addItem (sourcePattern * sliceforge::kSeqPatterns + target + 1,
+                          "Copy " + letter (sourcePattern) + "  -  to " + letter (target) + replaces);
+        }
+
+        auto safe = juce::Component::SafePointer<SequencerPanel> (this);
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (targetComponent),
+                            [safe] (int result)
+                            {
+                                if (safe == nullptr || result <= 0)
+                                    return;
+                                const auto chosen = result - 1;
+                                safe->applyPatternCopy (chosen / sliceforge::kSeqPatterns,
+                                                        chosen % sliceforge::kSeqPatterns);
+                            });
+    }
+
+    void SequencerPanel::applyPatternCopy (int source, int target)
+    {
+        edit ([source, target] (sliceforge::SequencerData& d)
+              {
+                  sliceforge::copyPatternTo (d, source, target);
+              }, true);
     }
 
     void SequencerPanel::clearCurrentPattern()
     {
-        edit ([] (vrac::SequencerData& d)
+        edit ([] (sliceforge::SequencerData& d)
               {
-                  auto& pattern = d.patterns[(size_t) juce::jlimit (0, vrac::kSeqPatterns - 1, d.activePattern)];
-                  vrac::clearPattern (pattern);
+                  auto& pattern = d.patterns[(size_t) juce::jlimit (0, sliceforge::kSeqPatterns - 1, d.activePattern)];
+                  sliceforge::clearPattern (pattern);
               }, true);
     }
 
@@ -645,21 +720,21 @@ namespace vrac::ui
     {
         if (data == nullptr)
             return;
-        pad = juce::jlimit (0, vrac::kNumPads - 1, pad);
-        step = juce::jlimit (0, vrac::kSeqSteps - 1, step);
+        pad = juce::jlimit (0, sliceforge::kNumPads - 1, pad);
+        step = juce::jlimit (0, sliceforge::kSeqSteps - 1, step);
         pushUndo();
-        const auto patternIndex = juce::jlimit (0, vrac::kSeqPatterns - 1, data->activePattern);
+        const auto patternIndex = juce::jlimit (0, sliceforge::kSeqPatterns - 1, data->activePattern);
         const auto initialStep = data->patterns[(size_t) patternIndex].rows[(size_t) pad][(size_t) step];
         const auto baseSettings = processorRef.getParameterCache().readPad (pad);
         auto safe = juce::Component::SafePointer<SequencerPanel> (this);
         auto inspector = std::make_unique<StepInspector> (
             pad, step, initialStep, baseSettings,
-            [safe, pad, step] (const vrac::SeqStep& newStep)
+            [safe, pad, step] (const sliceforge::SeqStep& newStep)
             {
                 if (safe == nullptr || safe->data == nullptr)
                     return;
-                auto copy = vrac::cloneSequencerData (*safe->data);
-                const auto active = juce::jlimit (0, vrac::kSeqPatterns - 1, copy->activePattern);
+                auto copy = sliceforge::cloneSequencerData (*safe->data);
+                const auto active = juce::jlimit (0, sliceforge::kSeqPatterns - 1, copy->activePattern);
                 copy->patterns[(size_t) active].rows[(size_t) pad][(size_t) step] = newStep;
                 safe->commit (std::move (copy), true);
             });
@@ -676,7 +751,7 @@ namespace vrac::ui
     {
         juce::PopupMenu menu;
         for (int i = 0; i < 6; ++i)
-            menu.addItem (i + 1, vrac::patternPresetName ((vrac::PatternPreset) i));
+            menu.addItem (i + 1, sliceforge::patternPresetName ((sliceforge::PatternPreset) i));
         menu.addSeparator();
         menu.addItem (20, "Save pattern preset...");
         menu.addItem (21, "Load pattern preset...");
@@ -701,9 +776,9 @@ namespace vrac::ui
             return;
         presetIndex = juce::jlimit (0, 5, presetIndex);
         pushUndo();
-        auto copy = vrac::cloneSequencerData (*data);
-        const auto active = juce::jlimit (0, vrac::kSeqPatterns - 1, copy->activePattern);
-        copy->patterns[(size_t) active] = vrac::makePatternPreset ((vrac::PatternPreset) presetIndex);
+        auto copy = sliceforge::cloneSequencerData (*data);
+        const auto active = juce::jlimit (0, sliceforge::kSeqPatterns - 1, copy->activePattern);
+        copy->patterns[(size_t) active] = sliceforge::makePatternPreset ((sliceforge::PatternPreset) presetIndex);
         commit (std::move (copy), true);
     }
 
@@ -712,9 +787,9 @@ namespace vrac::ui
         if (data == nullptr)
             return;
         fileChooser = std::make_unique<juce::FileChooser> (
-            "Save VRAC+ pattern preset",
+            "Save SliceForge pattern preset",
             juce::File::getSpecialLocation (juce::File::userDocumentsDirectory)
-                .getChildFile ("VRAC+ Pattern.vracpattern"),
+                .getChildFile ("SliceForge Pattern.vracpattern"),
             "*.vracpattern");
         auto safe = juce::Component::SafePointer<SequencerPanel> (this);
         fileChooser->launchAsync (juce::FileBrowserComponent::saveMode
@@ -730,7 +805,7 @@ namespace vrac::ui
     void SequencerPanel::loadPatternPresetFile()
     {
         fileChooser = std::make_unique<juce::FileChooser> (
-            "Load VRAC+ pattern preset",
+            "Load SliceForge pattern preset",
             juce::File::getSpecialLocation (juce::File::userDocumentsDirectory),
             "*.vracpattern");
         auto safe = juce::Component::SafePointer<SequencerPanel> (this);
@@ -747,13 +822,13 @@ namespace vrac::ui
     {
         if (data == nullptr || ! file.getFullPathName().isNotEmpty())
             return;
-        auto copy = vrac::cloneSequencerData (*data);
-        const auto active = juce::jlimit (0, vrac::kSeqPatterns - 1, copy->activePattern);
-        const auto block = vrac::serialisePattern (copy->patterns[(size_t) active]);
+        auto copy = sliceforge::cloneSequencerData (*data);
+        const auto active = juce::jlimit (0, sliceforge::kSeqPatterns - 1, copy->activePattern);
+        const auto block = sliceforge::serialisePattern (copy->patterns[(size_t) active]);
         auto target = file.hasFileExtension ("vracpattern") ? file : file.withFileExtension ("vracpattern");
         if (! target.replaceWithData (block.getData(), block.getSize()))
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
-                                                    "VRAC+ pattern preset",
+                                                    "SliceForge pattern preset",
                                                     "Could not write " + target.getFullPathName());
     }
 
@@ -764,17 +839,17 @@ namespace vrac::ui
         juce::MemoryBlock block;
         if (! file.loadFileAsData (block))
             return;
-        const auto loaded = vrac::deserialisePattern (block);
+        const auto loaded = sliceforge::deserialisePattern (block);
         if (loaded == nullptr)
         {
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
-                                                    "VRAC+ pattern preset",
-                                                    "That file is not a valid VRAC+ pattern preset.");
+                                                    "SliceForge pattern preset",
+                                                    "That file is not a valid SliceForge pattern preset.");
             return;
         }
         pushUndo();
-        auto copy = vrac::cloneSequencerData (*data);
-        const auto active = juce::jlimit (0, vrac::kSeqPatterns - 1, copy->activePattern);
+        auto copy = sliceforge::cloneSequencerData (*data);
+        const auto active = juce::jlimit (0, sliceforge::kSeqPatterns - 1, copy->activePattern);
         copy->patterns[(size_t) active] = *loaded;
         commit (std::move (copy), true);
     }
@@ -804,7 +879,7 @@ namespace vrac::ui
         fileChooser = std::make_unique<juce::FileChooser> (
             "Export sequencer pattern as MIDI",
             juce::File::getSpecialLocation (juce::File::userMusicDirectory)
-                .getChildFile ("VRAC+ Pattern.mid"),
+                .getChildFile ("SliceForge Pattern.mid"),
             "*.mid");
         auto safe = juce::Component::SafePointer<SequencerPanel> (this);
         fileChooser->launchAsync (juce::FileBrowserComponent::saveMode
@@ -822,13 +897,13 @@ namespace vrac::ui
         if (data == nullptr)
             return;
         auto file = juce::File::getSpecialLocation (juce::File::tempDirectory)
-                        .getChildFile ("SKEER VRAC+ Pattern.mid");
+                        .getChildFile ("SKEER SliceForge Pattern.mid");
         writeMidiToFile (file);
         if (! juce::DragAndDropContainer::performExternalDragDropOfFiles ({ file.getFullPathName() },
                                                                            false, this))
         {
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,
-                                                    "VRAC+ MIDI",
+                                                    "SliceForge MIDI",
                                                     "The MIDI file was written to "
                                                         + file.getFullPathName()
                                                         + "\n\nThis editor cannot start an external drag.");
@@ -843,10 +918,10 @@ namespace vrac::ui
         auto exportData = *data;
         if (exportData.hostSync)
             exportData.bpm = processorRef.getSequencerHostBpm();
-        const auto block = vrac::makePatternMidiFile (exportData);
+        const auto block = sliceforge::makePatternMidiFile (exportData);
         if (! target.replaceWithData (block.getData(), block.getSize()))
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
-                                                    "VRAC+ MIDI",
+                                                    "SliceForge MIDI",
                                                     "Could not write " + target.getFullPathName());
     }
 
@@ -854,22 +929,22 @@ namespace vrac::ui
     {
         if (data == nullptr)
             return;
-        edit ([enabled] (vrac::SequencerData& d) { d.songMode = enabled; }, true);
+        edit ([enabled] (sliceforge::SequencerData& d) { d.songMode = enabled; }, true);
     }
 
     void SequencerPanel::cycleChainSlot (int slot)
     {
-        if (data == nullptr || slot < 0 || slot >= vrac::kSeqChainLength)
+        if (data == nullptr || slot < 0 || slot >= sliceforge::kSeqChainLength)
             return;
-        const int next = (data->chainPatterns[(size_t) slot] + 1) % vrac::kSeqPatterns;
-        edit ([slot, next] (vrac::SequencerData& d) { d.chainPatterns[(size_t) slot] = next; }, true);
+        const int next = (data->chainPatterns[(size_t) slot] + 1) % sliceforge::kSeqPatterns;
+        edit ([slot, next] (sliceforge::SequencerData& d) { d.chainPatterns[(size_t) slot] = next; }, true);
     }
 
     int SequencerPanel::laneLengthForSelected() const
     {
         if (data == nullptr)
             return 0;
-        const auto active = juce::jlimit (0, vrac::kSeqPatterns - 1, data->activePattern);
+        const auto active = juce::jlimit (0, sliceforge::kSeqPatterns - 1, data->activePattern);
         return data->patterns[(size_t) active].laneLength[(size_t) selectedLane];
     }
 
@@ -877,10 +952,10 @@ namespace vrac::ui
     {
         if (data == nullptr)
             return;
-        length = juce::jlimit (0, vrac::kSeqSteps, length);
-        edit ([this, length] (vrac::SequencerData& d)
+        length = juce::jlimit (0, sliceforge::kSeqSteps, length);
+        edit ([this, length] (sliceforge::SequencerData& d)
               {
-                  const auto active = juce::jlimit (0, vrac::kSeqPatterns - 1, d.activePattern);
+                  const auto active = juce::jlimit (0, sliceforge::kSeqPatterns - 1, d.activePattern);
                   d.patterns[(size_t) active].laneLength[(size_t) selectedLane] = length;
               }, true);
     }
@@ -905,16 +980,16 @@ namespace vrac::ui
 
             g.setColour (c.muted);
             g.setFont (font (6.8f, true));
-            g.drawText (juce::String (data->length) + " STEPS  /  " + vrac::divisionName (data->division)
+            g.drawText (juce::String (data->length) + " STEPS  /  " + sliceforge::divisionName (data->division)
                             + "  /  SWING " + juce::String ((int) std::round (data->swing * 100.0f)) + "%"
                             + (data->songMode ? "  /  SONG" : ""),
                         948, 34, 274, 12, juce::Justification::centredRight, false);
 
-            const auto active = juce::jlimit (0, vrac::kSeqPatterns - 1, data->activePattern);
+            const auto active = juce::jlimit (0, sliceforge::kSeqPatterns - 1, data->activePattern);
             g.setColour (c.muted);
             g.setFont (font (6.8f, true));
             g.drawText ("PATTERN " + juce::String::charToString ((juce::juce_wchar) ('A' + active))
-                            + "  /  LANE " + vrac::padNotes()[(size_t) selectedLane],
+                            + "  /  LANE " + sliceforge::padNotes()[(size_t) selectedLane],
                         948, 708, 274, 12, juce::Justification::centredRight, false);
         }
 
@@ -933,15 +1008,16 @@ namespace vrac::ui
         g.drawText ("CHAIN", 14, 658, 44, 12, juce::Justification::centredLeft, false);
         g.drawText ("DRAW / DRAG TO PAINT  /  RIGHT-CLICK A STEP FOR NUDGE, FLAM & PARAMETER LOCKS",
                     14, 680, 720, 12, juce::Justification::centredLeft, false);
-        g.drawText ("VELOCITY / PROBABILITY / RATCHET / NUDGE / FLAM  /  DRAG VERTICALLY",
-                    14, 694, 620, 12, juce::Justification::centredLeft, false);
+        g.drawText ("VELOCITY / PROBABILITY / RATCHET / NUDGE / FLAM  /  DRAG VERTICALLY"
+                        "  /  COPY TO OR RIGHT-CLICK A PATTERN LETTER TO DUPLICATE IT",
+                    14, 694, 1100, 12, juce::Justification::centredLeft, false);
         g.drawText ("SONG MODE PLAYS THE CHAIN SLOTS  /  CLICK SLOTS TO CYCLE  /  SPACE PLAY-STOP  /  G RANDOM",
                     14, 708, 760, 12, juce::Justification::centredLeft, false);
     }
 
     void SequencerPanel::resized()
     {
-        for (int i = 0; i < vrac::kSeqPatterns; ++i)
+        for (int i = 0; i < sliceforge::kSeqPatterns; ++i)
             patternButtons[(size_t) i].setBounds (14 + i * 36, 26, 32, 24);
 
         playButton.setBounds (170, 24, 68, 26);
@@ -969,10 +1045,11 @@ namespace vrac::ui
         patternPresetButton.setBounds (796, 60, 76, 24);
         midiButton.setBounds (878, 60, 42, 24);
         laneLengthBox.setBounds (986, 60, 120, 24);
+        copyToButton.setBounds (getWidth() - 116, 60, 104, 24);
 
-        for (int i = 0; i < vrac::kSeqChainLength; ++i)
+        for (int i = 0; i < sliceforge::kSeqChainLength; ++i)
             chainButtons[(size_t) i].setBounds (62 + i * 33, 654, 30, 20);
 
         grid.setBounds (12, 94, getWidth() - 24, getHeight() - 94 - 76);
     }
-} // namespace vrac::ui
+} // namespace sliceforge::ui

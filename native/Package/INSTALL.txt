@@ -1,0 +1,48 @@
+﻿SKEER SliceForge 1.0.0 native edition (Windows x64)
+
+Install:
+  Copy the SliceForge.vst3 bundle into a VST3 folder, for example:
+    %LOCALAPPDATA%\Programs\Common\VST3\
+  or (elevated):
+    %ProgramFiles%\Common Files\VST3\
+
+Standalone:
+  Run SliceForge.exe.
+
+Then rescan VST3 plugins in your DAW. The plugin exposes eight stereo
+outputs; enable the aux outputs in your host to use per-pad routing.
+Enable the sidechain input bus to use the REC button.
+
+KIT / SEQUENCER / VAULT pages:
+  - 4 patterns, 32 steps, host sync or internal preview
+  - full opaque step colours: kick coral, snare blue, hats mint, clap violet
+  - identical colours in light and dark themes
+  - slim bottom velocity bar per step
+  - green playhead and transport indicator
+  - probability, ratchet, lane mute/solo
+  - NUDGE and FLAM edit modes plus a right-click step inspector
+  - per-step parameter locks for pitch, volume, pan, tone and length
+  - per-lane polymeter (GLOBAL or 1-32 step lane loops)
+  - eight-slot pattern chain and SONG mode
+  - pattern presets: six factory grooves plus .vracpattern save/load
+  - MIDI export and external MIDI file drag
+  - random grooves, mutate, humanize, shift, Euclidean lanes
+  - pattern copy/paste, undo/redo and host-state persistence
+
+SKEER Sample Vault link:
+  - auto-detects the installed vault index, or use LOCATE DB once
+  - read-only SQLite index access, no writes to the vault
+  - search, family/type/collection/favourite filters and sorting
+  - indexed BPM/key/tags/notes and waveform previews
+  - LOAD SAMPLE imports the original file and returns to the KIT page
+  - REFRESH rereads the index after new scans or analysis
+
+Theme:
+  - DARK / LIGHT button in the header switches the whole interface
+  - choice is remembered in %APPDATA%\SliceForge\theme.txt
+
+Vendor: SKEER
+Bundle ID: com.skeer.sliceforge
+Session identity is preserved from previous SliceForge builds.
+
+See README.md for full build, test and usage documentation.

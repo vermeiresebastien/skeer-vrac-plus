@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ *
- * The VRAC+ factory library.
+ * The SliceForge factory library.
  *
  * These are not recordings: every source is synthesised deterministically
  * from a seeded recipe of room hits, foley gestures and circuit noises.

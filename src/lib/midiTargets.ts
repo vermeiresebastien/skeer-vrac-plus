@@ -33,6 +33,8 @@ const GLOBAL_RANGES: Record<string, [number, number]> = {
   tone: [-12, 12],
   filter: [-1, 1],
   width: [0, 1],
+  clip: [0, 1],
+  outGain: [-24, 12],
 };
 
 export function parseMidiTarget(target: string): MidiTarget | null {

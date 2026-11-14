@@ -8,8 +8,8 @@ int main (int argc, char** argv)
 
     auto bundle = juce::File::getCurrentWorkingDirectory()
                       .getChildFile ("native").getChildFile ("build")
-                      .getChildFile ("VRACPlus_artefacts").getChildFile ("Release")
-                      .getChildFile ("VST3").getChildFile ("VRAC+.vst3");
+                      .getChildFile ("SliceForge_artefacts").getChildFile ("Release")
+                      .getChildFile ("VST3").getChildFile ("SliceForge.vst3");
     if (argc > 1)
         bundle = juce::File (juce::String::fromUTF8 (argv[1]));
 

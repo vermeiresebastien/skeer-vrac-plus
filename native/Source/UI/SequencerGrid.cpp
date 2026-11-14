@@ -1,7 +1,7 @@
 #include "SequencerGrid.h"
 #include "Theme.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     namespace
     {
@@ -20,12 +20,12 @@ namespace vrac::ui
         }
     } // namespace
 
-    SequencerGrid::SequencerGrid (VRACPlusAudioProcessor& processor) : processorRef (processor)
+    SequencerGrid::SequencerGrid (SliceForgeAudioProcessor& processor) : processorRef (processor)
     {
         setInterceptsMouseClicks (true, false);
     }
 
-    void SequencerGrid::setData (std::shared_ptr<const vrac::SequencerData> newData)
+    void SequencerGrid::setData (std::shared_ptr<const sliceforge::SequencerData> newData)
     {
         data = std::move (newData);
         repaint();
@@ -49,7 +49,7 @@ namespace vrac::ui
 
     void SequencerGrid::setSelectedLane (int lane)
     {
-        lane = juce::jlimit (0, vrac::kNumPads - 1, lane);
+        lane = juce::jlimit (0, sliceforge::kNumPads - 1, lane);
         if (selectedLane == lane)
             return;
         selectedLane = lane;
@@ -59,12 +59,12 @@ namespace vrac::ui
     int SequencerGrid::laneLengthForPad (int pad) const
     {
         if (data == nullptr)
-            return vrac::kSeqSteps;
-        const auto patternIndex = juce::jlimit (0, vrac::kSeqPatterns - 1, data->activePattern);
+            return sliceforge::kSeqSteps;
+        const auto patternIndex = juce::jlimit (0, sliceforge::kSeqPatterns - 1, data->activePattern);
         const auto& pattern = data->patterns[(size_t) patternIndex];
-        const auto lane = pattern.laneLength[(size_t) juce::jlimit (0, vrac::kNumPads - 1, pad)];
-        return lane > 0 ? juce::jlimit (1, vrac::kSeqSteps, lane)
-                        : juce::jlimit (1, vrac::kSeqSteps, data->length);
+        const auto lane = pattern.laneLength[(size_t) juce::jlimit (0, sliceforge::kNumPads - 1, pad)];
+        return lane > 0 ? juce::jlimit (1, sliceforge::kSeqSteps, lane)
+                        : juce::jlimit (1, sliceforge::kSeqSteps, data->length);
     }
 
     int SequencerGrid::dataStepForLane (int pad, int displayStep) const
@@ -82,9 +82,9 @@ namespace vrac::ui
 
     void SequencerGrid::updateLayout()
     {
-        cellWidth = juce::jmax (1.0f, (float) (getWidth() - labelWidth) / (float) vrac::kSeqSteps);
-        rowHeight = juce::jmax (1.0f, (float) (getHeight() - headerHeight) / (float) vrac::kNumPads);
-        for (int pad = 0; pad < vrac::kNumPads; ++pad)
+        cellWidth = juce::jmax (1.0f, (float) (getWidth() - labelWidth) / (float) sliceforge::kSeqSteps);
+        rowHeight = juce::jmax (1.0f, (float) (getHeight() - headerHeight) / (float) sliceforge::kNumPads);
+        for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
         {
             const auto y = (float) headerHeight + (float) pad * rowHeight;
             rowRects[(size_t) pad] = { 0.0f, y, (float) getWidth(), rowHeight };
@@ -97,14 +97,14 @@ namespace vrac::ui
     {
         if (y < headerHeight)
             return -1;
-        return juce::jlimit (0, vrac::kNumPads - 1, (int) ((y - headerHeight) / juce::jmax (1.0f, rowHeight)));
+        return juce::jlimit (0, sliceforge::kNumPads - 1, (int) ((y - headerHeight) / juce::jmax (1.0f, rowHeight)));
     }
 
     int SequencerGrid::stepAtX (float x) const
     {
         if (x < labelWidth)
             return -1;
-        return juce::jlimit (0, vrac::kSeqSteps - 1, (int) ((x - labelWidth) / juce::jmax (1.0f, cellWidth)));
+        return juce::jlimit (0, sliceforge::kSeqSteps - 1, (int) ((x - labelWidth) / juce::jmax (1.0f, cellWidth)));
     }
 
     juce::Rectangle<float> SequencerGrid::cellBounds (int pad, int step) const
@@ -123,9 +123,9 @@ namespace vrac::ui
         if (data == nullptr)
             return;
 
-        const int patternIndex = juce::jlimit (0, vrac::kSeqPatterns - 1, data->activePattern);
+        const int patternIndex = juce::jlimit (0, sliceforge::kSeqPatterns - 1, data->activePattern);
         const auto& pattern = data->patterns[(size_t) patternIndex];
-        const int length = juce::jlimit (1, vrac::kSeqSteps, data->length);
+        const int length = juce::jlimit (1, sliceforge::kSeqSteps, data->length);
 
         // Header.
         g.setColour (c.bg);
@@ -133,7 +133,7 @@ namespace vrac::ui
         g.setColour (c.muted);
         g.setFont (font (6.8f, true));
         g.drawText ("PAD / STEP", 10, 0, labelWidth - 18, headerHeight, juce::Justification::centredLeft, false);
-        for (int step = 0; step < vrac::kSeqSteps; ++step)
+        for (int step = 0; step < sliceforge::kSeqSteps; ++step)
         {
             const auto x = (float) labelWidth + (float) step * cellWidth;
             const bool inLength = step < length;
@@ -148,12 +148,12 @@ namespace vrac::ui
             }
         }
 
-        for (int pad = 0; pad < vrac::kNumPads; ++pad)
+        for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
         {
             const auto& row = rowRects[(size_t) pad];
             const auto settings = processorRef.getParameterCache().readPad (pad);
-            const auto family = vrac::familyForModel (settings.modelIndex);
-            const auto model = vrac::localModelForIndex (settings.modelIndex);
+            const auto family = sliceforge::familyForModel (settings.modelIndex);
+            const auto model = sliceforge::localModelForIndex (settings.modelIndex);
             const auto stepColour = stepColourForFamily (family);
             const bool laneSelected = pad == selectedLane;
             const bool muted = pattern.laneMute[(size_t) pad];
@@ -180,18 +180,18 @@ namespace vrac::ui
             g.fillEllipse (10.0f, row.getCentreY() - 2.0f, 4.0f, 4.0f);
             g.setColour (muted ? c.muted : c.ink);
             g.setFont (font (9.2f, true));
-            g.drawText (vrac::padNotes()[(size_t) pad], 20, (int) row.getY() + 4, 36, 13,
+            g.drawText (sliceforge::padNotes()[(size_t) pad], 20, (int) row.getY() + 4, 36, 13,
                         juce::Justification::centredLeft, false);
             g.setColour (c.muted);
             g.setFont (font (6.8f, true));
-            g.drawText (vrac::modelBank()[(size_t) family][(size_t) model].name, 58, (int) row.getY() + 5, 92, 12,
+            g.drawText (sliceforge::modelBank()[(size_t) family][(size_t) model].name, 58, (int) row.getY() + 5, 92, 12,
                         juce::Justification::centredLeft, false);
             g.setFont (mono (6.5f));
-            g.drawText (vrac::modelBank()[(size_t) family][(size_t) model].code, 58, (int) row.getY() + 17, 50, 10,
+            g.drawText (sliceforge::modelBank()[(size_t) family][(size_t) model].code, 58, (int) row.getY() + 17, 50, 10,
                         juce::Justification::centredLeft, false);
 
             const auto laneLength = laneLengthForPad (pad);
-            const int globalLength = juce::jlimit (1, vrac::kSeqSteps, data->length);
+            const int globalLength = juce::jlimit (1, sliceforge::kSeqSteps, data->length);
             if (laneLength != globalLength)
             {
                 g.setColour (c.accent.withAlpha (0.7f));
@@ -214,7 +214,7 @@ namespace vrac::ui
             drawLaneToggle (soloRects[(size_t) pad], "S", pattern.laneSolo[(size_t) pad]);
 
             const bool repeatedLane = laneLength < length;
-            for (int step = 0; step < vrac::kSeqSteps; ++step)
+            for (int step = 0; step < sliceforge::kSeqSteps; ++step)
             {
                 const auto cell = cellBounds (pad, step);
                 const bool inLength = step < length;
@@ -325,11 +325,11 @@ namespace vrac::ui
 
     void SequencerGrid::applyCell (int pad, int displayStep, float relativeY)
     {
-        if (data == nullptr || pad < 0 || pad >= vrac::kNumPads
-            || displayStep < 0 || displayStep >= vrac::kSeqSteps)
+        if (data == nullptr || pad < 0 || pad >= sliceforge::kNumPads
+            || displayStep < 0 || displayStep >= sliceforge::kSeqSteps)
             return;
         const int step = dataStepForLane (pad, displayStep);
-        const auto patternIndex = juce::jlimit (0, vrac::kSeqPatterns - 1, data->activePattern);
+        const auto patternIndex = juce::jlimit (0, sliceforge::kSeqPatterns - 1, data->activePattern);
         auto s = data->patterns[(size_t) patternIndex].rows[(size_t) pad][(size_t) step];
         const auto vertical = juce::jlimit (0.0f, 1.0f, 1.0f - relativeY);
 
@@ -401,7 +401,7 @@ namespace vrac::ui
         }
 
         const int step = stepAtX (pos.x);
-        if (step < 0 || step >= juce::jlimit (1, vrac::kSeqSteps, data->length))
+        if (step < 0 || step >= juce::jlimit (1, sliceforge::kSeqSteps, data->length))
             return;
 
         if (event.mods.isPopupMenu())
@@ -417,7 +417,7 @@ namespace vrac::ui
 
         dragPad = pad;
         dragStep = step;
-        const auto patternIndex = juce::jlimit (0, vrac::kSeqPatterns - 1, data->activePattern);
+        const auto patternIndex = juce::jlimit (0, sliceforge::kSeqPatterns - 1, data->activePattern);
         if (mode == EditMode::Draw)
             dragTarget = ! data->patterns[(size_t) patternIndex]
                                 .rows[(size_t) pad][(size_t) dataStepForLane (pad, step)].on;
@@ -435,7 +435,7 @@ namespace vrac::ui
         const auto pos = event.position;
         const int pad = padAtY (pos.y);
         const int step = stepAtX (pos.x);
-        if (pad < 0 || step < 0 || step >= juce::jlimit (1, vrac::kSeqSteps, data->length))
+        if (pad < 0 || step < 0 || step >= juce::jlimit (1, sliceforge::kSeqSteps, data->length))
             return;
 
         if (mode == EditMode::Draw || mode == EditMode::Ratchet)
@@ -460,4 +460,4 @@ namespace vrac::ui
         dragPad = -1;
         dragStep = -1;
     }
-} // namespace vrac::ui
+} // namespace sliceforge::ui

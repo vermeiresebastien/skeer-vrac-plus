@@ -3,7 +3,7 @@
 #include <JuceHeader.h>
 #include <array>
 
-namespace vrac
+namespace sliceforge
 {
     constexpr int kNumPads = 16;
     constexpr int kNumBuses = 8;
@@ -51,6 +51,10 @@ namespace vrac
         float tone = 0.0f;
         float filter = 0.0f;
         float width = 0.65f;
+        // Appended last: the factory presets and saved kits initialise the eight fields
+        // above positionally, so anything new must go after them and keep its own default.
+        float clip = 0.0f;      // 0 = soft clipper bypassed, 1 = knee at 0.35
+        float outGain = 0.0f;   // dB, applied after the clipper
     };
 
     struct PadSettings
@@ -114,6 +118,8 @@ namespace vrac
         std::atomic<float>* filter = nullptr;
         std::atomic<float>* width = nullptr;
         std::atomic<float>* sensitivity = nullptr;
+        std::atomic<float>* clip = nullptr;
+        std::atomic<float>* outGain = nullptr;
     };
 
     struct ParameterCache
@@ -144,4 +150,4 @@ namespace vrac
         const auto t = clampValue ((x - a) / (b - a), 0.0f, 1.0f);
         return t * t * (3.0f - 2.0f * t);
     }
-} // namespace vrac
+} // namespace sliceforge

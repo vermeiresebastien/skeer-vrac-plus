@@ -2,9 +2,10 @@
 #include "Theme.h"
 #include "Controls.h"
 
+#include <cmath>
 #include <iterator>
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     namespace
     {
@@ -14,6 +15,29 @@ namespace vrac::ui
         constexpr int kTop = 78;
         constexpr int kBottomMargin = 12;
         constexpr int kButtonHeight = 30;
+        constexpr int kPreviewTop = 300;
+        constexpr int kPreviewChipHeight = 24;
+        constexpr int kPreviewChipGap = 8;
+        constexpr int kStallLimitPolls = 24;
+
+        // One source of truth for the audition row so paint() and resized() cannot drift.
+        struct PreviewRow
+        {
+            juce::Rectangle<int> label, replay, loop, stop, status;
+        };
+
+        PreviewRow previewRowFor (juce::Rectangle<int> detail)
+        {
+            const auto x = detail.getX() + 14;
+            const auto y = detail.getY() + kPreviewTop;
+            PreviewRow row;
+            row.label = { x, y, detail.getWidth() - 28, 11 };
+            row.replay = { x, y + 15, 92, kPreviewChipHeight };
+            row.loop = { x + 92 + kPreviewChipGap, y + 15, 78, kPreviewChipHeight };
+            row.stop = { x + 92 + 78 + kPreviewChipGap * 2, y + 15, 66, kPreviewChipHeight };
+            row.status = { x, y + 15 + kPreviewChipHeight + 6, detail.getWidth() - 28, 12 };
+            return row;
+        }
 
         const char* familyValues[] { "drums", "tonal", "fx", "texture", "vocal", "recording", "unknown" };
         const char* familyLabels[] { "DRUMS", "TONAL", "FX", "TEXTURE", "VOCAL", "RECORDING", "UNKNOWN" };
@@ -40,6 +64,15 @@ namespace vrac::ui
     {
         minimum = std::move (newMin);
         maximum = std::move (newMax);
+        repaint();
+    }
+
+    void VaultPanel::WaveformView::setProgress (double playhead)
+    {
+        const auto next = juce::jlimit (-1.0, 1.0, playhead);
+        if (std::abs (next - head) < 0.0015)
+            return;
+        head = next;
         repaint();
     }
 
@@ -73,9 +106,21 @@ namespace vrac::ui
             const auto x = (float) i;
             g.drawLine (x, centre - hi * amplitude, x, centre - lo * amplitude, 1.0f);
         }
+
+        if (head >= 0.0)
+        {
+            const auto x = juce::jlimit (0.0f, (float) getWidth() - 1.0f,
+                                         (float) head * (float) (getWidth() - 1));
+            g.setColour (c.ink.withAlpha (0.85f));
+            g.fillRect (x, 1.0f, 1.0f, (float) getHeight() - 2.0f);
+            g.setColour (c.ink);
+            g.fillRect (x - 1.0f, 0.0f, 3.0f, 3.0f);
+        }
     }
 
-    VaultPanel::VaultPanel (VRACPlusAudioProcessor& processor) : processorRef (processor)
+    VaultPanel::VaultPanel (SliceForgeAudioProcessor& processor)
+        : processorRef (processor),
+          searchTimer ([this] { rebuildResults(); })
     {
         addAndMakeVisible (search);
         search.setTextToShowWhenEmpty ("SEARCH SAMPLES, FOLDERS OR TAGS...", palette().muted);
@@ -110,7 +155,8 @@ namespace vrac::ui
         styleVaultCombo (sortBox);
         addAndMakeVisible (sortBox);
 
-        for (auto* button : { &favoritesButton, &refreshButton, &locateButton, &folderButton })
+        for (auto* button : { &favoritesButton, &refreshButton, &locateButton, &folderButton,
+                              &previewButton, &stopButton })
             styleChip (*button, false);
         stylePrimaryButton (loadButton);
         addAndMakeVisible (favoritesButton);
@@ -128,6 +174,25 @@ namespace vrac::ui
         locateButton.onClick = [this] { locateDatabase(); };
         loadButton.onClick = [this] { loadSelected(); };
         folderButton.onClick = [this] { revealSelectedFolder(); };
+
+        loopButton.setClickingTogglesState (true);
+        addAndMakeVisible (previewButton);
+        addAndMakeVisible (loopButton);
+        addAndMakeVisible (stopButton);
+        previewButton.onClick = [this] { restartPreview(); };
+        loopButton.onClick = [this]
+        {
+            auto& player = processorRef.getPreviewPlayer();
+            player.setLoopEnabled (loopButton.getToggleState());
+            if (loopButton.getToggleState() && ! player.isPlaying() && previewSample != nullptr)
+                previewButton.triggerClick();
+        };
+        stopButton.onClick = [this] { stopPreview ("STOPPED  •  CLICK A SAMPLE TO AUDITION IT AGAIN"); };
+        for (auto* button : { &previewButton, &loopButton, &stopButton })
+        {
+            button->setEnabled (false);
+            button->setVisible (false);
+        }
 
         addAndMakeVisible (list);
         list.setRowHeight (kRowHeight);
@@ -153,11 +218,25 @@ namespace vrac::ui
         setActive (false);
     }
 
+    VaultPanel::~VaultPanel()
+    {
+        stopTimer();
+        searchTimer.stopTimer();
+        processorRef.getPreviewPlayer().stop();
+        previewPool.removeAllJobs (true, 0);
+    }
+
     void VaultPanel::setActive (bool shouldBeActive)
     {
         active = shouldBeActive;
         if (active)
+        {
             refreshStatus();
+        }
+        else
+        {
+            abandonPreview();
+        }
     }
 
     void VaultPanel::refreshTheme()
@@ -179,16 +258,20 @@ namespace vrac::ui
 
     void VaultPanel::selectFirstRowForTesting()
     {
-        if (! tracks.empty())
-        {
-            selectedRow = 0;
-            list.selectRow (0);
-            updateDetails();
-        }
+        if (tracks.empty())
+            return;
+        // ListBox::selectRow always calls back into selectedRowsChanged, and there is no way
+        // to ask it not to, so the audition is switched off around the selection instead.
+        previewSuppressed = true;
+        selectedRow = 0;
+        list.selectRow (0);
+        updateDetails();
+        previewSuppressed = false;
     }
 
     void VaultPanel::selectFirstAnalysedRowForTesting()
     {
+        previewSuppressed = true;
         for (int i = 0; i < (int) tracks.size(); ++i)
         {
             if (! tracks[(size_t) i].analyzed)
@@ -196,8 +279,10 @@ namespace vrac::ui
             selectedRow = i;
             list.selectRow (i);
             updateDetails();
+            previewSuppressed = false;
             return;
         }
+        previewSuppressed = false;
         selectFirstRowForTesting();
     }
 
@@ -209,14 +294,174 @@ namespace vrac::ui
 
     void VaultPanel::startSearchTimer()
     {
-        stopTimer();
-        startTimer (220);
+        // A juce::Timer of its own: the audition playhead polls on the component timer at
+        // 20 Hz, and the two must not cancel each other out.
+        searchTimer.startTimer (220);
     }
 
     void VaultPanel::timerCallback()
     {
+        pollPreview();
+    }
+
+    juce::Rectangle<int> VaultPanel::detailRect() const
+    {
+        return { getWidth() - 14 - kDetailWidth, kTop, kDetailWidth,
+                 getHeight() - kTop - kBottomMargin };
+    }
+
+    void VaultPanel::restartPreview()
+    {
+        if (previewSample == nullptr)
+        {
+            beginPreview();
+            return;
+        }
+        auto& player = processorRef.getPreviewPlayer();
+        player.play (previewSample, loopButton.getToggleState());
+        previewWasPlaying = true;
+        previewStamp = player.getAdvanceStamp();
+        previewStallPolls = 0;
+        previewStatus = "AUDITIONING  •  " + details.filename;
+        startTimerHz (20);
+        repaint();
+    }
+
+    void VaultPanel::beginPreview()
+    {
+        auto& player = processorRef.getPreviewPlayer();
+        auto* track = selectedTrack();
+
+        if (! active || track == nullptr || track->path.isEmpty())
+        {
+            stopPreview();
+            return;
+        }
+
+        // Re-clicking the row that is already auditioned replays the decode we already hold.
+        if (previewSample != nullptr && previewedTrackId == track->id)
+        {
+            restartPreview();
+            return;
+        }
+
+        const juce::File file (track->path);
+        player.stop();
         stopTimer();
-        rebuildResults();
+        previewWasPlaying = false;
+        previewSample.reset();
+        previewedTrackId = track->id;
+        waveform.setProgress (-1.0);
+        previewPool.removeAllJobs (true, 0);
+
+        if (! file.existsAsFile())
+        {
+            previewedTrackId = 0;
+            previewStatus = "FILE IS MISSING  •  " + file.getFileName();
+            repaint();
+            return;
+        }
+
+        previewStatus = "DECODING...";
+        const auto generation = previewGeneration->fetch_add (1) + 1;
+        auto counter = previewGeneration;
+        auto safe = juce::Component::SafePointer<VaultPanel> (this);
+        previewPool.addJob ([counter, generation, file, safe]
+        {
+            if (counter->load() != generation)
+                return;
+            auto decoded = sliceforge::loadAudioFile (file);
+            juce::MessageManager::callAsync ([safe, generation, decoded]
+            {
+                if (safe != nullptr)
+                    safe->finishPreview (generation, decoded);
+            });
+        });
+        repaint();
+    }
+
+    void VaultPanel::finishPreview (unsigned generation, sliceforge::SamplePtr decoded)
+    {
+        if (! active || generation != previewGeneration->load())
+            return;
+
+        if (decoded == nullptr || decoded->getNumSamples() < 2)
+        {
+            previewSample.reset();
+            previewedTrackId = 0;
+            previewStatus = "SLICEFORGE COULD NOT DECODE THIS FILE";
+            repaint();
+            return;
+        }
+
+        previewSample = std::move (decoded);
+        waveform.setPeaks (previewSample->peakMin, previewSample->peakMax);
+        restartPreview();
+    }
+
+    void VaultPanel::pollPreview()
+    {
+        auto& player = processorRef.getPreviewPlayer();
+
+        if (! player.isPlaying())
+        {
+            stopTimer();
+            waveform.setProgress (-1.0);
+            if (previewWasPlaying)
+                previewStatus = "PLAYED ONCE  •  TURN ON LOOP TO HEAR IT REPEATEDLY";
+            previewWasPlaying = false;
+            repaint();
+            return;
+        }
+
+        const auto stamp = player.getAdvanceStamp();
+        if (stamp == previewStamp)
+        {
+            // A VST3 is only asked to render while the host wants sound. Clicking in the
+            // vault with the transport stopped and monitoring off would otherwise leave a
+            // playhead frozen mid-file and audio arriving late, so say what happened.
+            if (++previewStallPolls <= kStallLimitPolls)
+                return;
+            player.stop();
+            stopTimer();
+            previewWasPlaying = false;
+            waveform.setProgress (-1.0);
+            previewStatus = "THE HOST IS NOT PROCESSING AUDIO  •  ARM OR PLAY THE TRACK";
+            repaint();
+            return;
+        }
+
+        previewStallPolls = 0;
+        previewStamp = stamp;
+        previewStatus = "AUDITION  " + juce::String (player.getElapsedSeconds(), 2) + " s  /  "
+                            + juce::String (player.getDurationSeconds(), 2) + " s"
+                            + (player.isLoopEnabled() ? "  •  LOOPING" : "");
+        waveform.setProgress (player.getProgress());
+        repaint (detailRect());
+    }
+
+    void VaultPanel::stopPreview (const juce::String& idleStatus)
+    {
+        processorRef.getPreviewPlayer().stop();
+        previewWasPlaying = false;
+        previewStallPolls = 0;
+        stopTimer();
+        waveform.setProgress (-1.0);
+        if (! idleStatus.isEmpty())
+            previewStatus = idleStatus;
+        repaint();
+    }
+
+    void VaultPanel::abandonPreview()
+    {
+        stopPreview ("CLICK A SAMPLE TO AUDITION IT");
+        // Bump the generation first so any decode still queued or running disowns itself
+        // before the pool is drained, then drop the buffer: a filtered-out file should not
+        // keep up to ten minutes of audio resident.
+        previewGeneration->fetch_add (1);
+        previewPool.removeAllJobs (true, 0);
+        previewSample.reset();
+        previewedTrackId = 0;
     }
 
     void VaultPanel::refreshStatus()
@@ -264,6 +509,8 @@ namespace vrac::ui
 
     void VaultPanel::rebuildResults()
     {
+        // A new result set drops the selection, so the audition that belonged to it goes too.
+        abandonPreview();
         if (! vault.isAvailable())
         {
             tracks.clear();
@@ -273,6 +520,11 @@ namespace vrac::ui
             list.repaint();
             loadButton.setEnabled (false);
             folderButton.setEnabled (false);
+            for (auto* button : { &previewButton, &loopButton, &stopButton })
+            {
+                button->setEnabled (false);
+                button->setVisible (false);
+            }
             waveform.setPeaks ({}, {});
             repaint();
             return;
@@ -302,6 +554,11 @@ namespace vrac::ui
             list.scrollToEnsureRowIsOnscreen (0);
         loadButton.setEnabled (false);
         folderButton.setEnabled (false);
+        for (auto* button : { &previewButton, &loopButton, &stopButton })
+        {
+            button->setEnabled (false);
+            button->setVisible (false);
+        }
         waveform.setPeaks ({}, {});
         if (tracks.empty() && vault.isAvailable())
             statusDetail = "NO MATCHING SAMPLES  •  " + vault.getStatus().database.getFullPathName();
@@ -393,6 +650,11 @@ namespace vrac::ui
     {
         selectedRow = lastRowSelected;
         updateDetails();
+
+        // Autoplay lands here rather than in updateDetails(): the detail refresh is also
+        // driven by the layout test and by filter rebuilds, and neither should make sound.
+        if (active && ! previewSuppressed && vault.isAvailable() && lastRowSelected >= 0)
+            beginPreview();
     }
 
     void VaultPanel::listBoxItemDoubleClicked (int row, const juce::MouseEvent&)
@@ -406,8 +668,14 @@ namespace vrac::ui
     void VaultPanel::updateDetails()
     {
         auto* track = selectedTrack();
+        const bool canPreview = track != nullptr;
         loadButton.setEnabled (track != nullptr);
         folderButton.setEnabled (track != nullptr);
+        for (auto* button : { &previewButton, &loopButton, &stopButton })
+        {
+            button->setVisible (canPreview);
+            button->setEnabled (canPreview);
+        }
         if (track == nullptr)
         {
             details = {};
@@ -421,7 +689,14 @@ namespace vrac::ui
             details = std::move (loaded);
         else
             details = *track;
-        waveform.setPeaks (details.waveformMin, details.waveformMax);
+
+        // The decoded audition is the only waveform that carries a truthful playhead, so the
+        // indexed peaks stay on screen until that file has been read.
+        if (previewedTrackId != details.id)
+        {
+            waveform.setPeaks (details.waveformMin, details.waveformMax);
+            waveform.setProgress (-1.0);
+        }
         repaint();
     }
 
@@ -430,6 +705,7 @@ namespace vrac::ui
         auto* track = selectedTrack();
         if (track == nullptr)
             return;
+        stopPreview ("LOADED INTO THE KIT");
         const juce::File file (track->path);
         if (! file.existsAsFile())
         {
@@ -453,7 +729,7 @@ namespace vrac::ui
         {
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                     "SKEER Sample Vault",
-                                                    "VRAC+ could not load " + name + ".");
+                                                    "SliceForge could not load " + name + ".");
         }
     }
 
@@ -527,7 +803,7 @@ namespace vrac::ui
                         detailBounds.reduced (16), juce::Justification::centred, false);
             g.setFont (font (7.2f));
             g.drawFittedText (vault.isAvailable()
-                                  ? "Browse the index on the left. Double-click or use LOAD SAMPLE to pull it into the current VRAC+ kit."
+                                  ? "Browse the index on the left. Double-click or use LOAD SAMPLE to pull it into the current SliceForge kit."
                                   : "Install or open SKEER Sample Vault once, then use LOCATE DB if the index is in a custom location.",
                               detailBounds.reduced (18).withTrimmedTop (20),
                               juce::Justification::centredTop, 4);
@@ -598,6 +874,20 @@ namespace vrac::ui
         g.setFont (mono (6.4f));
         g.drawFittedText (details.path, detailBounds.getX() + 14, detailBounds.getY() + 171,
                           detailBounds.getWidth() - 28, 28, juce::Justification::topLeft, 2);
+
+        const auto row = previewRowFor (detailBounds);
+        g.setColour (c.line);
+        g.fillRect ((float) detailBounds.getX() + 14.0f, (float) row.label.getY() - 8,
+                    (float) detailBounds.getWidth() - 28.0f, 1.0f);
+        g.setColour (c.muted);
+        g.setFont (font (6.8f, true));
+        g.drawText ("AUDITION  •  PLAYS ONCE ON CLICK", row.label.getX(), row.label.getY(),
+                    row.label.getWidth(), row.label.getHeight(), juce::Justification::centredLeft, false);
+        g.setColour (previewSample != nullptr ? c.inkSoft : c.muted);
+        g.setFont (mono (6.6f));
+        g.drawText (previewStatus, row.status.getX(), row.status.getY(),
+                    row.status.getWidth(), row.status.getHeight(),
+                    juce::Justification::centredLeft, true);
     }
 
     void VaultPanel::resized()
@@ -618,9 +908,14 @@ namespace vrac::ui
         auto detail = juce::Rectangle<int> (getWidth() - 14 - kDetailWidth, kTop, kDetailWidth, panelHeight);
         waveform.setBounds (detail.getX() + 14, detail.getY() + 204, kDetailWidth - 28, 90);
 
+        const auto row = previewRowFor (detail);
+        previewButton.setBounds (row.replay);
+        loopButton.setBounds (row.loop);
+        stopButton.setBounds (row.stop);
+
         loadButton.setBounds (detail.getX() + 14, detail.getBottom() - kButtonHeight - 12,
                               kDetailWidth - 112, kButtonHeight);
         folderButton.setBounds (detail.getRight() - 94, detail.getBottom() - kButtonHeight - 12,
                                 80, kButtonHeight);
     }
-} // namespace vrac::ui
+} // namespace sliceforge::ui

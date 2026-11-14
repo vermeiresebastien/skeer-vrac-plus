@@ -1,8 +1,10 @@
-/* Global master section: DJ-style filter, tone tilt, limiter and output gain.
+/* Global master section: DJ-style filter, tone tilt, limiter and output gain, then the
+ * output stage (soft clipper -> OUT GAIN -> ceiling) on the way to the destination.
  * Built once for the live context and replicated inside export renders. */
 
 import type { GlobalParams } from '../types';
 import { clamp, dbToGain } from '../types';
+import { buildOutputCurve, outputCurveKey } from './outputStage';
 
 function makeSoftClipCurve(samples = 2048): Float32Array {
   const curve = new Float32Array(samples);
@@ -24,6 +26,8 @@ export class MasterChain {
   private readonly compressor: DynamicsCompressorNode;
   private readonly shaper: WaveShaperNode;
   private readonly volume: GainNode;
+  private readonly outShape: WaveShaperNode;
+  private outCurveKey = '';
 
   constructor(ctx: BaseAudioContext) {
     this.ctx = ctx;
@@ -64,6 +68,10 @@ export class MasterChain {
     this.volume = ctx.createGain();
     this.volume.gain.value = 0.7;
 
+    this.outShape = ctx.createWaveShaper();
+    this.outShape.curve = buildOutputCurve(0, 0) as Float32Array<ArrayBuffer>;
+    this.outShape.oversample = '2x';
+
     this.input.connect(this.lowpass);
     this.lowpass.connect(this.highpass);
     this.highpass.connect(this.toneLow);
@@ -71,7 +79,8 @@ export class MasterChain {
     this.toneHigh.connect(this.compressor);
     this.compressor.connect(this.shaper);
     this.shaper.connect(this.volume);
-    this.volume.connect(this.output);
+    this.volume.connect(this.outShape);
+    this.outShape.connect(this.output);
   }
 
   setGlobal(global: GlobalParams, immediate = false): void {
@@ -101,6 +110,14 @@ export class MasterChain {
     setParam(this.toneLow.gain, -tone * 0.36, 0.04);
     setParam(this.toneHigh.gain, tone * 0.58, 0.04);
     setParam(this.volume.gain, dbToGain(clamp(global.volume, -40, 6)), 0.045);
+
+    // The output stage is one static curve — clip, trim, ceiling — and a WaveShaper cannot be
+    // target-automated, so it is rebuilt only when SOFT CLIP or OUT GAIN actually moves.
+    const key = outputCurveKey(global.clip, global.outGain);
+    if (key !== this.outCurveKey) {
+      this.outCurveKey = key;
+      this.outShape.curve = buildOutputCurve(global.clip, global.outGain) as Float32Array<ArrayBuffer>;
+    }
   }
 
   connect(destination: AudioNode): void {

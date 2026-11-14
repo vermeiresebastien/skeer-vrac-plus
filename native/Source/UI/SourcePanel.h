@@ -5,12 +5,12 @@
 #include "WaveformDisplay.h"
 #include "Controls.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     class SourcePanel final : public juce::Component
     {
     public:
-        explicit SourcePanel (VRACPlusAudioProcessor&);
+        explicit SourcePanel (SliceForgeAudioProcessor&);
         void paint (juce::Graphics&) override;
         void resized() override;
 
@@ -27,7 +27,7 @@ namespace vrac::ui
 
     private:
         void showLibraryMenu();
-        VRACPlusAudioProcessor& processorRef;
+        SliceForgeAudioProcessor& processorRef;
         WaveformDisplay waveform;
         juce::TextButton loadButton { "LOAD" };
         juce::TextButton libraryButton { "LIBRARY" };
@@ -38,8 +38,8 @@ namespace vrac::ui
         juce::TextButton addSlice { "+" };
         juce::TextButton deleteSlice { "DEL" };
         ParamSlider sensitivity;
-        std::array<std::unique_ptr<ParamKnob>, 8> globals;
+        std::array<std::unique_ptr<ParamKnob>, 10> globals;
         int selectedPad = 0;
     };
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

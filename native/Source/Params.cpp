@@ -1,6 +1,6 @@
 #include "Params.h"
 
-namespace vrac
+namespace sliceforge
 {
     namespace
     {
@@ -151,6 +151,7 @@ namespace vrac
         layout.add (std::make_unique<AudioParameterFloat> ("global.tone", "Global Tone", -12.0f, 12.0f, 0.0f));
         layout.add (std::make_unique<AudioParameterFloat> ("global.filter", "Global Filter", -1.0f, 1.0f, 0.0f));
         layout.add (std::make_unique<AudioParameterFloat> ("global.width", "Stereo Width", 0.0f, 1.0f, 0.65f));
+        // The output stage keeps its two parameters at the very end of the layout; see below.
         layout.add (std::make_unique<AudioParameterFloat> ("source.sensitivity", "Auto Slice Sensitivity", 0.0f, 1.0f, 0.55f));
 
         StringArray modelChoices;
@@ -183,6 +184,11 @@ namespace vrac
             layout.add (std::make_unique<AudioParameterBool> (padParamId (pad, "mute"), prefix + "Mute", false));
             layout.add (std::make_unique<AudioParameterBool> (padParamId (pad, "solo"), prefix + "Solo", false));
         }
+
+        // The output stage is added last, after every pad parameter, so a host session that
+        // indexes parameters by number keeps pointing at the same control it always did.
+        layout.add (std::make_unique<AudioParameterFloat> ("global.clip", "Soft Clip", 0.0f, 1.0f, 0.0f));
+        layout.add (std::make_unique<AudioParameterFloat> ("global.out", "Out Gain", -24.0f, 12.0f, 0.0f));
         return layout;
     }
 
@@ -224,6 +230,8 @@ namespace vrac
         global.filter = raw ("global.filter");
         global.width = raw ("global.width");
         global.sensitivity = raw ("source.sensitivity");
+        global.clip = raw ("global.clip");
+        global.outGain = raw ("global.out");
     }
 
     PadSettings ParameterCache::readPad (int index) const
@@ -265,6 +273,8 @@ namespace vrac
         s.tone = global.tone->load();
         s.filter = global.filter->load();
         s.width = global.width->load();
+        s.clip = global.clip->load();
+        s.outGain = global.outGain->load();
         return s;
     }
 
@@ -321,5 +331,7 @@ namespace vrac
         set ("global.tone", s.tone);
         set ("global.filter", s.filter);
         set ("global.width", s.width);
+        set ("global.clip", s.clip);
+        set ("global.out", s.outGain);
     }
-} // namespace vrac
+} // namespace sliceforge

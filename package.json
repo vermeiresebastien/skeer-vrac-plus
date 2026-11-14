@@ -1,8 +1,8 @@
 {
-  "name": "vrac-plus-web",
+  "name": "sliceforge-web",
   "private": true,
   "version": "1.0.0",
-  "description": "VRAC+ — a sample-based drum machine in the browser. Drop any sound, auto-slice it, and morph each pad across kick, snare, hat and clap models.",
+  "description": "SliceForge — a sample-based drum machine in the browser. Drop any sound, auto-slice it, and morph each pad across kick, snare, hat and clap models.",
   "type": "module",
   "scripts": {
     "worklet": "node scripts/build-worklet.mjs",

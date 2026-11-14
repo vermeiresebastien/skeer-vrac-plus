@@ -51,7 +51,7 @@ export async function persistUserSample(sample: SourceSample): Promise<void> {
       tx.onerror = () => reject(tx.error ?? new Error('Could not save the sample'));
     });
   } catch (error) {
-    console.warn('[VRAC+] could not persist user sample', error);
+    console.warn('[SliceForge] could not persist user sample', error);
   }
 }
 
@@ -80,7 +80,7 @@ export async function loadUserSample(id: string): Promise<SourceSample | null> {
       isUser: true,
     };
   } catch (error) {
-    console.warn('[VRAC+] could not restore user sample', error);
+    console.warn('[SliceForge] could not restore user sample', error);
     return null;
   }
 }

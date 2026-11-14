@@ -1,5 +1,5 @@
 /* ================================================================== *
- * VRAC+ — visual system
+ * SliceForge — visual system
  * A studio instrument: pale room, black hardware, orange signal.
  * ================================================================== */
 
@@ -284,11 +284,6 @@ a {
   font-weight: 700;
   font-size: 21px;
   letter-spacing: -0.045em;
-}
-
-.brand-plus {
-  color: var(--accent);
-  margin-left: 1px;
 }
 
 .brand-sub {

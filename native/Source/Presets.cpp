@@ -1,6 +1,6 @@
 #include "Presets.h"
 
-namespace vrac
+namespace sliceforge
 {
     const std::array<FactoryPreset, 6>& factoryPresets()
     {
@@ -104,4 +104,4 @@ namespace vrac
         }();
         return presets;
     }
-} // namespace vrac
+} // namespace sliceforge

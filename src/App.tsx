@@ -175,7 +175,7 @@ export default function App() {
 
   // Small debug surface used by the browser smoke tests; harmless in production.
   useEffect(() => {
-    (window as unknown as { __VRAC__?: unknown }).__VRAC__ = {
+    (window as unknown as { __SLICEFORGE__?: unknown }).__SLICEFORGE__ = {
       audioEngine,
       trigger: (index: number, velocity?: number) => triggerRef.current(index, velocity ?? 0.9, 'ui'),
       getKit: () => kitRef.current,
@@ -268,7 +268,7 @@ export default function App() {
         void persistUserSample(loaded);
         notify(`${loaded.name} loaded and sliced.`, 'success');
       } catch (error) {
-        console.error('[VRAC+] sample load failed', error);
+        console.error('[SliceForge] sample load failed', error);
         notify(error instanceof Error ? error.message : 'Could not decode that file.', 'error');
       }
     },
@@ -431,7 +431,7 @@ export default function App() {
           parsed && typeof parsed === 'object' && 'kit' in (parsed as Record<string, unknown>)
             ? (parsed as { kit: unknown }).kit
             : parsed;
-        if (!kitCandidate || typeof kitCandidate !== 'object') throw new Error('That is not a VRAC+ preset.');
+        if (!kitCandidate || typeof kitCandidate !== 'object') throw new Error('That is not a SliceForge preset.');
         const typed = kitCandidate as typeof kit;
         if (!Array.isArray(typed.pads) || typed.pads.length !== PAD_COUNT) throw new Error('The preset has no pad data.');
         const ok = await restoreKit(typed);

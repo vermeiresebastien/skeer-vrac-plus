@@ -126,7 +126,7 @@ export function RecordModal({
       setStatus('ready');
       meter();
     } catch (err) {
-      console.error('[VRAC+] input failed', err);
+      console.error('[SliceForge] input failed', err);
       setError(err instanceof Error ? err.message : 'Could not open the input');
       setStatus('error');
     }
@@ -158,7 +158,7 @@ export function RecordModal({
         setRecorded(sample);
         setStatus('recorded');
       } catch (err) {
-        console.error('[VRAC+] recording decode failed', err);
+        console.error('[SliceForge] recording decode failed', err);
         setError('The recording could not be decoded. Try a different input or browser.');
         setStatus('error');
       }

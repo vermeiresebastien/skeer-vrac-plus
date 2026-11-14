@@ -4,7 +4,7 @@
 
 #include <BinaryData.h>
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     namespace
     {
@@ -28,22 +28,22 @@ namespace vrac::ui
         }
     }
 
-    HeaderBar::HeaderBar (VRACPlusAudioProcessor& processor) : processorRef (processor)
+    HeaderBar::HeaderBar (SliceForgeAudioProcessor& processor) : processorRef (processor)
     {
-        skeerLogo = juce::ImageFileFormat::loadFrom (VRACAssets::skeerwordmark_png,
-                                                     (size_t) VRACAssets::skeerwordmark_pngSize);
+        skeerLogo = juce::ImageFileFormat::loadFrom (SliceForgeAssets::skeerwordmark_png,
+                                                     (size_t) SliceForgeAssets::skeerwordmark_pngSize);
         skeerLogoDark = makeDarkWordmark (skeerLogo);
         addAndMakeVisible (presetBox);
         presetBox.setTextWhenNothingSelected ("CURRENT KIT");
         presetBox.setEditableText (false);
-        const auto& presets = vrac::factoryPresets();
+        const auto& presets = sliceforge::factoryPresets();
         presetBox.addItem ("CURRENT KIT", 100);
         for (int i = 0; i < (int) presets.size(); ++i)
             presetBox.addItem (presets[(size_t) i].name, i + 1);
         presetBox.onChange = [this]
         {
             const auto id = presetBox.getSelectedId();
-            if (id > 0 && id <= (int) vrac::factoryPresets().size())
+            if (id > 0 && id <= (int) sliceforge::factoryPresets().size())
                 processorRef.applyFactoryPresetFromUi (id - 1);
         };
 
@@ -96,7 +96,7 @@ namespace vrac::ui
     {
         const auto name = processorRef.getPresetName();
         int selectedId = 0;
-        const auto& presets = vrac::factoryPresets();
+        const auto& presets = sliceforge::factoryPresets();
         for (int i = 0; i < (int) presets.size(); ++i)
             if (presets[(size_t) i].name == name)
                 selectedId = i + 1;
@@ -116,7 +116,7 @@ namespace vrac::ui
     void HeaderBar::resized()
     {
         auto area = getLocalBounds().reduced (12, 8);
-        area.removeFromLeft (318); // SKEER wordmark, rule, product overline
+        area.removeFromLeft (396); // SKEER wordmark, rule, product name and overline
         presetBox.setBounds (area.removeFromLeft (210).reduced (0, 4));
         area.removeFromLeft (8);
         kitTabButton.setBounds (area.removeFromLeft (52).reduced (0, 4));
@@ -169,11 +169,16 @@ namespace vrac::ui
         g.setColour (c.line);
         g.fillRect (184, 14, 1, 32);
 
-        g.setFont (display (29.0f));
-        g.setColour (c.muted);
-        g.drawText ("VRAC", 198, 5, 84, 30, juce::Justification::centredLeft, false);
-        g.setColour (c.accent);
-        g.drawText ("+", 258, 5, 20, 30, juce::Justification::centredLeft, false);
+        {
+            // Measured, not assumed: the ten-character wordmark must never reach the preset menu,
+            // so it shrinks instead of overflowing if the display face renders wider than expected.
+            constexpr float markHeight = 29.0f, maxWidth = 200.0f;
+            const auto natural = juce::TextLayout::getStringWidth (display (markHeight), "SLICEFORGE");
+            g.setFont (natural > maxWidth ? display (markHeight * maxWidth / natural)
+                                          : display (markHeight));
+            g.setColour (c.muted);
+            g.drawText ("SLICEFORGE", 198, 5, 200, 30, juce::Justification::centredLeft, false);
+        }
         g.setColour (c.muted);
         g.setFont (font (6.8f, true));
         g.drawText ("SAMPLE DRUM MACHINE", 199, 35, 150, 10, juce::Justification::centredLeft, false);
@@ -187,6 +192,6 @@ namespace vrac::ui
         g.drawText (processorRef.getMidiLearnTarget().isNotEmpty() ? "MIDI LEARN" : "MIDI READY",
                     right - 150, 35, 150, 10, juce::Justification::centredRight, false);
     }
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 
 

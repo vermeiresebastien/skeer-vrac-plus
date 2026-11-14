@@ -1,14 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { generateLibrarySample } from '../sampleLibrary';
 import { detectSlices, evenStarts, padStartsFromSlices } from '../slicer';
-import { VracEngine } from '../engineCore';
+import { SliceForgeEngine } from '../engineCore';
 import { DEFAULT_GLOBAL, createDefaultPads, type PadParams } from '../../types';
 
 function makeOutputs(frames = 128): Float32Array[][] {
   return Array.from({ length: 8 }, () => [new Float32Array(frames), new Float32Array(frames)]) as Float32Array[][];
 }
 
-function render(engine: VracEngine, blocks: number): Float32Array[][] {
+function render(engine: SliceForgeEngine, blocks: number): Float32Array[][] {
   let outputs = makeOutputs();
   for (let i = 0; i < blocks; i++) {
     outputs = makeOutputs();
@@ -27,7 +27,7 @@ function peakOf(outputs: Float32Array[][]): number {
   return peak;
 }
 
-function allPeak(engine: VracEngine, blocks: number): number {
+function allPeak(engine: SliceForgeEngine, blocks: number): number {
   let peak = 0;
   for (let i = 0; i < blocks; i++) {
     const outputs = makeOutputs();
@@ -94,12 +94,12 @@ describe('factory library', () => {
 
 describe('voice engine', () => {
   it('is silent before a trigger', () => {
-    const engine = new VracEngine(48000);
+    const engine = new SliceForgeEngine(48000);
     expect(allPeak(engine, 5)).toBe(0);
   });
 
   it('plays a model and a sample layer on the selected bus', () => {
-    const engine = new VracEngine(48000);
+    const engine = new SliceForgeEngine(48000);
     const sample = generateLibrarySample('foley');
     engine.setSample(sample.left, sample.right, sample.sampleRate);
     const pads = createDefaultPads();
@@ -113,7 +113,7 @@ describe('voice engine', () => {
   });
 
   it('produces an audible drumified-only hit with no sample loaded', () => {
-    const engine = new VracEngine(48000);
+    const engine = new SliceForgeEngine(48000);
     const pads = createDefaultPads();
     pads[2].drumify = 1;
     engine.setParams({ pads, global: { ...DEFAULT_GLOBAL } });
@@ -123,7 +123,7 @@ describe('voice engine', () => {
 
   it('respects mute and solo', () => {
     const base = createDefaultPads();
-    const engine = new VracEngine(48000);
+    const engine = new SliceForgeEngine(48000);
     engine.setSample(generateLibrarySample('foley').left, generateLibrarySample('foley').right, 48000);
     const muted: PadParams[] = base.map((p, i) => ({ ...p, mute: i === 0 }));
     engine.setParams({ pads: muted, global: { ...DEFAULT_GLOBAL } });
@@ -131,7 +131,7 @@ describe('voice engine', () => {
     expect(allPeak(engine, 40)).toBe(0);
 
     const soloed: PadParams[] = base.map((p, i) => ({ ...p, solo: i === 2 }));
-    const engine2 = new VracEngine(48000);
+    const engine2 = new SliceForgeEngine(48000);
     engine2.setSample(generateLibrarySample('foley').left, generateLibrarySample('foley').right, 48000);
     engine2.setParams({ pads: soloed, global: { ...DEFAULT_GLOBAL } });
     engine2.trigger(0, 1);
@@ -145,7 +145,7 @@ describe('voice engine', () => {
     // two different pads in group 2
     pads[6].choke = 2;
     pads[7].choke = 2;
-    const engine = new VracEngine(48000);
+    const engine = new SliceForgeEngine(48000);
     engine.setParams({ pads, global: { ...DEFAULT_GLOBAL } });
     engine.trigger(6, 1);
     render(engine, 4);
@@ -159,7 +159,7 @@ describe('voice engine', () => {
   });
 
   it('allOff silences the engine', () => {
-    const engine = new VracEngine(48000);
+    const engine = new SliceForgeEngine(48000);
     engine.setParams({ pads: createDefaultPads(), global: { ...DEFAULT_GLOBAL } });
     engine.trigger(0, 1);
     render(engine, 2);
@@ -170,7 +170,7 @@ describe('voice engine', () => {
 
   it('scales level with velocity', () => {
     function hitPeak(velocity: number): number {
-      const engine = new VracEngine(48000);
+      const engine = new SliceForgeEngine(48000);
       engine.setParams({ pads: createDefaultPads(), global: { ...DEFAULT_GLOBAL } });
       engine.trigger(0, velocity);
       return allPeak(engine, 40);
@@ -184,7 +184,7 @@ describe('voice engine', () => {
     const families = ['kick', 'snare', 'hat', 'clap'] as const;
     for (const family of families) {
       for (let model = 0; model < 4; model++) {
-        const engine = new VracEngine(48000);
+        const engine = new SliceForgeEngine(48000);
         const pads = createDefaultPads();
         pads[0] = {
           ...pads[0],

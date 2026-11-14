@@ -2,12 +2,12 @@
 
 #include <JuceHeader.h>
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
-    class VracLookAndFeel final : public juce::LookAndFeel_V4
+    class SliceForgeLookAndFeel final : public juce::LookAndFeel_V4
     {
     public:
-        VracLookAndFeel();
+        SliceForgeLookAndFeel();
         void refreshTheme();
 
         juce::Font getTextButtonFont (juce::TextButton&, int) override;
@@ -27,5 +27,5 @@ namespace vrac::ui
                                juce::Slider::SliderStyle, juce::Slider&) override;
         void drawPopupMenuBackground (juce::Graphics&, int width, int height) override;
     };
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

@@ -9,7 +9,7 @@ namespace
     constexpr int kBaseHeight = 840;
 }
 
-VRACPlusAudioProcessorEditor::VRACPlusAudioProcessorEditor (VRACPlusAudioProcessor& p)
+SliceForgeAudioProcessorEditor::SliceForgeAudioProcessorEditor (SliceForgeAudioProcessor& p)
     : AudioProcessorEditor (&p), processorRef (p)
 {
     setOpaque (true);
@@ -24,15 +24,15 @@ VRACPlusAudioProcessorEditor::VRACPlusAudioProcessorEditor (VRACPlusAudioProcess
     content->setSize (kBaseWidth, kBaseHeight);
     addAndMakeVisible (*content);
 
-    header = std::make_unique<vrac::ui::HeaderBar> (processorRef);
-    sourcePanel = std::make_unique<vrac::ui::SourcePanel> (processorRef);
-    padsPanel = std::make_unique<vrac::ui::PadsPanel> (processorRef);
-    padEditor = std::make_unique<vrac::ui::PadEditorPanel> (processorRef);
-    sequencerPanel = std::make_unique<vrac::ui::SequencerPanel> (processorRef);
-    sequencerPanel->setComponentID ("vrac-sequencer-page");
-    vaultPanel = std::make_unique<vrac::ui::VaultPanel> (processorRef);
-    vaultPanel->setComponentID ("vrac-vault-page");
-    footer = std::make_unique<vrac::ui::FooterBar> (processorRef);
+    header = std::make_unique<sliceforge::ui::HeaderBar> (processorRef);
+    sourcePanel = std::make_unique<sliceforge::ui::SourcePanel> (processorRef);
+    padsPanel = std::make_unique<sliceforge::ui::PadsPanel> (processorRef);
+    padEditor = std::make_unique<sliceforge::ui::PadEditorPanel> (processorRef);
+    sequencerPanel = std::make_unique<sliceforge::ui::SequencerPanel> (processorRef);
+    sequencerPanel->setComponentID ("sliceforge-sequencer-page");
+    vaultPanel = std::make_unique<sliceforge::ui::VaultPanel> (processorRef);
+    vaultPanel->setComponentID ("sliceforge-vault-page");
+    footer = std::make_unique<sliceforge::ui::FooterBar> (processorRef);
 
     content->addAndMakeVisible (*header);
     content->addAndMakeVisible (*sourcePanel);
@@ -45,13 +45,13 @@ VRACPlusAudioProcessorEditor::VRACPlusAudioProcessorEditor (VRACPlusAudioProcess
     sequencerPanel->setActive (false);
     vaultPanel->setVisible (false);
     vaultPanel->setActive (false);
-    vaultPanel->onSampleLoaded = [this] { showPage (vrac::ui::Page::kit); };
+    vaultPanel->onSampleLoaded = [this] { showPage (sliceforge::ui::Page::kit); };
 
     header->onSavePreset = [this] { savePresetFile(); };
     header->onLoadPreset = [this] { loadPresetFile(); };
     header->onHelp = [this] { showHelp(); };
     header->onAbout = [this] { showAbout(); };
-    header->onPageSelected = [this] (vrac::ui::Page page) { showPage (page); };
+    header->onPageSelected = [this] (sliceforge::ui::Page page) { showPage (page); };
     header->onThemeToggle = [this] { toggleTheme(); };
 
     sourcePanel->onLoadFile = [this] { chooseSampleFile(); };
@@ -92,19 +92,19 @@ VRACPlusAudioProcessorEditor::VRACPlusAudioProcessorEditor (VRACPlusAudioProcess
     startTimerHz (30);
 }
 
-VRACPlusAudioProcessorEditor::~VRACPlusAudioProcessorEditor()
+SliceForgeAudioProcessorEditor::~SliceForgeAudioProcessorEditor()
 {
     stopTimer();
     processorRef.getUiBroadcaster().removeChangeListener (this);
     setLookAndFeel (nullptr);
 }
 
-void VRACPlusAudioProcessorEditor::paint (juce::Graphics& g)
+void SliceForgeAudioProcessorEditor::paint (juce::Graphics& g)
 {
-    g.fillAll (vrac::ui::palette().bg);
+    g.fillAll (sliceforge::ui::palette().bg);
 }
 
-void VRACPlusAudioProcessorEditor::resized()
+void SliceForgeAudioProcessorEditor::resized()
 {
     if (content == nullptr)
         return;
@@ -127,17 +127,17 @@ void VRACPlusAudioProcessorEditor::resized()
     footer->setBounds (0, 810, kBaseWidth, 30);
 }
 
-void VRACPlusAudioProcessorEditor::refreshAll()
+void SliceForgeAudioProcessorEditor::refreshAll()
 {
     header->refresh();
-    if (currentPage == vrac::ui::Page::sequencer)
+    if (currentPage == sliceforge::ui::Page::sequencer)
     {
         sequencerPanel->refreshFromProcessor();
         footer->repaint();
         repaint();
         return;
     }
-    if (currentPage == vrac::ui::Page::vault)
+    if (currentPage == sliceforge::ui::Page::vault)
     {
         footer->repaint();
         repaint();
@@ -155,29 +155,29 @@ void VRACPlusAudioProcessorEditor::refreshAll()
     repaint();
 }
 
-void VRACPlusAudioProcessorEditor::showSequencerPage (bool shouldShow)
+void SliceForgeAudioProcessorEditor::showSequencerPage (bool shouldShow)
 {
-    showPage (shouldShow ? vrac::ui::Page::sequencer : vrac::ui::Page::kit);
+    showPage (shouldShow ? sliceforge::ui::Page::sequencer : sliceforge::ui::Page::kit);
 }
 
-void VRACPlusAudioProcessorEditor::showVaultPage (bool shouldShow)
+void SliceForgeAudioProcessorEditor::showVaultPage (bool shouldShow)
 {
-    showPage (shouldShow ? vrac::ui::Page::vault : vrac::ui::Page::kit);
+    showPage (shouldShow ? sliceforge::ui::Page::vault : sliceforge::ui::Page::kit);
 }
 
-void VRACPlusAudioProcessorEditor::toggleTheme()
+void SliceForgeAudioProcessorEditor::toggleTheme()
 {
-    vrac::ui::toggleThemeMode (true);
+    sliceforge::ui::toggleThemeMode (true);
     applyThemeChange();
 }
 
-void VRACPlusAudioProcessorEditor::setDarkThemeForTesting (bool dark)
+void SliceForgeAudioProcessorEditor::setDarkThemeForTesting (bool dark)
 {
-    vrac::ui::setThemeMode (dark ? vrac::ui::ThemeMode::dark : vrac::ui::ThemeMode::light, false);
+    sliceforge::ui::setThemeMode (dark ? sliceforge::ui::ThemeMode::dark : sliceforge::ui::ThemeMode::light, false);
     applyThemeChange();
 }
 
-void VRACPlusAudioProcessorEditor::repaintAll (juce::Component& component)
+void SliceForgeAudioProcessorEditor::repaintAll (juce::Component& component)
 {
     component.repaint();
     for (int i = 0; i < component.getNumChildComponents(); ++i)
@@ -185,7 +185,7 @@ void VRACPlusAudioProcessorEditor::repaintAll (juce::Component& component)
             repaintAll (*child);
 }
 
-void VRACPlusAudioProcessorEditor::applyThemeChange()
+void SliceForgeAudioProcessorEditor::applyThemeChange()
 {
     lookAndFeel.refreshTheme();
     if (header != nullptr)
@@ -204,25 +204,25 @@ void VRACPlusAudioProcessorEditor::applyThemeChange()
     repaint();
 }
 
-void VRACPlusAudioProcessorEditor::showPage (vrac::ui::Page page)
+void SliceForgeAudioProcessorEditor::showPage (sliceforge::ui::Page page)
 {
     currentPage = page;
     header->setPageActive (page);
-    const bool kitVisible = page == vrac::ui::Page::kit;
+    const bool kitVisible = page == sliceforge::ui::Page::kit;
     sourcePanel->setVisible (kitVisible);
     padsPanel->setVisible (kitVisible);
     padEditor->setVisible (kitVisible);
-    sequencerPanel->setVisible (page == vrac::ui::Page::sequencer);
-    sequencerPanel->setActive (page == vrac::ui::Page::sequencer);
-    vaultPanel->setVisible (page == vrac::ui::Page::vault);
-    vaultPanel->setActive (page == vrac::ui::Page::vault);
+    sequencerPanel->setVisible (page == sliceforge::ui::Page::sequencer);
+    sequencerPanel->setActive (page == sliceforge::ui::Page::sequencer);
+    vaultPanel->setVisible (page == sliceforge::ui::Page::vault);
+    vaultPanel->setActive (page == sliceforge::ui::Page::vault);
     refreshAll();
     repaint();
 }
 
-void VRACPlusAudioProcessorEditor::selectPad (int pad)
+void SliceForgeAudioProcessorEditor::selectPad (int pad)
 {
-    pad = juce::jlimit (0, vrac::kNumPads - 1, pad);
+    pad = juce::jlimit (0, sliceforge::kNumPads - 1, pad);
     processorRef.setSelectedPad (pad);
     sourcePanel->setSelectedPad (pad);
     padsPanel->getPadGrid().setSelectedPad (pad);
@@ -231,7 +231,7 @@ void VRACPlusAudioProcessorEditor::selectPad (int pad)
     padsPanel->getPadGrid().repaint();
 }
 
-void VRACPlusAudioProcessorEditor::navigateSlice (int direction)
+void SliceForgeAudioProcessorEditor::navigateSlice (int direction)
 {
     const auto slices = processorRef.getSlices();
     if (slices.empty())
@@ -261,7 +261,7 @@ void VRACPlusAudioProcessorEditor::navigateSlice (int direction)
     repaint();
 }
 
-void VRACPlusAudioProcessorEditor::addOrDeleteSlice (bool add)
+void SliceForgeAudioProcessorEditor::addOrDeleteSlice (bool add)
 {
     const auto pad = processorRef.getSelectedPad();
     const auto time = processorRef.getPadStart (pad);
@@ -275,19 +275,19 @@ void VRACPlusAudioProcessorEditor::addOrDeleteSlice (bool add)
     repaint();
 }
 
-void VRACPlusAudioProcessorEditor::setBoolPadParam (int pad, const juce::String& suffix)
+void SliceForgeAudioProcessorEditor::setBoolPadParam (int pad, const juce::String& suffix)
 {
     const auto padSettings = processorRef.getParameterCache().readPad (pad);
     const bool current = suffix == "mute" ? padSettings.mute : padSettings.solo;
     processorRef.pushUndoSnapshot();
-    const auto id = vrac::padParamId (pad, suffix.toRawUTF8());
+    const auto id = sliceforge::padParamId (pad, suffix.toRawUTF8());
     if (auto* parameter = processorRef.getValueTreeState().getParameter (id))
         parameter->setValueNotifyingHost (parameter->getNormalisableRange().convertTo0to1 (current ? 0.0f : 1.0f));
     padsPanel->getPadGrid().repaint();
     padEditor->refreshFromProcessor();
 }
 
-void VRACPlusAudioProcessorEditor::updateAutoSelection()
+void SliceForgeAudioProcessorEditor::updateAutoSelection()
 {
     const auto stamp = processorRef.getTriggerStamp();
     if (stamp == lastTriggerStamp)
@@ -297,13 +297,13 @@ void VRACPlusAudioProcessorEditor::updateAutoSelection()
         selectPad (processorRef.getLastTriggeredPad());
 }
 
-void VRACPlusAudioProcessorEditor::timerCallback()
+void SliceForgeAudioProcessorEditor::timerCallback()
 {
     updateAutoSelection();
     ++uiTicks;
     ++statusTicks;
 
-    if (currentPage == vrac::ui::Page::sequencer || currentPage == vrac::ui::Page::vault)
+    if (currentPage == sliceforge::ui::Page::sequencer || currentPage == sliceforge::ui::Page::vault)
     {
         if (uiTicks % 10 == 0)
         {
@@ -336,25 +336,25 @@ void VRACPlusAudioProcessorEditor::timerCallback()
     juce::ignoreUnused (statusTicks);
 }
 
-void VRACPlusAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)
+void SliceForgeAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadcaster*)
 {
     refreshAll();
 }
 
-bool VRACPlusAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
+bool SliceForgeAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
 {
     const auto code = key.getKeyCode();
-    if (currentPage == vrac::ui::Page::vault)
+    if (currentPage == sliceforge::ui::Page::vault)
         return false;
     if (code == juce::KeyPress::spaceKey)
     {
-        if (currentPage == vrac::ui::Page::sequencer)
+        if (currentPage == sliceforge::ui::Page::sequencer)
             sequencerPanel->togglePlayback();
         else
             processorRef.chokeAll();
         return true;
     }
-    if (currentPage == vrac::ui::Page::sequencer
+    if (currentPage == sliceforge::ui::Page::sequencer
         && juce::CharacterFunctions::toLowerCase ((juce::juce_wchar) code) == (juce::juce_wchar) 'g')
     {
         sequencerPanel->randomizeShortcut();
@@ -389,7 +389,7 @@ bool VRACPlusAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
     return false;
 }
 
-bool VRACPlusAudioProcessorEditor::isInterestedInFileDrag (const juce::StringArray& files)
+bool SliceForgeAudioProcessorEditor::isInterestedInFileDrag (const juce::StringArray& files)
 {
     for (const auto& path : files)
         if (juce::File (path).hasFileExtension ("wav;aif;aiff;mp3;flac;ogg;m4a"))
@@ -397,7 +397,7 @@ bool VRACPlusAudioProcessorEditor::isInterestedInFileDrag (const juce::StringArr
     return false;
 }
 
-void VRACPlusAudioProcessorEditor::filesDropped (const juce::StringArray& files, int, int)
+void SliceForgeAudioProcessorEditor::filesDropped (const juce::StringArray& files, int, int)
 {
     for (const auto& path : files)
     {
@@ -408,19 +408,19 @@ void VRACPlusAudioProcessorEditor::filesDropped (const juce::StringArray& files,
         refreshAll();
         if (! loaded)
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
-                                                    "SKEER VRAC+ could not load that file",
+                                                    "SKEER SliceForge could not load that file",
                                                     file.getFileName() + " could not be decoded as audio.");
         return;
     }
 }
 
-void VRACPlusAudioProcessorEditor::chooseSampleFile()
+void SliceForgeAudioProcessorEditor::chooseSampleFile()
 {
     static const juce::String wildcard = "*.wav;*.aif;*.aiff;*.mp3;*.flac;*.ogg;*.m4a";
-    fileChooser = std::make_unique<juce::FileChooser> ("Load a sound into SKEER VRAC+",
+    fileChooser = std::make_unique<juce::FileChooser> ("Load a sound into SKEER SliceForge",
                                                       juce::File::getSpecialLocation (juce::File::userMusicDirectory),
                                                       wildcard);
-    auto safe = juce::Component::SafePointer<VRACPlusAudioProcessorEditor> (this);
+    auto safe = juce::Component::SafePointer<SliceForgeAudioProcessorEditor> (this);
     fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                               [safe] (const juce::FileChooser& chooser)
                               {
@@ -434,22 +434,22 @@ void VRACPlusAudioProcessorEditor::chooseSampleFile()
                                       if (! loaded)
                                           juce::AlertWindow::showMessageBoxAsync (
                                               juce::MessageBoxIconType::WarningIcon,
-                                              "SKEER VRAC+ could not load that file",
+                                              "SKEER SliceForge could not load that file",
                                               file.getFileName() + " could not be decoded as audio.");
                                   }
                               });
 }
 
-void VRACPlusAudioProcessorEditor::savePresetFile()
+void SliceForgeAudioProcessorEditor::savePresetFile()
 {
     auto directory = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                         .getChildFile ("VRACPlus")
+                         .getChildFile ("SliceForge")
                          .getChildFile ("Presets");
     directory.createDirectory();
-    fileChooser = std::make_unique<juce::FileChooser> ("Save SKEER VRAC+ preset",
+    fileChooser = std::make_unique<juce::FileChooser> ("Save SKEER SliceForge preset",
                                                       directory.getChildFile (processorRef.getPresetName() + ".vracpreset"),
                                                       "*.vracpreset");
-    auto safe = juce::Component::SafePointer<VRACPlusAudioProcessorEditor> (this);
+    auto safe = juce::Component::SafePointer<SliceForgeAudioProcessorEditor> (this);
     fileChooser->launchAsync (juce::FileBrowserComponent::saveMode | juce::FileBrowserComponent::canSelectFiles
                                   | juce::FileBrowserComponent::warnAboutOverwriting,
                               [safe] (const juce::FileChooser& chooser)
@@ -465,19 +465,19 @@ void VRACPlusAudioProcessorEditor::savePresetFile()
                                   safe->processorRef.getStateInformation (data);
                                   if (file.replaceWithData (data.getData(), data.getSize()))
                                       juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::InfoIcon,
-                                                                              "SKEER VRAC+ preset saved",
+                                                                              "SKEER SliceForge preset saved",
                                                                               file.getFullPathName());
                               });
 }
 
-void VRACPlusAudioProcessorEditor::loadPresetFile()
+void SliceForgeAudioProcessorEditor::loadPresetFile()
 {
     auto directory = juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                         .getChildFile ("VRACPlus")
+                         .getChildFile ("SliceForge")
                          .getChildFile ("Presets");
     directory.createDirectory();
-    fileChooser = std::make_unique<juce::FileChooser> ("Load SKEER VRAC+ preset", directory, "*.vracpreset");
-    auto safe = juce::Component::SafePointer<VRACPlusAudioProcessorEditor> (this);
+    fileChooser = std::make_unique<juce::FileChooser> ("Load SKEER SliceForge preset", directory, "*.vracpreset");
+    auto safe = juce::Component::SafePointer<SliceForgeAudioProcessorEditor> (this);
     fileChooser->launchAsync (juce::FileBrowserComponent::openMode | juce::FileBrowserComponent::canSelectFiles,
                               [safe] (const juce::FileChooser& chooser)
                               {
@@ -495,29 +495,29 @@ void VRACPlusAudioProcessorEditor::loadPresetFile()
                               });
 }
 
-void VRACPlusAudioProcessorEditor::showHelp()
+void SliceForgeAudioProcessorEditor::showHelp()
 {
     juce::AlertWindow::showMessageBoxAsync (
         juce::MessageBoxIconType::InfoIcon,
-        "SKEER VRAC+ - quick guide",
+        "SKEER SliceForge - quick guide",
         "LOAD A SOUND\nDrop or load WAV / AIFF / MP3 / FLAC / OGG / M4A, choose a library source, or record a sidechain input.\n\n"
         "SLICE IT\nSet Auto Slice sensitivity, step through hits with < > RND, add or delete a slice, and drag the orange marker to choose any pad's start.\n\n"
         "MORPH IT\nEvery pad blends between the original sample and one of 16 drum models. Use Drumify, then Warp / Impact / Instability / Super / Tone / EQ to finish the hit.\n\n"
         "PLAY IT\nClicks, MIDI notes C1-D#2, and the QWERTY keys 1-4 / QWER / ASDF / ZXCV all trigger pads. MIDI notes also follow Auto Select.\n\n"
-        "MIX & LEARN\nUse Mute / Solo, choke groups and one of eight stereo outputs. Right-click any knob and move a MIDI CC to learn it.\n\n"
-        "BROWSE THE VAULT\nIf SKEER Sample Vault is installed, the VAULT tab reads its sample index directly. Search, filter, check indexed metadata and load a sample into the kit. Use LOCATE DB if the index is in a custom location.\n\n"
-        "SEQUENCE IT\nThe SEQUENCER tab adds four patterns, host-synced playback, probability, ratchets, nudge, flams, parameter locks, polymeter and an eight-slot song chain.\n\n"
+        "MIX & LEARN\nUse Mute / Solo, choke groups and one of eight stereo outputs. SOFT CLIP decides how early the output peaks bend - 0 % is bypassed and nothing under the knee is ever attenuated - and OUT trims what comes after it, under a ceiling that keeps the plugin inside full scale. Right-click any knob and move a MIDI CC to learn it.\n\n"
+        "BROWSE THE VAULT\nIf SKEER Sample Vault is installed, the VAULT tab reads its sample index directly. Search, filter, check indexed metadata and load a sample into the kit. Clicking a row auditions it once - PLAY hears it again, LOOP keeps it going and STOP cuts it. Use LOCATE DB if the index is in a custom location.\n\n"
+        "SEQUENCE IT\nThe SEQUENCER tab adds four patterns, host-synced playback, probability, ratchets, nudge, flams, parameter locks, polymeter and an eight-slot song chain. COPY TO - or a right-click on a pattern letter - duplicates that pattern into another slot; the destination is replaced and one undo step brings back what was there.\n\n"
         "The host session saves the full kit, including the slice map, sequencer and a custom sample.",
         "GOT IT");
 }
 
-void VRACPlusAudioProcessorEditor::showAbout()
+void SliceForgeAudioProcessorEditor::showAbout()
 {
     juce::AlertWindow::showMessageBoxAsync (
         juce::MessageBoxIconType::InfoIcon,
-        "SKEER VRAC+ - drumify any sound",
+        "SKEER SliceForge - drumify any sound",
         "One sound. One drum kit.\n\n"
-        "SKEER VRAC+ turns any recording into a sixteen-pad instrument. Auto-slice it, morph each pad across kick, snare, hat and clap models, then shape the result with Warp, Impact, Instability, Tone Shift, Super and a three-band EQ.\n\n"
+        "SKEER SliceForge turns any recording into a sixteen-pad instrument. Auto-slice it, morph each pad across kick, snare, hat and clap models, then shape the result with Warp, Impact, Instability, Tone Shift, Super and a three-band EQ.\n\n"
         "16 pads  /  16 models  /  8 stereo outputs  /  SKEER interface and factory library.\n\n"
         "An independent VST3/standalone interpretation inspired by VRAC+ by Beatsurfing, with SKEER branding. Not affiliated with or endorsed by Beatsurfing / Druw Audio. Factory sound content is original procedural material.",
         "CLOSE");

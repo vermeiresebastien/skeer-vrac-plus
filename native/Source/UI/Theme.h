@@ -2,7 +2,7 @@
 
 #include <JuceHeader.h>
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     struct Palette
     {
@@ -56,5 +56,5 @@ namespace vrac::ui
     juce::String formatPercent (float value, int decimals = 0);
     juce::String formatSemitones (float value);
     juce::String formatCents (float value);
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

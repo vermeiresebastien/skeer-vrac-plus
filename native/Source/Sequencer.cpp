@@ -4,7 +4,7 @@
 #include <cmath>
 #include <cstdint>
 
-namespace vrac
+namespace sliceforge
 {
     namespace
     {
@@ -472,6 +472,17 @@ namespace vrac
         pattern = SeqPattern {};
     }
 
+    bool copyPatternTo (SequencerData& data, int source, int target)
+    {
+        if (source < 0 || source >= kSeqPatterns
+            || target < 0 || target >= kSeqPatterns
+            || source == target)
+            return false;
+
+        data.patterns[(size_t) target] = data.patterns[(size_t) source];
+        return true;
+    }
+
     void makeDefaultPattern (SeqPattern& pattern, int index)
     {
         clearPattern (pattern);
@@ -707,7 +718,7 @@ namespace vrac
         sequence.addEvent (juce::MidiMessage::tempoMetaEvent (
             (int) std::round (60000000.0 / juce::jmax (20.0, data.bpm))), 0.0);
         sequence.addEvent (juce::MidiMessage::timeSignatureMetaEvent (4, 4), 0.0);
-        sequence.addEvent (juce::MidiMessage::textMetaEvent (3, "SKEER VRAC+ pattern"), 0.0);
+        sequence.addEvent (juce::MidiMessage::textMetaEvent (3, "SKEER SliceForge pattern"), 0.0);
 
         for (int absolute = 0; absolute < totalSteps; ++absolute)
         {
@@ -801,4 +812,4 @@ namespace vrac
         state.internalPpq = 0.0;
         clearHistory (state.lastInternalPadStep);
     }
-} // namespace vrac
+} // namespace sliceforge

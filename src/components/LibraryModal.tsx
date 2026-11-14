@@ -39,7 +39,7 @@ export function LibraryModal({
         const sample = generateLibrarySample(info.id);
         setPeaks((prev) => ({ ...prev, [info.id]: sample.peaks }));
       } catch (error) {
-        console.error('[VRAC+] preview generation failed', error);
+        console.error('[SliceForge] preview generation failed', error);
       }
       window.setTimeout(run, 10);
     };

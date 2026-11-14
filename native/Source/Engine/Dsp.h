@@ -4,7 +4,7 @@
 #include <array>
 #include <cmath>
 
-namespace vrac
+namespace sliceforge
 {
     constexpr float kTwoPi = 6.283185307179586f;
     constexpr float kHalfPi = 1.5707963267948966f;
@@ -241,5 +241,73 @@ namespace vrac
             }
         }
     };
-} // namespace vrac
+
+    // Final stage, after the buses have been summed and folded onto the host outputs: an
+    // adjustable soft clipper, then an explicit output trim, then a hard safety ceiling.
+    //   |x| <= knee   ->  x                        (bit-exact; the slope at the knee is 1)
+    //   |x| >  knee   ->  sign(x) * (knee + headroom * tanh ((|x| - knee) / headroom))
+    // The knee drops from full scale to 0.349 as SOFT CLIP goes from 0 to 1, so the higher the
+    // setting the earlier the peaks bend, while quiet material is never touched. The curve is
+    // continuous, monotonic and asymptotic to kCeiling; then OUT GAIN trims it and the clamp
+    // guarantees the plugin can never hand a host anything above full scale - the master
+    // chain's own fold tops out near 1.25, so this is the limiter that was missing behind it.
+    struct OutputStage
+    {
+        static constexpr float kCeiling = 0.999f;
+        static constexpr float kMaxKneeDrop = 0.65f;
+
+        float knee = kCeiling;
+        float headroom = 0.0f;
+        float gain = 1.0f;
+        float lastClip = 999.0f;
+        float lastOut = 999.0f;
+
+        void prepare() { setParameters (0.0f, 0.0f, true); }
+
+        void setParameters (float clip, float outDb, bool force = false)
+        {
+            if (! force && std::abs (clip - lastClip) < 1.0e-5f
+                && std::abs (outDb - lastOut) < 1.0e-4f)
+                return;
+            lastClip = clip;
+            lastOut = outDb;
+            headroom = kMaxKneeDrop * juce::jlimit (0.0f, 1.0f, clip);
+            knee = kCeiling - headroom;
+            const auto db = juce::jlimit (-24.0f, 12.0f, outDb);
+            gain = db <= -96.0f ? 0.0f : std::pow (10.0f, db * 0.05f);
+        }
+
+        static float clampToCeiling (float x) noexcept
+        {
+            return x > kCeiling ? kCeiling : (x < -kCeiling ? -kCeiling : x);
+        }
+
+        float shape (float x) const
+        {
+            const auto a = std::abs (x);
+            if (a <= knee)
+                return x;
+            const auto bend = knee + headroom * std::tanh ((a - knee) / headroom);
+            return x < 0.0f ? -bend : bend;
+        }
+
+        void process (float* data, int numSamples) const
+        {
+            const bool saturating = headroom > 0.0f;
+            for (int i = 0; i < numSamples; ++i)
+            {
+                auto v = saturating ? shape (data[i]) : data[i];
+                v *= gain;
+                data[i] = clampToCeiling (v);
+            }
+        }
+
+        void process (juce::AudioBuffer<float>& buffer, int numSamples) const
+        {
+            const auto n = juce::jmin (numSamples, buffer.getNumSamples());
+            for (int ch = 0; ch < buffer.getNumChannels(); ++ch)
+                process (buffer.getWritePointer (ch), n);
+        }
+    };
+} // namespace sliceforge
 

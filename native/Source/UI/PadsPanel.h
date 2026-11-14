@@ -4,12 +4,12 @@
 #include "../PluginProcessor.h"
 #include "PadGrid.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     class PadsPanel final : public juce::Component
     {
     public:
-        explicit PadsPanel (VRACPlusAudioProcessor&);
+        explicit PadsPanel (SliceForgeAudioProcessor&);
         void paint (juce::Graphics&) override;
         void resized() override;
 
@@ -19,11 +19,11 @@ namespace vrac::ui
         std::function<void (bool)> onAutoSelectChanged;
 
     private:
-        VRACPlusAudioProcessor& processorRef;
+        SliceForgeAudioProcessor& processorRef;
         PadGrid padGrid;
         juce::TextButton autoSelectButton { "AUTO SELECT" };
         juce::TextButton stopButton { "STOP" };
         bool autoSelect = true;
     };
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

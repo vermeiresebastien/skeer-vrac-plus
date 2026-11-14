@@ -3,7 +3,7 @@
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     enum class Page
     {
@@ -15,7 +15,7 @@ namespace vrac::ui
     class HeaderBar final : public juce::Component
     {
     public:
-        explicit HeaderBar (VRACPlusAudioProcessor&);
+        explicit HeaderBar (SliceForgeAudioProcessor&);
         void paint (juce::Graphics&) override;
         void resized() override;
         void refresh();
@@ -29,7 +29,7 @@ namespace vrac::ui
         std::function<void()> onThemeToggle;
 
     private:
-        VRACPlusAudioProcessor& processorRef;
+        SliceForgeAudioProcessor& processorRef;
         juce::Image skeerLogo;
         juce::Image skeerLogoDark;
         juce::ComboBox presetBox;
@@ -45,5 +45,5 @@ namespace vrac::ui
         juce::TextButton helpButton { "HELP" };
         juce::TextButton aboutButton { "INFO" };
     };
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

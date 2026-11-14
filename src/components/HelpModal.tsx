@@ -6,7 +6,7 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
   const [tab, setTab] = useState<'load' | 'shape' | 'mix' | 'keys'>('load');
 
   return (
-    <Modal open={open} onClose={onClose} eyebrow="USER GUIDE · V1.0" title="How to use VRAC+" wide>
+    <Modal open={open} onClose={onClose} eyebrow="USER GUIDE · V1.0" title="How to use SliceForge" wide>
       <div className="help-tabs" role="tablist">
         {[
           ['load', '01 · LOAD'],
@@ -34,7 +34,7 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
             <h3>Any sound becomes drums.</h3>
             <p>
               Drop a recording, load one of the six factory sources, or record straight from an
-              interface. VRAC+ finds the transients and gives every pad its own start point — one
+              interface. SliceForge finds the transients and gives every pad its own start point — one
               file, up to sixteen different sources.
             </p>
           </article>
@@ -107,7 +107,7 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
             <p>
               Mute and solo pads, group hats with choke groups, route each pad to one of eight
               stereo outputs, then print one-shots or the entire kit. The master filter and tone
-              controls the whole instrument.
+              controls the whole instrument, and SOFT CLIP plus OUT shape what leaves it.
             </p>
           </article>
           <div className="guide-list">
@@ -115,6 +115,11 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
               <Icon name="stop" />
               <strong>CHOKE GROUPS</strong>
               <p>Assign pads to groups 1–4. A new hit in the group cuts the previous one — perfect for hats.</p>
+            </div>
+            <div>
+              <Icon name="wave" />
+              <strong>OUTPUT STAGE</strong>
+              <p>SOFT CLIP decides how early the peaks bend — 0 % is bypassed and nothing under the knee is ever attenuated. OUT trims what comes after it, and a final ceiling keeps the app inside full scale however high you push it.</p>
             </div>
             <div>
               <Icon name="download" />
@@ -129,7 +134,7 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
             <div>
               <Icon name="save" />
               <strong>PRESETS</strong>
-              <p>Six factory kits ship with VRAC+. Save your own kits locally; export and import presets as JSON.</p>
+              <p>Six factory kits ship with SliceForge. Save your own kits locally; export and import presets as JSON.</p>
             </div>
           </div>
         </div>

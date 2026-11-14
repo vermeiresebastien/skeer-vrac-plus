@@ -7,7 +7,7 @@
 #include <atomic>
 #include <memory>
 
-namespace vrac
+namespace sliceforge
 {
     class Voice;
 
@@ -63,4 +63,4 @@ namespace vrac
         std::array<std::atomic<float>, kNumBuses> busPeaks {};
         int activeVoices = 0;
     };
-} // namespace vrac
+} // namespace sliceforge

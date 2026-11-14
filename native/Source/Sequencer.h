@@ -7,7 +7,7 @@
 #include <limits>
 #include <memory>
 
-namespace vrac
+namespace sliceforge
 {
     constexpr int kSeqPatterns = 4;
     constexpr int kSeqSteps = 32;
@@ -74,6 +74,12 @@ namespace vrac
     juce::String divisionName (int stepsPerQuarter);
 
     void clearPattern (SeqPattern& pattern);
+    /** Duplicates pattern `source` over pattern `target`, steps, lanes, mutes, solos and lane
+        loop lengths included, which is what a hardware duplicate does. Returns false without
+        touching anything when an index is out of range or both indices are the same. The global
+        length, swing, division and song chain are not copied: the chain stores pattern numbers,
+        so the duplicate is already audible in any slot that pointed at the target. */
+    bool copyPatternTo (SequencerData& data, int source, int target);
     void makeDefaultPattern (SeqPattern& pattern, int index);
     void randomizePattern (SeqPattern& pattern, int length,
                            const std::array<int, kNumPads>& families,
@@ -143,4 +149,4 @@ namespace vrac
                                 juce::Random& random,
                                 SeqPlaybackState& state,
                                 SeqBlockOutput& output);
-} // namespace vrac
+} // namespace sliceforge

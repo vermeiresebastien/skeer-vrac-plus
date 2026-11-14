@@ -1,9 +1,9 @@
 #include "FooterBar.h"
 #include "Theme.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
-    FooterBar::FooterBar (VRACPlusAudioProcessor& processor) : processorRef (processor)
+    FooterBar::FooterBar (SliceForgeAudioProcessor& processor) : processorRef (processor)
     {
     }
 
@@ -21,12 +21,10 @@ namespace vrac::ui
         g.setFont (mono (7.5f));
         g.setColour (c.muted);
         g.drawText (juce::String (processorRef.getActiveVoiceCount()) + " VOICES  /  8 STEREO OUTS",
-                    getWidth() - 280, 0, 160, getHeight(), juce::Justification::centredRight, false);
+                    getWidth() - 300, 0, 150, getHeight(), juce::Justification::centredRight, false);
         g.setColour (c.ink);
         g.setFont (display (14.0f));
-        g.drawText ("VRAC", getWidth() - 104, 0, 60, getHeight(), juce::Justification::centredRight, false);
-        g.setColour (c.accent);
-        g.drawText ("+", getWidth() - 44, 0, 20, getHeight(), juce::Justification::centredLeft, false);
+        g.drawText ("SLICEFORGE", getWidth() - 140, 0, 126, getHeight(), juce::Justification::centredRight, false);
     }
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

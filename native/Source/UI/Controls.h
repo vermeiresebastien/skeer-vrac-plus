@@ -3,7 +3,7 @@
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     class LearningSlider final : public juce::Slider
     {
@@ -24,7 +24,7 @@ namespace vrac::ui
     class ParamKnob final : public juce::Component
     {
     public:
-        ParamKnob (VRACPlusAudioProcessor& processor, juce::String label, juce::String parameterId,
+        ParamKnob (SliceForgeAudioProcessor& processor, juce::String label, juce::String parameterId,
                    int dialSize = 48);
         ~ParamKnob() override = default;
 
@@ -46,7 +46,7 @@ namespace vrac::ui
         void attach();
         juce::String formatValue() const;
 
-        VRACPlusAudioProcessor& processorRef;
+        SliceForgeAudioProcessor& processorRef;
         juce::String parameterId;
         juce::String labelText;
         int dialSize = 48;
@@ -58,7 +58,7 @@ namespace vrac::ui
     class ParamSlider final : public juce::Component
     {
     public:
-        ParamSlider (VRACPlusAudioProcessor& processor, juce::String label, juce::String parameterId);
+        ParamSlider (SliceForgeAudioProcessor& processor, juce::String label, juce::String parameterId);
         ~ParamSlider() override = default;
         void setParameterId (const juce::String& newId);
         void setLabel (const juce::String& newLabel);
@@ -73,7 +73,7 @@ namespace vrac::ui
         void attach();
         void showContextMenu();
         juce::String formatValue() const;
-        VRACPlusAudioProcessor& processorRef;
+        SliceForgeAudioProcessor& processorRef;
         juce::String parameterId;
         juce::String labelText;
         LearningSlider slider;
@@ -85,5 +85,5 @@ namespace vrac::ui
     void styleChip (juce::TextButton&, bool active = false);
     void stylePrimaryButton (juce::TextButton&);
     void styleSmallPanelButton (juce::TextButton&, juce::Colour accent);
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

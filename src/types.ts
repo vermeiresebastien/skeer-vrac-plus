@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ *
- * VRAC+ — shared types, factory constants and small pure helpers.
+ * SliceForge — shared types, factory constants and small pure helpers.
  * This module is imported by the UI, the audio engine and the tests.
  * It must stay free of DOM and Node dependencies.
  * ------------------------------------------------------------------ */
@@ -87,6 +87,10 @@ export interface GlobalParams {
   filter: number;
   /** 0..1 — stereo width of the kit */
   width: number;
+  /** 0..1 — output soft clipper: 0 bypasses, 1 bends everything above 0.35 */
+  clip: number;
+  /** dB, -24..12 — output trim applied after the clipper */
+  outGain: number;
 }
 
 export interface PadParams {
@@ -236,6 +240,8 @@ export const DEFAULT_GLOBAL: GlobalParams = {
   tone: 0,
   filter: 0,
   width: 0.65,
+  clip: 0,
+  outGain: 0,
 };
 
 const FAMILY_LENGTH: Record<Family, number> = {

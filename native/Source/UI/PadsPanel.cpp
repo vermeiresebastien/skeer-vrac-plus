@@ -2,9 +2,9 @@
 #include "Theme.h"
 #include "Controls.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
-    PadsPanel::PadsPanel (VRACPlusAudioProcessor& processor) : processorRef (processor), padGrid (processor)
+    PadsPanel::PadsPanel (SliceForgeAudioProcessor& processor) : processorRef (processor), padGrid (processor)
     {
         styleChip (autoSelectButton, true);
         autoSelectButton.setClickingTogglesState (true);
@@ -60,7 +60,7 @@ namespace vrac::ui
         // Eight stereo output meters.
         const auto meterTop = getHeight() - 96;
         const auto width = getWidth() - 26;
-        for (int bus = 0; bus < vrac::kNumBuses; ++bus)
+        for (int bus = 0; bus < sliceforge::kNumBuses; ++bus)
         {
             const auto y = meterTop + bus * 8;
             g.setColour (c.muted);
@@ -87,5 +87,5 @@ namespace vrac::ui
         g.drawText ("SHIFT = ACCENT   ALT = GHOST", 13, getHeight() - 12, getWidth() - 26, 10,
                     juce::Justification::centredRight, false);
     }
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

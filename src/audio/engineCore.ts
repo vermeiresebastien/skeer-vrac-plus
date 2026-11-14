@@ -1,5 +1,5 @@
 /* ------------------------------------------------------------------ *
- * VRAC+ voice engine.
+ * SliceForge voice engine.
  *
  * Pure DSP: no DOM, no AudioWorklet globals. The AudioWorklet wrapper in
  * `worklet.ts` owns the message port; this class can also be driven from
@@ -604,7 +604,7 @@ interface PendingTrigger {
   delayFrames: number;
 }
 
-export class VracEngine {
+export class SliceForgeEngine {
   readonly sampleRate: number;
   private pads: PadParams[] = createDefaultPads();
   private global: GlobalParams;
@@ -630,6 +630,8 @@ export class VracEngine {
       tone: 0,
       filter: 0,
       width: 0.65,
+      clip: 0,
+      outGain: 0,
     };
     for (let i = 0; i < MAX_VOICES; i++) {
       const voice = new Voice();

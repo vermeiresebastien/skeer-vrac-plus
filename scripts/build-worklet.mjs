@@ -9,7 +9,7 @@ await build({
   format: 'iife',
   target: 'es2022',
   platform: 'browser',
-  outfile: 'public/vrac-worklet.js',
+  outfile: 'public/sliceforge-worklet.js',
   sourcemap: false,
   minify: false,
   logLevel: 'info',

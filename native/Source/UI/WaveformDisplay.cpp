@@ -1,7 +1,7 @@
 #include "WaveformDisplay.h"
 #include "Theme.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     WaveformDisplay::WaveformDisplay()
     {
@@ -215,5 +215,5 @@ namespace vrac::ui
     {
         dragging = false;
     }
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

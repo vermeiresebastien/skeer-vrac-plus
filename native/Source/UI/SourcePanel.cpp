@@ -1,9 +1,9 @@
 #include "SourcePanel.h"
 #include "Theme.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
-    SourcePanel::SourcePanel (VRACPlusAudioProcessor& processor)
+    SourcePanel::SourcePanel (SliceForgeAudioProcessor& processor)
         : processorRef (processor), sensitivity (processor, "AUTO SLICE", "source.sensitivity")
     {
         stylePrimaryButton (loadButton);
@@ -39,12 +39,13 @@ namespace vrac::ui
         addSlice.onClick = [this] { if (onAddDeleteSlice) onAddDeleteSlice (true); };
         deleteSlice.onClick = [this] { if (onAddDeleteSlice) onAddDeleteSlice (false); };
 
-        const std::array<std::pair<const char*, const char*>, 8> ids {{
+        const std::array<std::pair<const char*, const char*>, 10> ids {{
             { "FINE", "global.fine" }, { "DRUMIFY", "global.drumify" }, { "VOLUME", "global.volume" },
             { "TRANSPOSE", "global.transpose" }, { "LENGTH", "global.length" }, { "TONE", "global.tone" },
-            { "FILTER", "global.filter" }, { "WIDTH", "global.width" }
+            { "FILTER", "global.filter" }, { "WIDTH", "global.width" },
+            { "SOFT CLIP", "global.clip" }, { "OUT", "global.out" }
         }};
-        for (int i = 0; i < 8; ++i)
+        for (int i = 0; i < 10; ++i)
         {
             globals[(size_t) i] = std::make_unique<ParamKnob> (processorRef, ids[(size_t) i].first,
                                                                ids[(size_t) i].second, 44);
@@ -55,7 +56,7 @@ namespace vrac::ui
 
     void SourcePanel::setSelectedPad (int pad)
     {
-        selectedPad = juce::jlimit (0, vrac::kNumPads - 1, pad);
+        selectedPad = juce::jlimit (0, sliceforge::kNumPads - 1, pad);
         waveform.setStart (processorRef.getPadStart (selectedPad));
         repaint();
     }
@@ -80,7 +81,7 @@ namespace vrac::ui
     {
         juce::PopupMenu menu;
         int itemId = 1;
-        for (const auto& source : vrac::factorySources())
+        for (const auto& source : sliceforge::factorySources())
             menu.addItem (itemId++, source.name);
         auto safe = juce::Component::SafePointer<SourcePanel> (this);
         menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&libraryButton),
@@ -88,7 +89,7 @@ namespace vrac::ui
                             {
                                 if (safe == nullptr || result <= 0)
                                     return;
-                                const auto& sources = vrac::factorySources();
+                                const auto& sources = sliceforge::factorySources();
                                 const auto index = juce::jlimit (0, (int) sources.size() - 1, result - 1);
                                 safe->processorRef.loadFactorySource (sources[(size_t) index].id);
                                 safe->refreshFromProcessor();
@@ -115,10 +116,10 @@ namespace vrac::ui
         deleteSlice.setBounds (131, navY, 36, 20);
 
         auto globalArea = juce::Rectangle<int> (8, 316, getWidth() - 16, 160);
-        const auto knobW = globalArea.getWidth() / 4;
+        const auto knobW = globalArea.getWidth() / 5;
         for (int row = 0; row < 2; ++row)
-            for (int col = 0; col < 4; ++col)
-                globals[(size_t) (row * 4 + col)]->setBounds (
+            for (int col = 0; col < 5; ++col)
+                globals[(size_t) (row * 5 + col)]->setBounds (
                     globalArea.getX() + col * knobW, globalArea.getY() + row * 80, knobW, 78);
     }
 
@@ -171,7 +172,7 @@ namespace vrac::ui
         const auto pad = processorRef.getSelectedPad();
         g.setColour (c.muted);
         g.setFont (font (7.0f, true));
-        g.drawText (juce::String (vrac::padNotes()[(size_t) pad]) + " START", sliceArea.getX() + 170, 266, 54, 10,
+        g.drawText (juce::String (sliceforge::padNotes()[(size_t) pad]) + " START", sliceArea.getX() + 170, 266, 54, 10,
                     juce::Justification::centredLeft, false);
         g.setColour (c.ink);
         g.setFont (mono (9.0f));
@@ -234,5 +235,5 @@ namespace vrac::ui
         g.drawText ("LOAD OR DROP A FILE, OR RECORD AN INPUT TO START A NEW KIT", info.getX() + 2, info.getY() + 88,
                     info.getWidth() - 4, 12, juce::Justification::centredLeft, false);
     }
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

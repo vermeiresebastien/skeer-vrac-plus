@@ -1,5 +1,5 @@
 /**
- * Browser end-to-end smoke test for VRAC+.
+ * Browser end-to-end smoke test for SliceForge.
  *
  * Usage:
  *   npm run dev            # in one terminal
@@ -13,7 +13,7 @@ import assert from 'node:assert/strict';
 import { mkdir } from 'node:fs/promises';
 import { chromium } from 'playwright-core';
 
-const URL = process.env.VRAC_URL || 'http://127.0.0.1:5173/';
+const URL = process.env.SLICEFORGE_URL || 'http://127.0.0.1:5173/';
 const CHROME =
   process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const fixture = 'fixtures/user-groove.wav';
@@ -40,7 +40,7 @@ const context = await browser.newContext({
 await context.addInitScript(() => {
   const input = {
     id: 'fake-controller',
-    name: 'VRAC Test Controller',
+    name: 'SliceForge Test Controller',
     manufacturer: 'QA',
     state: 'connected',
     onmidimessage: null,
@@ -67,7 +67,7 @@ const check = (name, condition, details = '') => {
 
 async function peakFor(ms) {
   return page.evaluate(async (duration) => {
-    const engine = window.__VRAC__.audioEngine;
+    const engine = window.__SLICEFORGE__.audioEngine;
     let peak = 0;
     const started = performance.now();
     while (performance.now() - started < duration) {
@@ -79,20 +79,20 @@ async function peakFor(ms) {
 }
 
 await page.goto(URL, { waitUntil: 'networkidle' });
-await page.waitForFunction(() => Boolean(window.__VRAC__));
+await page.waitForFunction(() => Boolean(window.__SLICEFORGE__));
 await page.evaluate(() => localStorage.clear());
 await page.reload({ waitUntil: 'networkidle' });
-await page.waitForFunction(() => Boolean(window.__VRAC__));
+await page.waitForFunction(() => Boolean(window.__SLICEFORGE__));
 
 /* ---- engine + trigger ---- */
 await page.locator('.pad', { hasText: 'C1' }).first().click({ position: { x: 30, y: 60 } });
 await page.waitForTimeout(800);
-check('audio engine starts on first pad', (await page.evaluate(() => window.__VRAC__.audioEngine.status)) === 'ready');
+check('audio engine starts on first pad', (await page.evaluate(() => window.__SLICEFORGE__.audioEngine.status)) === 'ready');
 check('first pad hit is audible', (await peakFor(700)) > 0.001);
 
 /* ---- solo / mute gating ---- */
 await page.evaluate(async () => {
-  const dbg = window.__VRAC__;
+  const dbg = window.__SLICEFORGE__;
   dbg.audioEngine.allOff();
   await new Promise((r) => setTimeout(r, 300));
   dbg.actions.toggleSolo(2);
@@ -100,10 +100,10 @@ await page.evaluate(async () => {
   dbg.trigger(0, 1);
 });
 check('solo blocks other pads', (await peakFor(450)) < 0.001);
-await page.evaluate(() => window.__VRAC__.trigger(2, 1));
+await page.evaluate(() => window.__SLICEFORGE__.trigger(2, 1));
 check('soloed pad is audible', (await peakFor(650)) > 0.001);
 await page.evaluate(async () => {
-  const dbg = window.__VRAC__;
+  const dbg = window.__SLICEFORGE__;
   dbg.actions.toggleSolo(2);
   dbg.actions.toggleMute(0);
   await new Promise((r) => setTimeout(r, 80));
@@ -112,11 +112,11 @@ await page.evaluate(async () => {
   dbg.trigger(0, 1);
 });
 check('muted pad is silent', (await peakFor(350)) < 0.001);
-await page.evaluate(() => window.__VRAC__.actions.toggleMute(0));
+await page.evaluate(() => window.__SLICEFORGE__.actions.toggleMute(0));
 
 /* ---- knob undo ---- */
 const knob = page.locator('.morph-main [role="slider"]').first();
-const beforeKnob = await page.evaluate(() => window.__VRAC__.getSelectedPad().drumify);
+const beforeKnob = await page.evaluate(() => window.__SLICEFORGE__.getSelectedPad().drumify);
 const knobBox = await knob.boundingBox();
 if (knobBox) {
   await page.mouse.move(knobBox.x + knobBox.width / 2, knobBox.y + knobBox.height / 2);
@@ -125,41 +125,41 @@ if (knobBox) {
   await page.mouse.up();
 }
 await page.waitForTimeout(150);
-const afterKnob = await page.evaluate(() => window.__VRAC__.getSelectedPad().drumify);
+const afterKnob = await page.evaluate(() => window.__SLICEFORGE__.getSelectedPad().drumify);
 await page.keyboard.press('Control+z');
 await page.waitForTimeout(150);
-const undoneKnob = await page.evaluate(() => window.__VRAC__.getSelectedPad().drumify);
+const undoneKnob = await page.evaluate(() => window.__SLICEFORGE__.getSelectedPad().drumify);
 check('knob drag changes a parameter', afterKnob !== beforeKnob);
 check('undo restores the parameter', undoneKnob === beforeKnob);
 
 /* ---- slice navigation / add / delete ---- */
-const slices0 = await page.evaluate(() => window.__VRAC__.getSlices().length);
+const slices0 = await page.evaluate(() => window.__SLICEFORGE__.getSlices().length);
 await page.locator('button[title="Next slice"]').first().click();
 await page.waitForTimeout(200);
-const afterNext = await page.evaluate(() => window.__VRAC__.getSelectedPad().start ?? window.__VRAC__.getSelectedPad().sampleStart);
+const afterNext = await page.evaluate(() => window.__SLICEFORGE__.getSelectedPad().start ?? window.__SLICEFORGE__.getSelectedPad().sampleStart);
 check('slice navigation moves the pad start', typeof afterNext === 'number');
 await page.locator('button[title="Add a slice at this start"]').click();
 await page.waitForTimeout(150);
-const slicesAfterAdd = await page.evaluate(() => window.__VRAC__.getSlices().length);
+const slicesAfterAdd = await page.evaluate(() => window.__SLICEFORGE__.getSlices().length);
 await page.locator('button[title="Delete the nearest slice"]').click();
 await page.waitForTimeout(150);
-const slicesAfterDelete = await page.evaluate(() => window.__VRAC__.getSlices().length);
+const slicesAfterDelete = await page.evaluate(() => window.__SLICEFORGE__.getSlices().length);
 check('slice add/delete updates the slice list', slicesAfterAdd >= slices0 && slicesAfterDelete < slicesAfterAdd);
 
 /* ---- custom sample + IDB preset restore ---- */
 await page.locator('input[type="file"][accept*="audio"]').setInputFiles(fixture);
 await page.waitForTimeout(1000);
 const userSample = await page.evaluate(() => ({
-  source: window.__VRAC__.getKit().sourceName,
-  slices: window.__VRAC__.getSlices().length,
-  isUser: window.__VRAC__.getKit().sourceId.startsWith('user-'),
+  source: window.__SLICEFORGE__.getKit().sourceName,
+  slices: window.__SLICEFORGE__.getSlices().length,
+  isUser: window.__SLICEFORGE__.getKit().sourceId.startsWith('user-'),
 }));
 check('custom sample decodes and slices', userSample.isUser && userSample.slices >= 4, JSON.stringify(userSample));
 
 // Play the custom sample.
 await page.evaluate(() => {
-  window.__VRAC__.audioEngine.allOff();
-  window.__VRAC__.trigger(window.__VRAC__.getKit().selectedPad, 1);
+  window.__SLICEFORGE__.audioEngine.allOff();
+  window.__SLICEFORGE__.trigger(window.__SLICEFORGE__.getKit().selectedPad, 1);
 });
 check('custom sample is audible', (await peakFor(650)) > 0.001);
 
@@ -168,14 +168,14 @@ await page.locator('.modal .field input').fill('E2E CUSTOM KIT');
 await page.locator('.modal-foot .button--primary').click();
 await page.waitForTimeout(400);
 await page.reload({ waitUntil: 'networkidle' });
-await page.waitForFunction(() => Boolean(window.__VRAC__));
+await page.waitForFunction(() => Boolean(window.__SLICEFORGE__));
 await page.locator('.preset-current').click();
 await page.locator('.preset-option', { hasText: 'E2E CUSTOM KIT' }).click();
 await page.waitForTimeout(1000);
 const restored = await page.evaluate(() => ({
-  source: window.__VRAC__.getKit().sourceName,
-  isUser: window.__VRAC__.getKit().sourceId.startsWith('user-'),
-  slices: window.__VRAC__.getSlices().length,
+  source: window.__SLICEFORGE__.getKit().sourceName,
+  isUser: window.__SLICEFORGE__.getKit().sourceId.startsWith('user-'),
+  slices: window.__SLICEFORGE__.getSlices().length,
 }));
 check('custom-sample kit restores after reload', restored.isUser && restored.slices >= 4, JSON.stringify(restored));
 
@@ -189,7 +189,7 @@ await page.evaluate(() => {
   window.__fakeMidi.inputs.get('fake-controller').onmidimessage({ data: new Uint8Array([0x90, 38, 96]) });
 });
 await page.waitForTimeout(300);
-check('MIDI note triggers and auto-selects a pad', (await page.evaluate(() => window.__VRAC__.getSelectedPad().note)) === 'D1');
+check('MIDI note triggers and auto-selects a pad', (await page.evaluate(() => window.__SLICEFORGE__.getSelectedPad().note)) === 'D1');
 
 await page.locator('.morph-main [role="slider"]').first().click({ button: 'right' });
 await page.waitForTimeout(200);
@@ -200,7 +200,7 @@ await page.evaluate(() => {
 await page.waitForTimeout(300);
 const learned = await page.evaluate(() => ({
   mappings: JSON.parse(localStorage.getItem('vrac-plus.midi.v1') || '[]'),
-  value: window.__VRAC__.getSelectedPad().drumify,
+  value: window.__SLICEFORGE__.getSelectedPad().drumify,
 }));
 check('MIDI learn writes a mapping', learned.mappings.some((m) => m.cc === 71));
 check('learned CC moves the target parameter', learned.value > 0.3);
@@ -218,7 +218,7 @@ await page.waitForTimeout(1600);
 check('recording produces a take', (await page.locator('.record-preview').count()) === 1);
 await page.locator('.modal-foot .button--primary').click();
 await page.waitForTimeout(700);
-check('recording becomes the source', (await page.evaluate(() => window.__VRAC__.getKit().sourceName)) === 'RECORDED INPUT');
+check('recording becomes the source', (await page.evaluate(() => window.__SLICEFORGE__.getKit().sourceName)) === 'RECORDED INPUT');
 
 /* ---- kit export ---- */
 await page.locator('button[title="Export audio"]').click();

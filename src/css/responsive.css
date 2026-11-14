@@ -375,10 +375,8 @@
     grid-template-columns: repeat(5, minmax(0, 1fr));
   }
 
-  .global-knobs {
-    grid-template-columns: repeat(4, minmax(0, 1fr));
-  }
-
+  /* the global grid keeps its five columns at every width — the ten knobs make two clean
+     rows, and only the dials shrink below */
   .source-panel .global-knobs .knob {
     --knob-size: 48px;
   }

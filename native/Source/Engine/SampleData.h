@@ -4,7 +4,7 @@
 #include <memory>
 #include <vector>
 
-namespace vrac
+namespace sliceforge
 {
     struct SourceInfo
     {
@@ -46,4 +46,4 @@ namespace vrac
 
     // Writes a stereo float buffer to a 16-bit WAV file. Used by one-shot export.
     bool writeStereoWav (const juce::File& file, const juce::AudioBuffer<float>& buffer, double sampleRate);
-} // namespace vrac
+} // namespace sliceforge

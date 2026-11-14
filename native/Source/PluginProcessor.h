@@ -4,6 +4,7 @@
 #include "Params.h"
 #include "Presets.h"
 #include "Engine/VoiceEngine.h"
+#include "Engine/PreviewPlayer.h"
 #include "Engine/SampleData.h"
 #include "Engine/Slicer.h"
 #include "Sequencer.h"
@@ -13,12 +14,12 @@
 #include <memory>
 #include <vector>
 
-class VRACPlusAudioProcessor final : public juce::AudioProcessor,
+class SliceForgeAudioProcessor final : public juce::AudioProcessor,
                                      private juce::AsyncUpdater
 {
 public:
-    VRACPlusAudioProcessor();
-    ~VRACPlusAudioProcessor() override;
+    SliceForgeAudioProcessor();
+    ~SliceForgeAudioProcessor() override;
 
     void prepareToPlay (double sampleRate, int samplesPerBlock) override;
     void releaseResources() override;
@@ -28,7 +29,7 @@ public:
     juce::AudioProcessorEditor* createEditor() override;
     bool hasEditor() const override { return true; }
 
-    const juce::String getName() const override { return "VRAC+"; }
+    const juce::String getName() const override { return "SliceForge"; }
     bool acceptsMidi() const override { return true; }
     bool producesMidi() const override { return false; }
     bool isMidiEffect() const override { return false; }
@@ -44,13 +45,13 @@ public:
     void setStateInformation (const void* data, int sizeInBytes) override;
 
     juce::AudioProcessorValueTreeState& getValueTreeState() noexcept { return apvts; }
-    vrac::ParameterCache& getParameterCache() noexcept { return parameterCache; }
+    sliceforge::ParameterCache& getParameterCache() noexcept { return parameterCache; }
 
     // ---- UI-facing API -------------------------------------------------
     juce::ChangeBroadcaster& getUiBroadcaster() noexcept { return uiBroadcaster; }
 
-    vrac::SamplePtr getSamplePtr() const { return engine.getSample(); }
-    const std::vector<vrac::Slice>& getSlices() const noexcept { return slices; }
+    sliceforge::SamplePtr getSamplePtr() const { return engine.getSample(); }
+    const std::vector<sliceforge::Slice>& getSlices() const noexcept { return slices; }
     double getPadStart (int pad) const;
     void setPadStart (int pad, double seconds);
     int getSelectedPad() const noexcept { return selectedPad.load (std::memory_order_relaxed); }
@@ -68,6 +69,10 @@ public:
     int getActiveVoiceCount() const { return engine.getActiveVoiceCount(); }
     bool isSidechainInputActive() const noexcept { return sidechainActive.load (std::memory_order_relaxed); }
     double getEngineSampleRate() const noexcept { return currentSampleRate; }
+
+    // Audition transport the Sample Vault clicks through. Mixes into output bus 0.
+    sliceforge::PreviewPlayer& getPreviewPlayer() noexcept { return preview; }
+    const sliceforge::PreviewPlayer& getPreviewPlayer() const noexcept { return preview; }
 
     void triggerPad (int pad, float velocity);
     void chokeAll();
@@ -93,8 +98,8 @@ public:
     void adoptRecordingTake();
     void discardRecordingTake();
 
-    std::shared_ptr<const vrac::SequencerData> getSequencerData() const;
-    void setSequencerData (std::shared_ptr<const vrac::SequencerData> data);
+    std::shared_ptr<const sliceforge::SequencerData> getSequencerData() const;
+    void setSequencerData (std::shared_ptr<const sliceforge::SequencerData> data);
     void setSequencerInternalPlaying (bool shouldPlay);
     bool isSequencerInternalPlaying() const noexcept { return seqInternalPlaying.load (std::memory_order_relaxed); }
     bool isSequencerHostPlaying() const noexcept { return seqHostPlaying.load (std::memory_order_relaxed); }
@@ -109,12 +114,12 @@ private:
     struct Snapshot
     {
         juce::ValueTree parameterState;
-        std::vector<vrac::Slice> slices;
-        std::array<float, vrac::kNumPads> starts {};
+        std::vector<sliceforge::Slice> slices;
+        std::array<float, sliceforge::kNumPads> starts {};
         int selectedPad = 0;
         juce::String presetName;
         int programIndex = 0;
-        std::shared_ptr<const vrac::SequencerData> sequencer;
+        std::shared_ptr<const sliceforge::SequencerData> sequencer;
     };
 
     void handleAsyncUpdate() override;
@@ -132,15 +137,17 @@ private:
     void resetSequencerPlayback();
 
     juce::AudioProcessorValueTreeState apvts;
-    vrac::ParameterCache parameterCache;
-    vrac::DrumEngine engine;
+    sliceforge::ParameterCache parameterCache;
+    sliceforge::DrumEngine engine;
+    sliceforge::PreviewPlayer preview;
+    sliceforge::OutputStage outputStage;   // soft clipper -> OUT GAIN -> safety ceiling
 
-    std::vector<vrac::Slice> slices;
-    std::array<std::atomic<float>, vrac::kNumPads> padStarts {};
+    std::vector<sliceforge::Slice> slices;
+    std::array<std::atomic<float>, sliceforge::kNumPads> padStarts {};
     std::atomic<int> selectedPad { 3 };
     std::atomic<int> lastTriggeredPad { -1 };
     std::atomic<uint32_t> triggerStamp { 0 };
-    std::array<std::atomic<uint32_t>, vrac::kNumPads> padHitStamps {};
+    std::array<std::atomic<uint32_t>, sliceforge::kNumPads> padHitStamps {};
 
     std::atomic<int> currentProgramIndex { 0 };
     juce::String currentPresetName { "BIG CAT" };
@@ -168,7 +175,7 @@ private:
     juce::AbstractFifo uiTriggerFifo { 128 };
     std::array<UiTrigger, 128> uiTriggerData {};
 
-    std::atomic<std::shared_ptr<const vrac::SequencerData>> sequencerData;
+    std::atomic<std::shared_ptr<const sliceforge::SequencerData>> sequencerData;
     std::atomic<bool> seqInternalPlaying { false };
     std::atomic<bool> seqHostPlaying { false };
     std::atomic<bool> seqTransportPlaying { false };
@@ -176,7 +183,7 @@ private:
     std::atomic<bool> hostStateChanged { false };
     std::atomic<int> seqPlayheadStep { -1 };
     std::atomic<double> seqHostBpm { 128.0 };
-    vrac::SeqPlaybackState seqPlaybackState;
+    sliceforge::SeqPlaybackState seqPlaybackState;
     juce::Random seqRandom;
 
     std::vector<Snapshot> undoStack;
@@ -189,5 +196,5 @@ private:
     bool restoringState = false;
     std::atomic<bool> chokeRequested { false };
 
-    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (VRACPlusAudioProcessor)
+    JUCE_DECLARE_NON_COPYABLE_WITH_LEAK_DETECTOR (SliceForgeAudioProcessor)
 };

@@ -4,7 +4,7 @@
 #include <array>
 #include <limits>
 
-namespace vrac
+namespace sliceforge
 {
     struct PadOverride
     {
@@ -30,4 +30,4 @@ namespace vrac
     };
 
     const std::array<FactoryPreset, 6>& factoryPresets();
-} // namespace vrac
+} // namespace sliceforge

@@ -59,7 +59,7 @@ export function ExportModal({
         setDone(100);
       }
     } catch (err) {
-      console.error('[VRAC+] export failed', err);
+      console.error('[SliceForge] export failed', err);
       setError(err instanceof Error ? err.message : 'Export failed');
       setDone(null);
     } finally {

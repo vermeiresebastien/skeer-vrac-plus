@@ -14,7 +14,7 @@
  #include <windows.h>
 #endif
 
-namespace vrac
+namespace sliceforge
 {
     namespace
     {
@@ -140,7 +140,7 @@ namespace vrac
         juce::String configFilePath()
         {
             return juce::File::getSpecialLocation (juce::File::userApplicationDataDirectory)
-                .getChildFile ("VRACPlus")
+                .getChildFile ("SliceForge")
                 .getChildFile ("vault-path.txt")
                 .getFullPathName();
         }
@@ -714,4 +714,4 @@ namespace vrac
         parseWaveform (columnText (statement.handle, 18), result);
         return true;
     }
-} // namespace vrac
+} // namespace sliceforge

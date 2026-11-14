@@ -112,9 +112,7 @@ export function Header(props: HeaderProps) {
           <span />
         </div>
         <div className="brand-copy">
-          <span className="brand-name">
-            VRAC<span className="brand-plus">+</span>
-          </span>
+          <span className="brand-name">SliceForge</span>
           <span className="brand-sub">SAMPLE DRUM MACHINE</span>
         </div>
       </div>
@@ -266,7 +264,7 @@ export function Header(props: HeaderProps) {
         <button type="button" className="icon-button" onClick={onOpenHelp} title="Help & shortcuts">
           <Icon name="help" size={17} />
         </button>
-        <button type="button" className="icon-button" onClick={onOpenAbout} title="About VRAC+">
+        <button type="button" className="icon-button" onClick={onOpenAbout} title="About SliceForge">
           <Icon name="info" size={17} />
         </button>
       </div>

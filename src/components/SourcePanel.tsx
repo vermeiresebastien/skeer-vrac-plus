@@ -71,7 +71,7 @@ export function SourcePanel({
         <div className="wave-card-top">
           <span className="mono wave-time">00:00.000</span>
           <span className="wave-source-tag">
-            {sample.isUser ? 'USER SAMPLE' : 'VRAC+ LIBRARY'} · {(sample.sampleRate / 1000).toFixed(1)} kHz
+            {sample.isUser ? 'USER SAMPLE' : 'SliceForge LIBRARY'} · {(sample.sampleRate / 1000).toFixed(1)} kHz
           </span>
           <span className="mono wave-time">{formatTime(sample.duration, true)}</span>
         </div>
@@ -280,6 +280,35 @@ export function SourcePanel({
           onBegin={onGestureStart}
           onLearn={() => onMidiLearn('global.width')}
           title="Global stereo width."
+        />
+        <Knob
+          label="SOFT CLIP"
+          value={global.clip}
+          min={0}
+          max={1}
+          step={0.01}
+          defaultValue={0}
+          size="sm"
+          format={(value) => formatPct(value * 100)}
+          onChange={(value) => onGlobal({ clip: value })}
+          onBegin={onGestureStart}
+          onLearn={() => onMidiLearn('global.clip')}
+          title="Output soft clipper: how early the peaks bend. 0 % leaves the signal untouched; anything under the knee is never attenuated."
+        />
+        <Knob
+          label="OUT"
+          value={global.outGain}
+          min={-24}
+          max={12}
+          step={0.1}
+          defaultValue={0}
+          size="sm"
+          format={(value) => formatDb(value)}
+          onChange={(value) => onGlobal({ outGain: value })}
+          onBegin={onGestureStart}
+          bipolar
+          onLearn={() => onMidiLearn('global.outGain')}
+          title="Output trim, applied after the clipper. A final ceiling keeps the app inside full scale however high this goes."
         />
       </div>
 

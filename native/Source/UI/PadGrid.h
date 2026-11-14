@@ -3,12 +3,12 @@
 #include <JuceHeader.h>
 #include "../PluginProcessor.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     class PadGrid final : public juce::Component
     {
     public:
-        explicit PadGrid (VRACPlusAudioProcessor& processor);
+        explicit PadGrid (SliceForgeAudioProcessor& processor);
 
         void setSelectedPad (int pad);
         void paint (juce::Graphics&) override;
@@ -21,12 +21,12 @@ namespace vrac::ui
         std::function<void (int)> onSoloClicked;
 
     private:
-        VRACPlusAudioProcessor& processorRef;
+        SliceForgeAudioProcessor& processorRef;
         int selected = 0;
-        std::array<juce::Rectangle<float>, vrac::kNumPads> padRects;
-        std::array<juce::Rectangle<float>, vrac::kNumPads> muteRects;
-        std::array<juce::Rectangle<float>, vrac::kNumPads> soloRects;
+        std::array<juce::Rectangle<float>, sliceforge::kNumPads> padRects;
+        std::array<juce::Rectangle<float>, sliceforge::kNumPads> muteRects;
+        std::array<juce::Rectangle<float>, sliceforge::kNumPads> soloRects;
         void updateRects();
     };
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

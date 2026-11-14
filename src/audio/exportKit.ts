@@ -7,8 +7,9 @@
 
 import type { GlobalParams, PadParams, SourceSample } from '../types';
 import { PAD_COUNT, clamp } from '../types';
-import { VracEngine } from './engineCore';
+import { SliceForgeEngine } from './engineCore';
 import { MasterChain } from './masterChain';
+import { applyOutputStage } from './outputStage';
 import { encodeWav } from './wav';
 import { createZip, type ZipFile } from './zip';
 
@@ -36,7 +37,7 @@ export function renderPadPcm(input: RenderInput): StereoPcm {
     10,
   );
   const totalFrames = Math.ceil(length * sampleRate);
-  const engine = new VracEngine(sampleRate);
+  const engine = new SliceForgeEngine(sampleRate);
   if (input.sample) {
     engine.setSample(input.sample.left, input.sample.right, input.sample.sampleRate);
   }
@@ -81,8 +82,9 @@ function fallbackMaster(input: StereoPcm, global: GlobalParams): StereoPcm {
   const left = new Float32Array(input.left.length);
   const right = new Float32Array(input.right.length);
   for (let i = 0; i < left.length; i++) {
-    left[i] = Math.tanh(input.left[i] * gain * 1.15);
-    right[i] = Math.tanh(input.right[i] * gain * 1.15);
+    // Same folding the live master chain does, then the same output stage on the way out.
+    left[i] = applyOutputStage(Math.tanh(input.left[i] * gain * 1.15), global.clip, global.outGain);
+    right[i] = applyOutputStage(Math.tanh(input.right[i] * gain * 1.15), global.clip, global.outGain);
   }
   return { left, right, sampleRate: input.sampleRate };
 }
@@ -128,7 +130,7 @@ export function kitManifestJSON(
   kitName: string,
 ): Uint8Array {
   const manifest = {
-    instrument: 'VRAC+',
+    instrument: 'SliceForge',
     exportedAt: new Date().toISOString(),
     kit: kitName,
     source: source ? { name: source.name, duration: source.duration, sampleRate: source.sampleRate } : null,
@@ -157,13 +159,13 @@ export function kitManifestJSON(
 
 export function readmeText(kitName: string): Uint8Array {
   return new TextEncoder().encode(
-    `VRAC+ kit export — ${kitName}\n\n` +
+    `SliceForge kit export — ${kitName}\n\n` +
       `One 24-bit / 48 kHz WAV per pad, named NOTE_FAMILY_OUTPUT.wav.\n` +
       `Every pad was rendered through the current kit settings and the global master section.\n` +
       `The output number at the end of each filename is the stereo bus the pad is routed to (1–8).\n\n` +
       `Drag the files into any DAW. For a quick start, put C1 on a kick track,\n` +
       `D1 on a snare track, F#1 on a hat track and D#1 on a clap track.\n\n` +
-      `Created with VRAC+ — drumify any sound.\n`,
+      `Created with SliceForge — drumify any sound.\n`,
   );
 }
 

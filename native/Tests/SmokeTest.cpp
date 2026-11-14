@@ -43,7 +43,7 @@ namespace
         }
     }
 
-    void setParam (VRACPlusAudioProcessor& processor, const juce::String& id, float value)
+    void setParam (SliceForgeAudioProcessor& processor, const juce::String& id, float value)
     {
         if (auto* parameter = processor.getValueTreeState().getParameter (id))
         {
@@ -52,7 +52,7 @@ namespace
         }
     }
 
-    float getParam (VRACPlusAudioProcessor& processor, const juce::String& id)
+    float getParam (SliceForgeAudioProcessor& processor, const juce::String& id)
     {
         if (auto* parameter = processor.getValueTreeState().getParameter (id))
         {
@@ -64,13 +64,13 @@ namespace
 
     struct Rendered
     {
-        std::array<float, vrac::kNumBuses> peaks {};
-        std::array<std::array<float, 2>, vrac::kNumBuses> channelPeaks {};
+        std::array<float, sliceforge::kNumBuses> peaks {};
+        std::array<std::array<float, 2>, sliceforge::kNumBuses> channelPeaks {};
         float total = 0.0f;
         bool finite = true;
     };
 
-    Rendered render (VRACPlusAudioProcessor& processor, int blocks, float velocity = 1.0f, int pad = 0,
+    Rendered render (SliceForgeAudioProcessor& processor, int blocks, float velocity = 1.0f, int pad = 0,
                      int note = -1, int startBlock = 0)
     {
         Rendered result;
@@ -85,7 +85,7 @@ namespace
                 midi.addEvent (juce::MidiMessage::noteOn (1, note, velocity), 0);
             buffer.clear();
             processor.processBlock (buffer, midi);
-            for (int bus = 0; bus < vrac::kNumBuses; ++bus)
+            for (int bus = 0; bus < sliceforge::kNumBuses; ++bus)
             {
                 auto busBuffer = processor.getBusBuffer (buffer, false, bus);
                 for (int channel = 0; channel < busBuffer.getNumChannels(); ++channel)
@@ -106,15 +106,43 @@ namespace
         }
         return result;
     }
+
+    /** Flat int16 PCM source for the deterministic audition-driven checks. */
+    sliceforge::SamplePtr makeDcSource (int numSamples, double rate, float value)
+    {
+        juce::MemoryBlock pcm ((size_t) numSamples * 4);
+        auto* out = static_cast<int16_t*> (pcm.getData());
+        for (int i = 0; i < numSamples; ++i)
+        {
+            out[(size_t) i * 2] = (int16_t) std::round (value * 32767.0f);
+            out[(size_t) i * 2 + 1] = (int16_t) std::round (value * 32767.0f);
+        }
+        return sliceforge::decodePcm16 (pcm, 2, rate, "OUTPUT STAGE TONE");
+    }
+
+    /** Removes one parameter entry from a saved state, so a kit can be rewound to the schema
+        that existed before that parameter was added. APVTS matches children by their "id"
+        property, so a missing entry restores the layout default rather than shifting values. */
+    void stripParameter (juce::ValueTree& tree, const juce::String& id)
+    {
+        for (int i = tree.getNumChildren(); --i >= 0;)
+        {
+            auto child = tree.getChild (i);
+            if (child.getProperty ("id").toString() == id)
+                tree.removeChild (child, nullptr);
+            else
+                stripParameter (child, id);
+        }
+    }
 } // namespace
 
 int main()
 {
     juce::ScopedJuceInitialiser_GUI juceInitialiser;
 
-    std::cout << "VRAC+ native smoke test\n";
+    std::cout << "SliceForge native smoke test\n";
 
-    VRACPlusAudioProcessor processor;
+    SliceForgeAudioProcessor processor;
     processor.prepareToPlay (48000.0, 512);
 
     check (processor.getSlices().size() >= 8, "factory source is sliced",
@@ -127,7 +155,7 @@ int main()
     check (silent.total == 0.0f, "engine is silent before a trigger");
 
     // One pad, one bus.
-    setParam (processor, vrac::padParamId (0, "bus"), 1.0f);
+    setParam (processor, sliceforge::padParamId (0, "bus"), 1.0f);
     auto hit = render (processor, 20, 1.0f, 0);
     check (hit.finite, "pad output is finite");
     check (hit.peaks[0] > 0.005f, "pad hit is audible on output 1", juce::String (hit.peaks[0], 4));
@@ -136,19 +164,19 @@ int main()
     // Pan.
     processor.chokeAll();
     render (processor, 8, 1.0f, 0, -1, 999);
-    setParam (processor, vrac::padParamId (0, "pan"), -1.0f);
+    setParam (processor, sliceforge::padParamId (0, "pan"), -1.0f);
     auto panned = render (processor, 20, 1.0f, 0);
     check (panned.channelPeaks[0][0] > panned.channelPeaks[0][1] * 3.0f, "pad pan works",
            juce::String (panned.channelPeaks[0][0], 4) + " / " + juce::String (panned.channelPeaks[0][1], 4));
-    setParam (processor, vrac::padParamId (0, "pan"), 0.0f);
+    setParam (processor, sliceforge::padParamId (0, "pan"), 0.0f);
 
     // All eight buses.
     bool allBuses = true;
-    for (int bus = 1; bus <= vrac::kNumBuses; ++bus)
+    for (int bus = 1; bus <= sliceforge::kNumBuses; ++bus)
     {
         processor.chokeAll();
         render (processor, 6, 1.0f, 0, -1, 999);
-        setParam (processor, vrac::padParamId (0, "bus"), (float) bus);
+        setParam (processor, sliceforge::padParamId (0, "bus"), (float) bus);
         auto busHit = render (processor, 14, 1.0f, 0);
         if (busHit.peaks[(size_t) (bus - 1)] <= 0.002f)
         {
@@ -161,7 +189,7 @@ int main()
     // Velocity.
     processor.chokeAll();
     render (processor, 8, 1.0f, 0, -1, 999);
-    setParam (processor, vrac::padParamId (0, "bus"), 1.0f);
+    setParam (processor, sliceforge::padParamId (0, "bus"), 1.0f);
     auto soft = render (processor, 20, 0.2f, 0);
     processor.chokeAll();
     render (processor, 8, 1.0f, 0, -1, 999);
@@ -172,36 +200,36 @@ int main()
     // Mute and solo.
     processor.chokeAll();
     render (processor, 8, 1.0f, 0, -1, 999);
-    setParam (processor, vrac::padParamId (0, "mute"), 1.0f);
+    setParam (processor, sliceforge::padParamId (0, "mute"), 1.0f);
     auto muted = render (processor, 10, 1.0f, 0);
     check (muted.total < 0.0001f, "muted pad is silent");
-    setParam (processor, vrac::padParamId (0, "mute"), 0.0f);
+    setParam (processor, sliceforge::padParamId (0, "mute"), 0.0f);
 
     processor.chokeAll();
     render (processor, 8, 1.0f, 0, -1, 999);
-    setParam (processor, vrac::padParamId (2, "solo"), 1.0f);
+    setParam (processor, sliceforge::padParamId (2, "solo"), 1.0f);
     auto soloBlocked = render (processor, 10, 1.0f, 0);
     check (soloBlocked.total < 0.0001f, "solo silences other pads");
     auto soloAudible = render (processor, 20, 1.0f, 2);
     check (soloAudible.total > 0.002f, "soloed pad is audible");
-    setParam (processor, vrac::padParamId (2, "solo"), 0.0f);
+    setParam (processor, sliceforge::padParamId (2, "solo"), 0.0f);
 
     // MIDI note triggering.
     processor.chokeAll();
     render (processor, 8, 1.0f, 0, -1, 999);
-    auto midiNote = render (processor, 20, 0.9f, 0, vrac::kPadMidiBase + 1, 0);
+    auto midiNote = render (processor, 20, 0.9f, 0, sliceforge::kPadMidiBase + 1, 0);
     check (midiNote.total > 0.002f, "MIDI note triggers a pad", juce::String (midiNote.total, 4));
 
     // Every model.
     bool allModelsAudible = true;
-    for (int model = 0; model < vrac::kNumModels; ++model)
+    for (int model = 0; model < sliceforge::kNumModels; ++model)
     {
         processor.chokeAll();
         render (processor, 6, 1.0f, 0, -1, 999);
-        setParam (processor, vrac::padParamId (0, "model"), (float) model);
-        setParam (processor, vrac::padParamId (0, "drumify"), 1.0f);
-        setParam (processor, vrac::padParamId (0, "bus"), 1.0f);
-        setParam (processor, vrac::padParamId (0, "length"), 0.22f);
+        setParam (processor, sliceforge::padParamId (0, "model"), (float) model);
+        setParam (processor, sliceforge::padParamId (0, "drumify"), 1.0f);
+        setParam (processor, sliceforge::padParamId (0, "bus"), 1.0f);
+        setParam (processor, sliceforge::padParamId (0, "length"), 0.22f);
         auto modelHit = render (processor, 18, 1.0f, 0);
         if (modelHit.total <= 0.001f)
         {
@@ -217,6 +245,8 @@ int main()
     check (processor.getSlices().size() > 0, "preset source is sliced");
     auto presetHit = render (processor, 20, 1.0f, processor.getSelectedPad());
     check (presetHit.total > 0.001f, "factory preset is audible");
+    check (getParam (processor, "global.clip") == 0.0f && getParam (processor, "global.out") == 0.0f,
+           "a factory preset leaves the output stage bypassed");
 
     // State round trip.
     juce::MemoryBlock state;
@@ -249,7 +279,7 @@ int main()
     processor.undo();
 
     // MIDI learn.
-    processor.armMidiLearn (vrac::padParamId (0, "pitch"));
+    processor.armMidiLearn (sliceforge::padParamId (0, "pitch"));
     {
         juce::AudioBuffer<float> buffer (juce::jmax (2, processor.getTotalNumOutputChannels()), 512);
         juce::MidiBuffer midi;
@@ -258,9 +288,9 @@ int main()
         processor.processBlock (buffer, midi);
         juce::MessageManager::getInstance()->runDispatchLoopUntil (30);
     }
-    check (processor.getMidiMappingForCc (74) == vrac::padParamId (0, "pitch"), "MIDI CC learn captures a parameter");
+    check (processor.getMidiMappingForCc (74) == sliceforge::padParamId (0, "pitch"), "MIDI CC learn captures a parameter");
     {
-        setParam (processor, vrac::padParamId (0, "pitch"), 0.0f);
+        setParam (processor, sliceforge::padParamId (0, "pitch"), 0.0f);
         juce::AudioBuffer<float> buffer (juce::jmax (2, processor.getTotalNumOutputChannels()), 512);
         juce::MidiBuffer midi;
         midi.addEvent (juce::MidiMessage::controllerEvent (1, 74, 0), 0);
@@ -268,11 +298,11 @@ int main()
         processor.processBlock (buffer, midi);
         juce::MessageManager::getInstance()->runDispatchLoopUntil (30);
     }
-    check (getParam (processor, vrac::padParamId (0, "pitch")) < -10.0f, "learned MIDI CC moves the parameter");
+    check (getParam (processor, sliceforge::padParamId (0, "pitch")) < -10.0f, "learned MIDI CC moves the parameter");
 
     // Step sequencer.
     {
-        auto sequence = vrac::cloneSequencerData (*processor.getSequencerData());
+        auto sequence = sliceforge::cloneSequencerData (*processor.getSequencerData());
         sequence->hostSync = false;
         sequence->bpm = 120.0;
         processor.setSequencerData (sequence);
@@ -286,7 +316,7 @@ int main()
 
         juce::MemoryBlock sequenceState;
         processor.getStateInformation (sequenceState);
-        auto changed = vrac::cloneSequencerData (*processor.getSequencerData());
+        auto changed = sliceforge::cloneSequencerData (*processor.getSequencerData());
         const int kickStep = 0;
         changed->patterns[(size_t) changed->activePattern].rows[0][(size_t) kickStep].on = false;
         processor.setSequencerData (changed);
@@ -298,7 +328,7 @@ int main()
 
         const bool beforeSeqUndo = restored->patterns[(size_t) restored->activePattern].rows[2][3].on;
         processor.pushUndoSnapshot();
-        auto undoEdit = vrac::cloneSequencerData (*processor.getSequencerData());
+        auto undoEdit = sliceforge::cloneSequencerData (*processor.getSequencerData());
         undoEdit->patterns[(size_t) undoEdit->activePattern].rows[2][3].on = ! beforeSeqUndo;
         processor.setSequencerData (undoEdit);
         processor.undo();
@@ -307,18 +337,72 @@ int main()
                    && undone->patterns[(size_t) undone->activePattern].rows[2][3].on == beforeSeqUndo,
                "sequencer edits participate in undo");
 
-        vrac::SeqPattern randomized;
-        std::array<int, vrac::kNumPads> families {};
+        // "Copy pattern to": the whole pattern moves, the destination is replaced, undo agrees.
+        auto dup = sliceforge::cloneSequencerData (*processor.getSequencerData());
+        auto& source = dup->patterns[(size_t) 0];
+        source.rows[3][7].on = true;
+        source.rows[3][7].velocity = 0.42f;
+        source.rows[3][7].ratchet = 3;
+        source.rows[3][7].flam = 2;
+        source.rows[3][7].nudge = -0.25f;
+        source.rows[3][7].locks.enabled = true;
+        source.rows[3][7].locks.pitch = 5.0f;
+        source.laneMute[3] = true;
+        source.laneSolo[5] = true;
+        source.laneLength[9] = 7;
+        auto& destination = dup->patterns[(size_t) 2];
+        destination.rows[11][30].on = true;
+
+        const auto selectedBefore = dup->activePattern;
+        check (sliceforge::copyPatternTo (*dup, 0, 2), "copy pattern to succeeds");
+        const auto& copied = dup->patterns[(size_t) 2].rows[3][7];
+        check (copied.on && copied.velocity == 0.42f && copied.ratchet == 3 && copied.flam == 2
+                   && copied.nudge == -0.25f && copied.locks.enabled && copied.locks.pitch == 5.0f,
+               "copy pattern to duplicates steps, ratchets, flams, nudges and parameter locks");
+        check (! dup->patterns[(size_t) 2].rows[11][30].on, "copy pattern to replaces the destination");
+        check (dup->patterns[(size_t) 2].laneMute[3] && dup->patterns[(size_t) 2].laneSolo[5]
+                   && dup->patterns[(size_t) 2].laneLength[9] == 7,
+               "copy pattern to duplicates the lane mute, solo and loop settings");
+        check (dup->patterns[(size_t) 0].rows[3][7].on && dup->patterns[(size_t) 0].laneLength[9] == 7,
+               "copy pattern to leaves the source pattern intact");
+        check (dup->activePattern == selectedBefore,
+               "copy pattern to does not change which pattern is selected");
+
+        const auto unchanged = sliceforge::serialiseSequencer (*dup);
+        check (! sliceforge::copyPatternTo (*dup, 1, 1), "a pattern cannot be copied onto itself");
+        check (! sliceforge::copyPatternTo (*dup, -1, 2), "copy pattern to rejects a negative index");
+        check (! sliceforge::copyPatternTo (*dup, 0, sliceforge::kSeqPatterns), "copy pattern to rejects an out-of-range index");
+        check (sliceforge::serialiseSequencer (*dup) == unchanged, "a rejected copy leaves the data untouched");
+
+        auto withMarker = sliceforge::cloneSequencerData (*dup);
+        withMarker->patterns[(size_t) 3].rows[5][12].on = true;
+        processor.setSequencerData (withMarker);
+        processor.pushUndoSnapshot();
+        auto copiedAgain = sliceforge::cloneSequencerData (*processor.getSequencerData());
+        sliceforge::copyPatternTo (*copiedAgain, 2, 3);
+        processor.setSequencerData (copiedAgain);
+        check (processor.getSequencerData()->patterns[(size_t) 3].rows[3][7].on
+                   && ! processor.getSequencerData()->patterns[(size_t) 3].rows[5][12].on,
+               "copy pattern to reaches the engine and replaces its target");
+        processor.undo();
+        const auto afterUndo = processor.getSequencerData();
+        check (afterUndo != nullptr
+                   && ! afterUndo->patterns[(size_t) 3].rows[3][7].on
+                   && afterUndo->patterns[(size_t) 3].rows[5][12].on,
+               "undo brings back the pattern that copy pattern to replaced");
+
+        sliceforge::SeqPattern randomized;
+        std::array<int, sliceforge::kNumPads> families {};
         families.fill (2);
         juce::Random random (1234);
-        vrac::randomizePattern (randomized, 16, families, 0.5f, random);
+        sliceforge::randomizePattern (randomized, 16, families, 0.5f, random);
         int randomisedSteps = 0;
         for (const auto& row : randomized.rows)
             for (int step = 0; step < 16; ++step)
                 randomisedSteps += row[(size_t) step].on ? 1 : 0;
         check (randomisedSteps > 8, "step-randomizer creates a pattern");
 
-        vrac::euclideanLane (randomized, 0, 16, 5, 0, 0.8f);
+        sliceforge::euclideanLane (randomized, 0, 16, 5, 0, 0.8f);
         int euclidSteps = 0;
         for (int step = 0; step < 16; ++step)
             euclidSteps += randomized.rows[0][(size_t) step].on ? 1 : 0;
@@ -328,10 +412,10 @@ int main()
     // Host-synchronised transport, using a mock playhead.
     {
         MockHostPlayHead playHead;
-        VRACPlusAudioProcessor hostProcessor;
+        SliceForgeAudioProcessor hostProcessor;
         hostProcessor.setPlayHead (&playHead);
         hostProcessor.prepareToPlay (48000.0, 512);
-        auto sequence = vrac::cloneSequencerData (*hostProcessor.getSequencerData());
+        auto sequence = sliceforge::cloneSequencerData (*hostProcessor.getSequencerData());
         sequence->hostSync = true;
         sequence->bpm = 120.0;
         sequence->length = 16;
@@ -355,12 +439,12 @@ int main()
     // A parameter-locked hit must still reach the engine as audio.
     {
         MockHostPlayHead playHead;
-        VRACPlusAudioProcessor lockedProcessor;
+        SliceForgeAudioProcessor lockedProcessor;
         lockedProcessor.setPlayHead (&playHead);
         lockedProcessor.prepareToPlay (48000.0, 512);
-        auto sequence = vrac::cloneSequencerData (*lockedProcessor.getSequencerData());
+        auto sequence = sliceforge::cloneSequencerData (*lockedProcessor.getSequencerData());
         sequence->hostSync = true;
-        vrac::clearPattern (sequence->patterns[0]);
+        sliceforge::clearPattern (sequence->patterns[0]);
         auto& lockedStep = sequence->patterns[0].rows[0][0];
         lockedStep.on = true;
         lockedStep.velocity = 1.0f;
@@ -381,18 +465,18 @@ int main()
     {
         const auto makeFeatureSequence = []
         {
-            auto data = std::make_shared<vrac::SequencerData>();
+            auto data = std::make_shared<sliceforge::SequencerData>();
             data->length = 16;
             data->division = 4;
             data->bpm = 120.0;
             data->hostSync = true;
             data->songMode = false;
-            data->chainLength = vrac::kSeqChainLength;
+            data->chainLength = sliceforge::kSeqChainLength;
             data->chainPatterns = { 0, 1, 0, 2, 0, 1, 3, 2 };
             return data;
         };
 
-        vrac::SeqHostInfo host;
+        sliceforge::SeqHostInfo host;
         host.valid = true;
         host.playing = true;
         host.bpm = 120.0;
@@ -403,11 +487,11 @@ int main()
             step.on = true;
             step.velocity = 1.0f;
             step.nudge = 0.5f;
-            vrac::SeqPlaybackState featureState;
-            vrac::SeqBlockOutput out;
+            sliceforge::SeqPlaybackState featureState;
+            sliceforge::SeqBlockOutput out;
             juce::Random random (7);
             host.ppq = 0.0;
-            vrac::processSequencerBlock (*data, host, false, 48000.0, 7000, random, featureState, out);
+            sliceforge::processSequencerBlock (*data, host, false, 48000.0, 7000, random, featureState, out);
             check (out.triggerCount == 1 && out.triggers[0].sampleOffset > 2500,
                    "step nudge shifts trigger timing", juce::String (out.triggerCount));
         }
@@ -419,11 +503,11 @@ int main()
             step.velocity = 1.0f;
             step.nudge = 0.5f;
             step.flam = 1;
-            vrac::SeqPlaybackState featureState;
-            vrac::SeqBlockOutput out;
+            sliceforge::SeqPlaybackState featureState;
+            sliceforge::SeqBlockOutput out;
             juce::Random random (8);
             host.ppq = 0.0;
-            vrac::processSequencerBlock (*data, host, false, 48000.0, 7000, random, featureState, out);
+            sliceforge::processSequencerBlock (*data, host, false, 48000.0, 7000, random, featureState, out);
             check (out.triggerCount == 2, "flam generates a grace hit",
                    juce::String (out.triggerCount));
         }
@@ -438,13 +522,13 @@ int main()
             data->patterns[0].rows[0][2].on = true;
             data->patterns[0].rows[0][2].velocity = 1.0f;
             data->patterns[0].rows[0][2].nudge = -0.5f;
-            vrac::SeqPlaybackState featureState;
-            vrac::SeqBlockOutput firstOut, secondOut;
+            sliceforge::SeqPlaybackState featureState;
+            sliceforge::SeqBlockOutput firstOut, secondOut;
             juce::Random random (12);
             host.ppq = 0.37;
-            vrac::processSequencerBlock (*data, host, false, 48000.0, 720, random, featureState, firstOut);
+            sliceforge::processSequencerBlock (*data, host, false, 48000.0, 720, random, featureState, firstOut);
             host.ppq = 0.40;
-            vrac::processSequencerBlock (*data, host, false, 48000.0, 720, random, featureState, secondOut);
+            sliceforge::processSequencerBlock (*data, host, false, 48000.0, 720, random, featureState, secondOut);
             check (firstOut.triggerCount + secondOut.triggerCount >= 2,
                    "micro-timed steps survive out-of-order block boundaries");
         }
@@ -454,11 +538,11 @@ int main()
             data->patterns[0].laneLength[0] = 4;
             data->patterns[0].rows[0][0].on = true;
             data->patterns[0].rows[0][0].velocity = 1.0f;
-            vrac::SeqPlaybackState featureState;
-            vrac::SeqBlockOutput out;
+            sliceforge::SeqPlaybackState featureState;
+            sliceforge::SeqBlockOutput out;
             juce::Random random (9);
             host.ppq = 1.0; // absolute step 4, wrapped back to lane step 0
-            vrac::processSequencerBlock (*data, host, false, 48000.0, 512, random, featureState, out);
+            sliceforge::processSequencerBlock (*data, host, false, 48000.0, 512, random, featureState, out);
             check (out.triggerCount > 0, "per-lane polymeter wraps independently");
         }
 
@@ -470,11 +554,11 @@ int main()
             data->patterns[0].rows[0][0].velocity = 1.0f;
             data->patterns[1].rows[1][0].on = true;
             data->patterns[1].rows[1][0].velocity = 1.0f;
-            vrac::SeqPlaybackState featureState;
-            vrac::SeqBlockOutput out;
+            sliceforge::SeqPlaybackState featureState;
+            sliceforge::SeqBlockOutput out;
             juce::Random random (10);
             host.ppq = 1.0; // absolute step 4 -> chain slot B
-            vrac::processSequencerBlock (*data, host, false, 48000.0, 512, random, featureState, out);
+            sliceforge::processSequencerBlock (*data, host, false, 48000.0, 512, random, featureState, out);
             check (out.triggerCount > 0 && out.triggers[0].pad == 1,
                    "song mode follows the pattern chain");
         }
@@ -488,11 +572,11 @@ int main()
             step.locks.pitch = 7.0f;
             step.locks.volume = -6.0f;
             step.locks.length = 0.12f;
-            vrac::SeqPlaybackState featureState;
-            vrac::SeqBlockOutput out;
+            sliceforge::SeqPlaybackState featureState;
+            sliceforge::SeqBlockOutput out;
             juce::Random random (11);
             host.ppq = 0.0;
-            vrac::processSequencerBlock (*data, host, false, 48000.0, 512, random, featureState, out);
+            sliceforge::processSequencerBlock (*data, host, false, 48000.0, 512, random, featureState, out);
             check (out.triggerCount > 0 && out.triggers[0].hasLocks
                        && std::abs (out.triggers[0].locks.pitch - 7.0f) < 0.01f,
                    "parameter locks travel with sequencer triggers");
@@ -506,8 +590,8 @@ int main()
             data->patterns[0].rows[0][0].flam = 2;
             data->patterns[0].rows[0][0].locks.enabled = true;
             data->patterns[0].rows[0][0].locks.tone = 3.0f;
-            const auto block = vrac::serialiseSequencer (*data);
-            const auto restored = vrac::deserialiseSequencer (block);
+            const auto block = sliceforge::serialiseSequencer (*data);
+            const auto restored = sliceforge::deserialiseSequencer (block);
             check (restored != nullptr
                        && restored->patterns[0].laneLength[0] == 12
                        && std::abs (restored->patterns[0].rows[0][0].nudge - 0.25f) < 0.01f
@@ -517,13 +601,13 @@ int main()
         }
 
         {
-            const auto afro = vrac::makePatternPreset (vrac::PatternPreset::afro);
+            const auto afro = sliceforge::makePatternPreset (sliceforge::PatternPreset::afro);
             check (afro.laneLength[6] == 12 && afro.rows[0][0].on,
                    "factory pattern preset contains polymeter and notes");
             auto data = makeFeatureSequence();
             data->patterns[0] = afro;
-            const auto block = vrac::serialisePattern (afro);
-            const auto restored = vrac::deserialisePattern (block);
+            const auto block = sliceforge::serialisePattern (afro);
+            const auto restored = sliceforge::deserialisePattern (block);
             check (restored != nullptr && restored->laneLength[6] == 12,
                    "pattern presets save and load correctly");
         }
@@ -536,7 +620,7 @@ int main()
             data->patterns[0].rows[0][0].ratchet = 2;
             data->songMode = true;
             data->chainLength = 2;
-            const auto midi = vrac::makePatternMidiFile (*data);
+            const auto midi = sliceforge::makePatternMidiFile (*data);
             const auto* bytes = static_cast<const char*> (midi.getData());
             check (midi.getSize() > 64 && bytes[0] == 'M' && bytes[1] == 'T'
                        && bytes[2] == 'h' && bytes[3] == 'd',
@@ -553,11 +637,11 @@ int main()
     // installed/indexed it must expose searchable tracks; when it is absent the
     // status must explain why rather than crashing.
     {
-        vrac::VaultLibrary vault;
+        sliceforge::VaultLibrary vault;
         const bool available = vault.refreshStatus();
         if (available)
         {
-            vrac::VaultQuery query;
+            sliceforge::VaultQuery query;
             query.limit = 12;
             const auto tracks = vault.queryTracks (query);
             check (vault.getStatus().totalTracks > 0 && ! tracks.empty()
@@ -576,10 +660,10 @@ int main()
             }
             if (loadable.existsAsFile())
             {
-                VRACPlusAudioProcessor vaultProcessor;
+                SliceForgeAudioProcessor vaultProcessor;
                 vaultProcessor.prepareToPlay (48000.0, 512);
                 check (vaultProcessor.loadUserSampleFromFile (loadable),
-                       "a Sample Vault track loads into VRAC+");
+                       "a Sample Vault track loads into SliceForge");
             }
         }
         else
@@ -593,10 +677,10 @@ int main()
 
     // Sidechain recording.
     {
-        VRACPlusAudioProcessor recorder;
+        SliceForgeAudioProcessor recorder;
         juce::AudioProcessor::BusesLayout layout;
         layout.inputBuses.add (juce::AudioChannelSet::stereo());
-        for (int i = 0; i < vrac::kNumBuses; ++i)
+        for (int i = 0; i < sliceforge::kNumBuses; ++i)
             layout.outputBuses.add (juce::AudioChannelSet::stereo());
         check (recorder.setBusesLayout (layout), "sidechain bus layout accepted");
         recorder.prepareToPlay (48000.0, 512);
@@ -626,11 +710,230 @@ int main()
                "recorded sample has the expected length");
         juce::MemoryBlock customState;
         recorder.getStateInformation (customState);
-        VRACPlusAudioProcessor restored;
+        SliceForgeAudioProcessor restored;
         restored.setStateInformation (customState.getData(), (int) customState.getSize());
         check (restored.getSourceName() == "RECORDED INPUT", "custom sample survives state round trip");
         check (restored.getSamplePtr() != nullptr && restored.getSamplePtr()->getDurationSeconds() > 0.15,
                "custom sample audio survives state round trip");
+    }
+
+    // Vault audition: deterministic decode, one-shot end, loop wrap, rate conversion, the
+    // limiter that keeps preview-plus-kit inside full scale, and the bus-0 wiring.
+    {
+        const auto makeTone = [] (int numSamples, double rate, float leftValue, float rightValue)
+        {
+            juce::MemoryBlock pcm ((size_t) numSamples * 4);
+            auto* out = static_cast<int16_t*> (pcm.getData());
+            for (int i = 0; i < numSamples; ++i)
+            {
+                out[(size_t) i * 2] = (int16_t) std::round (leftValue * 32767.0f);
+                out[(size_t) i * 2 + 1] = (int16_t) std::round (rightValue * 32767.0f);
+            }
+            return sliceforge::decodePcm16 (pcm, 2, rate, "AUDITION TONE");
+        };
+
+        sliceforge::PreviewPlayer player;
+        player.prepare (48000.0);
+        auto tone = makeTone (100, 48000.0, 0.5f, -0.25f);
+        check (tone != nullptr, "audition test source decodes");
+        if (tone != nullptr)
+        {
+            juce::AudioBuffer<float> mix (2, 256);
+            player.play (tone, false);
+            check (player.isPlaying(), "audition starts playing on play()");
+            mix.clear();
+            player.render (mix, 64);
+            check (std::abs (mix.getSample (0, 30) - 0.45f) < 0.002f
+                       && std::abs (mix.getSample (1, 30) + 0.225f) < 0.002f,
+                   "audition renders both channels at the trim level",
+                   juce::String (mix.getSample (0, 30), 4) + " / " + juce::String (mix.getSample (1, 30), 4));
+            check (player.getAdvanceStamp() == 1, "audition advances once per rendered block");
+
+            mix.clear();
+            player.render (mix, 64);
+            check (! player.isPlaying(), "one-shot audition stops at the end of the file");
+            check (player.getProgress() > 0.99, "playhead rests at the end",
+                   juce::String (player.getProgress(), 3));
+
+            mix.clear();
+            player.render (mix, 64);
+            check (mix.getMagnitude (0, 64) == 0.0f, "a finished audition adds nothing");
+
+            player.play (tone, true);
+            check (player.isLoopEnabled(), "loop request is remembered");
+            for (int i = 0; i < 33; ++i)
+            {
+                mix.clear();
+                player.render (mix, 3);
+            }
+            check (player.isPlaying(), "looping audition keeps playing past the end");
+            check (player.getProgress() < 0.03, "loop wraps to the start",
+                   juce::String (player.getProgress(), 3));
+            player.stop();
+            check (player.getProgress() == 0.0 && ! player.isPlaying(), "stop rewinds the playhead");
+
+            auto halfRate = makeTone (100, 24000.0, 0.25f, 0.25f);
+            player.play (halfRate, false);
+            mix.clear();
+            player.render (mix, 100);
+            check (player.getProgress() > 0.45 && player.getProgress() < 0.55,
+                   "a 24 kHz file consumes half the host block", juce::String (player.getProgress(), 3));
+
+            player.play (tone, false);
+            for (int channel = 0; channel < 2; ++channel)
+                for (int i = 0; i < 64; ++i)
+                    mix.setSample (channel, i, 0.9f);
+            player.render (mix, 64);
+            check (mix.getMagnitude (0, 64) > 0.9f && mix.getMagnitude (0, 64) <= 0.9991f
+                       && std::abs (mix.getSample (1, 10) - 0.675f) < 0.002f,
+                   "audition over a hot bus is limited, never clipped",
+                   juce::String (mix.getMagnitude (0, 64), 4));
+            player.stop();
+        }
+
+        SliceForgeAudioProcessor audition;
+        audition.prepareToPlay (48000.0, 512);
+        const auto idle = render (audition, 2, 1.0f, 0, -1, 1000);
+        check (idle.total == 0.0f, "audition host is silent before a preview");
+        audition.getPreviewPlayer().play (makeTone (4000, 48000.0, 0.5f, 0.5f), false);
+        const auto during = render (audition, 4, 1.0f, 0, -1, 1000);
+        audition.getPreviewPlayer().stop();
+        audition.releaseResources();
+        check (during.finite && during.peaks[0] > 0.3f && during.peaks[0] < 0.6f
+                   && during.channelPeaks[0][1] > 0.3f,
+               "audition reaches the host on output bus 1", juce::String (during.peaks[0], 4));
+        check (during.peaks[1] < 0.0001f, "audition stays off the other output buses");
+    }
+
+    // Output stage: the soft clipper is bit-exact while bypassed, has a unity slope up to its
+    // knee, bends monotonically to just under full scale, is trimmed by OUT GAIN after the
+    // curve, and the last clamp keeps every host bus inside the ceiling.
+    {
+        sliceforge::OutputStage stage;
+        stage.prepare();
+        check (std::abs (stage.knee - sliceforge::OutputStage::kCeiling) < 1.0e-6f && stage.headroom == 0.0f
+                   && stage.gain == 1.0f,
+               "output stage boots bypassed",
+               juce::String (stage.knee, 3) + " / " + juce::String (stage.gain, 3));
+
+        juce::AudioBuffer<float> calm (2, 8);
+        for (int channel = 0; channel < 2; ++channel)
+            for (int i = 0; i < 8; ++i)
+                calm.setSample (channel, i, (float) (i + 1) * 0.1f * (channel == 0 ? 1.0f : -1.0f));
+        std::array<float, 16> original {};
+        for (int channel = 0; channel < 2; ++channel)
+            for (int i = 0; i < 8; ++i)
+                original[(size_t) channel * 8 + (size_t) i] = calm.getSample (channel, i);
+        stage.process (calm, 8);
+        bool bitExact = true;
+        for (int channel = 0; channel < 2; ++channel)
+            for (int i = 0; i < 8; ++i)
+                bitExact = bitExact && calm.getSample (channel, i) == original[(size_t) channel * 8 + (size_t) i];
+        check (bitExact, "a bypassed output stage changes nothing bit-exact");
+
+        stage.setParameters (1.0f, 0.0f, true);
+        check (std::abs (stage.knee - 0.349f) < 1.0e-4f && std::abs (stage.headroom - 0.65f) < 1.0e-4f,
+               "full clip drops the knee to 0.349", juce::String (stage.knee, 4));
+        check (stage.shape (0.2f) == 0.2f && stage.shape (-0.3f) == -0.3f,
+               "nothing is attenuated below the knee");
+        check (std::abs (stage.shape (sliceforge::OutputStage::kCeiling) - 0.8440f) < 2.0e-3f,
+               "a full-scale peak lands at 0.844 at full clip",
+               juce::String (stage.shape (sliceforge::OutputStage::kCeiling), 4));
+        const auto knee = stage.knee;
+        const auto overKnee = stage.shape (knee + 1.0e-4f) - stage.shape (knee);
+        check (overKnee > 0.9e-4f && overKnee < 1.1e-4f, "the curve leaves the knee with slope 1",
+               juce::String (overKnee * 1.0e4f, 3));
+
+        bool monotonic = true;
+        float previous = -1.0f;
+        for (float x = 0.0f; x <= 2.0f; x += 0.05f)
+        {
+            const auto y = stage.shape (x);
+            if (y <= previous || y > sliceforge::OutputStage::kCeiling)
+                monotonic = false;
+            previous = y;
+        }
+        check (monotonic, "the curve never turns back and never reaches full scale");
+
+        stage.setParameters (1.0f, 6.0f, true);
+        const auto madeUp = stage.shape (0.5f) * 1.99526f;
+        check (std::abs (stage.gain - 1.99526f) < 1.0e-4f, "OUT GAIN +6 dB is a 2x trim",
+               juce::String (stage.gain, 5));
+        juce::AudioBuffer<float> trimmed (2, 4);
+        trimmed.clear();
+        trimmed.setSample (0, 0, 0.5f);
+        trimmed.setSample (1, 0, -0.5f);
+        stage.process (trimmed, 4);
+        check (std::abs (trimmed.getSample (0, 0) - madeUp) < 0.002f
+                   && std::abs (trimmed.getSample (1, 0) + madeUp) < 0.002f,
+               "OUT GAIN is applied after the clipper", juce::String (trimmed.getSample (0, 0), 4));
+
+        stage.setParameters (1.0f, 40.0f, true);
+        check (std::abs (stage.gain - 3.98107f) < 1.0e-4f, "OUT GAIN clamps to the top of its range",
+               juce::String (stage.gain, 4));
+        trimmed.clear();
+        trimmed.setSample (0, 0, 0.5f);
+        stage.process (trimmed, 4);
+        check (trimmed.getSample (0, 0) == sliceforge::OutputStage::kCeiling,
+               "the ceiling clamp runs last and catches the makeup gain",
+               juce::String (trimmed.getSample (0, 0), 4));
+
+        stage.setParameters (0.0f, 0.0f, true);
+        trimmed.clear();
+        trimmed.setSample (0, 0, 1.4f);
+        trimmed.setSample (0, 1, -1.4f);
+        stage.process (trimmed, 4);
+        check (trimmed.getSample (0, 0) == sliceforge::OutputStage::kCeiling
+                   && trimmed.getSample (0, 1) == -sliceforge::OutputStage::kCeiling,
+               "even bypassed, the stage cannot pass a sample above full scale");
+
+        // Wired through the plugin, measured on a known signal: a 0 dBFS audition loop enters
+        // bus 0 at 0.9, so the three settings have deterministic peaks of 0.9, 0.797 and the
+        // ceiling. Nothing here depends on how loud the kit happens to be.
+        SliceForgeAudioProcessor out;
+        out.prepareToPlay (48000.0, 512);
+        auto dc = makeDcSource (4000, 48000.0, 1.0f);
+        check (dc != nullptr, "output stage test source decodes");
+        out.getPreviewPlayer().play (dc, true);
+        const auto openClip = render (out, 8, 1.0f, 0, -1, 1000);
+        setParam (out, "global.clip", 1.0f);
+        const auto hardClip = render (out, 8, 1.0f, 0, -1, 1000);
+        setParam (out, "global.out", 6.0f);
+        const auto madeUpHit = render (out, 8, 1.0f, 0, -1, 1000);
+        out.getPreviewPlayer().stop();
+        out.releaseResources();
+        check (openClip.finite && std::abs (openClip.peaks[0] - 0.9f) < 0.01f,
+               "a bypassed output stage leaves the host bus at its input level",
+               juce::String (openClip.peaks[0], 4));
+        check (hardClip.finite && std::abs (hardClip.peaks[0] - 0.7968f) < 0.01f,
+               "full clip bends the same 0.9 peak to 0.797", juce::String (hardClip.peaks[0], 4));
+        check (madeUpHit.finite && madeUpHit.peaks[0] <= 0.9991f && madeUpHit.peaks[0] > hardClip.peaks[0],
+               "OUT GAIN after the clipper is caught by the ceiling",
+               juce::String (madeUpHit.peaks[0], 4));
+        check (hardClip.peaks[1] < 0.0001f, "the output stage does not invent signal on other buses");
+
+        // A kit saved before the output stage existed has no global.clip / global.out in its
+        // state; APVTS matches by id, so it must land on the bypassed defaults.
+        juce::MemoryBlock currentState;
+        processor.getStateInformation (currentState);
+        auto legacyTree = juce::ValueTree::readFromData (currentState.getData(), currentState.getSize());
+        check (legacyTree.isValid(), "output stage state reads back as a value tree");
+        if (legacyTree.isValid())
+        {
+            stripParameter (legacyTree, "global.clip");
+            stripParameter (legacyTree, "global.out");
+            juce::MemoryBlock legacyBlock;
+            juce::MemoryOutputStream stream (legacyBlock, false);
+            legacyTree.writeToStream (stream);
+            SliceForgeAudioProcessor legacy;
+            legacy.prepareToPlay (48000.0, 512);
+            legacy.setStateInformation (legacyBlock.getData(), (int) legacyBlock.getSize());
+            check (getParam (legacy, "global.clip") == 0.0f && getParam (legacy, "global.out") == 0.0f,
+                   "an older kit restores with the output stage bypassed");
+            const auto legacyHit = render (legacy, 20, 1.0f, processor.getSelectedPad());
+            check (legacyHit.finite && legacyHit.total > 0.001f, "the older kit still plays");
+            legacy.releaseResources();
+        }
     }
 
     // CPU benchmark.

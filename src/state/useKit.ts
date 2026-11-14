@@ -303,7 +303,7 @@ export function useKit() {
       const session = buildPresetSession(id);
       dispatch({ type: 'loadSession', session });
     } catch (error) {
-      console.error('[VRAC+] could not build preset', id, error);
+      console.error('[SliceForge] could not build preset', id, error);
     }
   }, []);
 
@@ -314,7 +314,7 @@ export function useKit() {
       const session = buildSourceSession(sourceId, sample.name, sample, previous.kit, previous.kit.sensitivity);
       dispatch({ type: 'loadSession', session });
     } catch (error) {
-      console.error('[VRAC+] could not load source', sourceId, error);
+      console.error('[SliceForge] could not load source', sourceId, error);
     }
   }, []);
 

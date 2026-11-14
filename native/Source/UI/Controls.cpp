@@ -1,14 +1,14 @@
 #include "Controls.h"
 #include "Theme.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
     namespace
     {
         bool isGainParam (const juce::String& id)
         {
             return id.endsWith ("_original") || id.endsWith ("_drumified") || id.endsWith ("_volume")
-                || id == "global.volume";
+                || id == "global.volume" || id == "global.out";
         }
 
         bool isPitchParam (const juce::String& id)
@@ -20,7 +20,7 @@ namespace vrac::ui
         {
             return id.endsWith ("_drumify") || id.endsWith ("_velocity") || id.endsWith ("_warp")
                 || id.endsWith ("_impact") || id.endsWith ("_instability") || id.endsWith ("_super")
-                || id == "global.width" || id == "source.sensitivity";
+                || id == "global.width" || id == "global.clip" || id == "source.sensitivity";
         }
     } // namespace
 
@@ -62,7 +62,7 @@ namespace vrac::ui
         return juce::String (v, 2);
     }
 
-    ParamKnob::ParamKnob (VRACPlusAudioProcessor& processor, juce::String label, juce::String id, int size)
+    ParamKnob::ParamKnob (SliceForgeAudioProcessor& processor, juce::String label, juce::String id, int size)
         : processorRef (processor), parameterId (std::move (id)), labelText (std::move (label)), dialSize (size)
     {
         accent = palette().accent;
@@ -202,7 +202,7 @@ namespace vrac::ui
                             });
     }
 
-    ParamSlider::ParamSlider (VRACPlusAudioProcessor& processor, juce::String label, juce::String id)
+    ParamSlider::ParamSlider (SliceForgeAudioProcessor& processor, juce::String label, juce::String id)
         : processorRef (processor), parameterId (std::move (id)), labelText (std::move (label))
     {
         accent = palette().accent;
@@ -317,19 +317,19 @@ namespace vrac::ui
 
     void styleChip (juce::TextButton& button, bool active)
     {
-        // Colours are resolved by VracLookAndFeel from the active palette so a
+        // Colours are resolved by SliceForgeLookAndFeel from the active palette so a
         // light/dark switch updates every chip without restyling the component tree.
         button.setToggleState (active, juce::dontSendNotification);
     }
 
     void stylePrimaryButton (juce::TextButton& button)
     {
-        button.getProperties().set ("vracPrimary", true);
+        button.getProperties().set ("sliceforgePrimary", true);
     }
 
     void styleSmallPanelButton (juce::TextButton& button, juce::Colour accentColour)
     {
         button.setColour (juce::TextButton::buttonOnColourId, accentColour);
     }
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

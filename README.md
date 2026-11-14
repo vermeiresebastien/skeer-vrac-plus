@@ -1,29 +1,29 @@
-# SKEER VRAC+ — Native VST3 & Web Edition
+# SKEER SliceForge — Native VST3 & Web Edition
 
 **One sound. One drum kit.**
 
-SKEER VRAC+ is a sample-based drum machine that runs as a **native SKEER-branded VST3
+SKEER SliceForge is a sample-based drum machine that runs as a **native SKEER-branded VST3
 instrument / standalone application** and as a browser instrument. Drop any recording, let
 the auto-slicer find every hit, and morph each of the sixteen pads between the original audio
 and a bank of kick, snare, hat and clap models. Every pad can be shaped with Warp, Impact,
 Instability, Tone Shift, Super and a three-band EQ, then performed, mixed and printed.
 
-![SKEER VRAC+ native VST3 instrument](native/shots/editor-light.png)
+![SKEER SliceForge native VST3 instrument](native/shots/editor-light.png)
 
 **Native edition** — SKEER wordmark, IBM Plex / Barlow Condensed typography and the SKEER
 warm-ivory/orange studio palette, plus 16 pads, 16 models, 8 stereo outputs, sample-accurate
 MIDI, MIDI CC learn, sidechain-input recording, six factory kits, host-saved state with the
 custom sample, a host-synced 32-step sequencer with four patterns, probability/ratchet editing,
-micro-timing, flams, parameter locks, per-lane polymeter, an eight-slot song chain, pattern
-presets, MIDI export and extensive randomization, a read-only link to the **SKEER Sample
-Vault** library index, light and dark SKEER themes, and a resizable 1260×840 editor. See
+micro-timing, flams, parameter locks, per-lane polymeter, pattern duplicate, an eight-slot song
+chain, pattern presets, MIDI export and extensive randomization, a read-only link to the **SKEER
+Sample Vault** library index, light and dark SKEER themes, and a resizable 1260×840 editor. See
 [`native/README.md`](native/README.md) for the build, install and test instructions.
 
-![SKEER VRAC+ native sequencer](native/shots/sequencer-light.png)
+![SKEER SliceForge native sequencer](native/shots/sequencer-light.png)
 
-![SKEER VRAC+ step inspector](native/shots/sequencer-inspector.png)
+![SKEER SliceForge step inspector](native/shots/sequencer-inspector.png)
 
-![SKEER VRAC+ Sample Vault browser](native/shots/vault-light.png)
+![SKEER SliceForge Sample Vault browser](native/shots/vault-light.png)
 
 **Dark mode** — the DARK / LIGHT header button switches every page, inspector and dialog surface
 between the ivory and charcoal skins; the choice is remembered per user.
@@ -31,14 +31,17 @@ between the ivory and charcoal skins; the choice is remembered per user.
 The sequencer's steps are colour-coded by drum family, while playback uses a dedicated green
 playhead and transport indicator.
 
-![SKEER VRAC+ dark sequencer](native/shots/sequencer-dark.png)
+![SKEER SliceForge dark sequencer](native/shots/sequencer-dark.png)
 
-![SKEER VRAC+ dark Sample Vault](native/shots/vault-dark.png)
+![SKEER SliceForge dark Sample Vault](native/shots/vault-dark.png)
 
-> The native plugin is already built and installed at
-> `%LOCALAPPDATA%\Programs\Common\VST3\VRAC+.vst3` on this machine. Add that folder to your
-> DAW's VST3 scan paths if it is not already scanned. A portable package is available at
-> [`native/artifact/VRACPlus-1.0.0-Windows-x64.zip`](native/artifact/VRACPlus-1.0.0-Windows-x64.zip).
+> Everything runnable lives in [`launch/`](launch) at the repository root: the standalone
+> `SliceForge.exe`, the `SliceForge.vst3` bundle and the portable
+> [`launch/SliceForge-1.0.0-Windows-x64.zip`](launch/SliceForge-1.0.0-Windows-x64.zip). Double-click
+> [`launch/start.bat`](launch/start.bat) to refresh the VST3 install, open the standalone and
+> serve the browser edition. With nothing installed yet it copies the bundle into
+> `%USERPROFILE%\Documents\VST3`, the folder that already holds the other SKEER plugins; add that
+> folder to your DAW's VST3 scan paths if it is not already scanned.
 
 The browser edition remains fully functional with its original interface styling and is
 documented below.
@@ -46,11 +49,11 @@ documented below.
 This is an independent, non-commercial interpretation built from the VRAC+ product brief and
 interface references. It is not affiliated with Beatsurfing / Druw Audio.
 
-![VRAC+ in light mode](docs/screenshots/vrac-plus-light.png)
+![SliceForge in light mode](docs/screenshots/sliceforge-light.png)
 
 | Dark mode | Factory library |
 | --- | --- |
-| ![VRAC+ in dark mode](docs/screenshots/vrac-plus-dark.png) | ![VRAC+ sample library](docs/screenshots/vrac-plus-library.png) |
+| ![SliceForge in dark mode](docs/screenshots/sliceforge-dark.png) | ![SliceForge sample library](docs/screenshots/sliceforge-library.png) |
 
 ---
 
@@ -63,7 +66,7 @@ interface references. It is not affiliated with Beatsurfing / Druw Audio.
 | **Pads** | 16 chromatic pads (C1–D#2), per-pad mute and solo, velocity-sensitive triggering, click-position velocity, keyboard and MIDI input |
 | **Models** | Four families × four models = 16 drum models; each pad has its own morphology blend between the original sample and the selected model |
 | **Per-pad design** | Drumify blend, independent Original/Drumified levels, Pitch, Length, Volume, Pan, Velocity amount, Choke groups, Output bus, Warp, Impact, Instability, Tone Shift, Super and 3-band EQ |
-| **Global** | Fine tune, global Drumify macro, master volume, transpose, length scale, tone, DJ-style filter and stereo width |
+| **Global** | Fine tune, global Drumify macro, master volume, transpose, length scale, tone, DJ-style filter, stereo width, plus the output stage: soft clip and OUT trim |
 | **Performance** | Auto-select, choke groups, 32-voice engine, eight stereo output buses and live bus/master meters |
 | **Presets** | Six factory kits, local saved kits, JSON import/export, per-kit undo/redo |
 | **MIDI** | Note triggering (C1–D#2 = MIDI 36–51) with velocity; Web MIDI learn on every knob; mappings saved locally |
@@ -100,7 +103,7 @@ npm run preview
 ```
 
 The app is a static Vite bundle in `dist/`. Serve it from the site root because the
-AudioWorklet module is loaded from `/vrac-worklet.js`.
+AudioWorklet module is loaded from `/sliceforge-worklet.js`.
 
 ---
 
@@ -122,7 +125,7 @@ sensitivity and global controls.
 
 The built-in guide covers the workflow, controls and full shortcut list:
 
-![VRAC+ user guide](docs/screenshots/vrac-plus-help.png)
+![SliceForge user guide](docs/screenshots/sliceforge-help.png)
 
 ---
 
@@ -147,8 +150,9 @@ The export dialog renders one-shots through the same voice engine and master cha
 - **Full kit** — ZIP containing 16 named WAVs (`D1_SNARE_2.wav`), `kit.json` with the full
   parameter state, and a short README. Files include the stereo output bus in their names.
 
-Rendering uses a pure-JS one-shot engine, then the master chain is applied through an
-`OfflineAudioContext`. The browser tab must stay awake while the ZIP is prepared.
+Rendering uses a pure-JS one-shot engine, then the master chain — including the soft clipper and
+OUT trim — is applied through an `OfflineAudioContext`, so an exported WAV leaves the same way the
+live output does. The browser tab must stay awake while the ZIP is prepared.
 
 ---
 
@@ -160,9 +164,10 @@ src/
   types.ts                 shared state, factory model bank, ranges and formatting
   audio/
     engineCore.ts          polyphonic voices, model synthesis, sample morph, 8 buses
-    worklet.ts             AudioWorkletProcessor wrapper (bundled to public/vrac-worklet.js)
+    worklet.ts             AudioWorkletProcessor wrapper (bundled to public/sliceforge-worklet.js)
     audioEngine.ts         main-thread AudioContext, worklet, master chain, meters
-    masterChain.ts         global filter/tone/compressor/limiter/volume
+    masterChain.ts         global filter/tone/compressor/limiter/volume + output stage
+    outputStage.ts         soft clipper → OUT gain → ±0.999 ceiling (same math as native Dsp.h)
     sampleLibrary.ts       six deterministic procedural sources and peak data
     slicer.ts              RMS-flux onset detector, slice ownership and remapping
     exportKit.ts           offline one-shot render, WAV/ZIP export, kit manifest
@@ -191,7 +196,8 @@ sample layer ─┐
 model layer ──┘                                                        │
                                                                        master
                          ┌─────────────────────────────────────────────┘
-                         └─ filter ─ tone shelves ─ compressor ─ limiter ─ volume ─ out
+                         └─ filter ─ tone shelves ─ compressor ─ limiter ─ volume
+                                       ─ soft clip ─ OUT gain ─ ceiling ─ out
 ```
 
 - **One AudioWorklet** renders up to 32 voices and eight stereo buses. Each voice owns its
@@ -208,6 +214,13 @@ model layer ──┘                                                        │
   sounds.
 - **No audio thread allocations** happen per voice trigger: the voice pool and filters are
   allocated up front.
+- **The output stage is one curve.** `SOFT CLIP` (0–100 %) moves a tanh knee from 0.999 down to
+  0.349, `OUT` (−24 to +12 dB) trims afterwards, and a hard ±0.999 ceiling always gets the last
+  word. At 0 % the curve is the identity, so the stage is bit-exact and never attenuates anything
+  below the knee. Because a `WaveShaperNode` curve cannot be automated, the whole stage is baked
+  into one Float32Array and swapped only when the two values change — the same maths as
+  `sliceforge::OutputStage` in `native/Source/Engine/Dsp.h`. The trim is an explicit knob rather
+  than automatic makeup gain, so louder is always a choice you can see.
 
 ### Coordinates and state
 
@@ -227,7 +240,8 @@ model layer ──┘                                                        │
 ## Tests
 
 Unit tests cover the deterministic library, slicer behaviour, WAV/ZIP correctness, offline
-one-shot rendering, voice gating, choke groups and every model in the bank:
+one-shot rendering, voice gating, choke groups, the output-stage curve and every model in the
+bank (30 tests, 3 files):
 
 ```powershell
 npm test
@@ -284,7 +298,7 @@ The browser test depends on `fixtures/user-groove.wav`; the ZIP it produces is w
 
 ## Design notes
 
-The interface follows the supplied VRAC+ references: cool light grey panels, black hardware,
+The interface follows the supplied SliceForge references: cool light grey panels, black hardware,
 warm pads, coloured family corners and a single orange signal colour. The dark theme is a
 night-studio counterpart. Typography uses Archivo / Archivo Narrow for instrument labels and
 IBM Plex Mono for values. Controls are built from plain React and CSS without a component

@@ -1,14 +1,14 @@
 #include "LookAndFeel.h"
 #include "Theme.h"
 
-namespace vrac::ui
+namespace sliceforge::ui
 {
-    VracLookAndFeel::VracLookAndFeel()
+    SliceForgeLookAndFeel::SliceForgeLookAndFeel()
     {
         refreshTheme();
     }
 
-    void VracLookAndFeel::refreshTheme()
+    void SliceForgeLookAndFeel::refreshTheme()
     {
         const auto& c = palette();
         setColour (juce::ResizableWindow::backgroundColourId, c.bg);
@@ -51,12 +51,12 @@ namespace vrac::ui
         setColour (juce::TooltipWindow::outlineColourId, c.line);
     }
 
-    juce::Font VracLookAndFeel::getTextButtonFont (juce::TextButton&, int) { return font (9.5f, true); }
-    juce::Font VracLookAndFeel::getComboBoxFont (juce::ComboBox&) { return font (11.0f); }
-    juce::Font VracLookAndFeel::getLabelFont (juce::Label&) { return font (11.0f); }
-    juce::Font VracLookAndFeel::getPopupMenuFont() { return font (11.0f); }
+    juce::Font SliceForgeLookAndFeel::getTextButtonFont (juce::TextButton&, int) { return font (9.5f, true); }
+    juce::Font SliceForgeLookAndFeel::getComboBoxFont (juce::ComboBox&) { return font (11.0f); }
+    juce::Font SliceForgeLookAndFeel::getLabelFont (juce::Label&) { return font (11.0f); }
+    juce::Font SliceForgeLookAndFeel::getPopupMenuFont() { return font (11.0f); }
 
-    void VracLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button,
+    void SliceForgeLookAndFeel::drawButtonBackground (juce::Graphics& g, juce::Button& button,
                                                  const juce::Colour& backgroundColour,
                                                  bool highlighted, bool down)
     {
@@ -64,7 +64,7 @@ namespace vrac::ui
         juce::ignoreUnused (backgroundColour);
         auto bounds = button.getLocalBounds().toFloat().reduced (0.5f);
         const bool on = button.getToggleState();
-        const bool primary = (bool) button.getProperties().getWithDefault ("vracPrimary", false);
+        const bool primary = (bool) button.getProperties().getWithDefault ("sliceforgePrimary", false);
         auto fill = primary ? c.accent
                             : (on ? button.findColour (juce::TextButton::buttonOnColourId) : c.panel);
         if (highlighted)
@@ -80,11 +80,11 @@ namespace vrac::ui
         g.drawRoundedRectangle (bounds, 4.0f, 1.0f);
     }
 
-    void VracLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool, bool down)
+    void SliceForgeLookAndFeel::drawButtonText (juce::Graphics& g, juce::TextButton& button, bool, bool down)
     {
         const auto& c = palette();
         const bool on = button.getToggleState();
-        const bool primary = (bool) button.getProperties().getWithDefault ("vracPrimary", false);
+        const bool primary = (bool) button.getProperties().getWithDefault ("sliceforgePrimary", false);
         g.setFont (getTextButtonFont (button, button.getHeight()));
         g.setColour ((primary || on ? juce::Colour (0xfffff9f2) : c.ink)
                          .withMultipliedAlpha (button.isEnabled() ? 1.0f : 0.4f));
@@ -94,7 +94,7 @@ namespace vrac::ui
         g.drawFittedText (button.getButtonText().toUpperCase(), area, juce::Justification::centred, 1);
     }
 
-    void VracLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool,
+    void SliceForgeLookAndFeel::drawComboBox (juce::Graphics& g, int width, int height, bool,
                                         int, int, int, int, juce::ComboBox& box)
     {
         const auto& c = palette();
@@ -113,7 +113,7 @@ namespace vrac::ui
         g.strokePath (arrow, juce::PathStrokeType (1.4f, juce::PathStrokeType::curved, juce::PathStrokeType::rounded));
     }
 
-    void VracLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
+    void SliceForgeLookAndFeel::drawRotarySlider (juce::Graphics& g, int x, int y, int width, int height,
                                             float sliderPosProportional, float rotaryStartAngle,
                                             float rotaryEndAngle, juce::Slider& slider)
     {
@@ -145,7 +145,7 @@ namespace vrac::ui
         g.fillEllipse (centre.x - 2.0f, centre.y - 2.0f, 4.0f, 4.0f);
     }
 
-    void VracLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
+    void SliceForgeLookAndFeel::drawLinearSlider (juce::Graphics& g, int x, int y, int width, int height,
                                             float sliderPos, float, float,
                                             juce::Slider::SliderStyle style, juce::Slider& slider)
     {
@@ -168,7 +168,7 @@ namespace vrac::ui
         LookAndFeel_V4::drawLinearSlider (g, x, y, width, height, sliderPos, 0.0f, 0.0f, style, slider);
     }
 
-    void VracLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width, int height)
+    void SliceForgeLookAndFeel::drawPopupMenuBackground (juce::Graphics& g, int width, int height)
     {
         const auto& c = palette();
         g.setColour (c.panel);
@@ -176,5 +176,5 @@ namespace vrac::ui
         g.setColour (c.line);
         g.drawRoundedRectangle (juce::Rectangle<float> (0.5f, 0.5f, (float) width - 1.0f, (float) height - 1.0f), 4.0f, 1.0f);
     }
-} // namespace vrac::ui
+} // namespace sliceforge::ui
 

@@ -11,11 +11,6 @@ native/build/
 native/external/
 native/startup.log
 
-# Packaged release output (27 MB): the stamped VRACPlus-<version>-Windows-x64.zip
-# that the native build produces. native/build/ above covers the CMake tree but
-# not this, because the zip lands in a sibling folder. Rebuild it from native/.
-native/artifact/
-
 # Note on what is deliberately NOT ignored: native/Resources/ stays tracked.
 # CMakeLists.txt lists every file in Resources/library and Resources/branding as
 # a binary resource of the plugin target, so a checkout without them cannot

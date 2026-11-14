@@ -2,7 +2,7 @@
 #include "Params.h"
 #include <algorithm>
 
-namespace vrac
+namespace sliceforge
 {
     std::vector<Slice> detectSlices (const SampleData& sample, float sensitivity)
     {
@@ -112,4 +112,4 @@ namespace vrac
         }
         return starts;
     }
-} // namespace vrac
+} // namespace sliceforge

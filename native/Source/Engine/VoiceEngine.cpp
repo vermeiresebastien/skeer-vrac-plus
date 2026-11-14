@@ -1,6 +1,6 @@
 #include "VoiceEngine.h"
 
-namespace vrac
+namespace sliceforge
 {
     namespace
     {
@@ -689,4 +689,4 @@ namespace vrac
             return 0.0f;
         return busPeaks[(size_t) busIndex].load (std::memory_order_relaxed);
     }
-} // namespace vrac
+} // namespace sliceforge

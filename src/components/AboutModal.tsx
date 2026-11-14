@@ -7,7 +7,7 @@ export function AboutModal({ open, onClose }: { open: boolean; onClose: () => vo
       open={open}
       onClose={onClose}
       eyebrow="ABOUT"
-      title="VRAC+ — drumify any sound"
+      title="SliceForge — drumify any sound"
       wide
       footer={
         <>
@@ -27,7 +27,7 @@ export function AboutModal({ open, onClose }: { open: boolean; onClose: () => vo
         </h3>
         <p>
           Feed it any sound and get back a full drum kit. Auto-slice a sample, find every hit,
-          sculpt each pad. VRAC+ turns raw audio into punchy, original beats built for the stage,
+          sculpt each pad. SliceForge turns raw audio into punchy, original beats built for the stage,
           the studio or both.
         </p>
         <div className="about-stats">
@@ -40,7 +40,7 @@ export function AboutModal({ open, onClose }: { open: boolean; onClose: () => vo
 
       <div className="about-columns">
         <section>
-          <h4>Why VRAC+</h4>
+          <h4>Why SliceForge</h4>
           <ul className="about-list">
             <li><strong>Kits in minutes.</strong> Skip the sample-browsing rabbit hole and get to a playable kit fast.</li>
             <li><strong>Any audio becomes drums.</strong> Raw, unprocessed sound turned into expressive, stage-ready material.</li>
@@ -81,7 +81,7 @@ export function AboutModal({ open, onClose }: { open: boolean; onClose: () => vo
           <p>
             Cinematic foley, kitchen clatter, body percussion, scrap metal, circuit noise and vinyl
             dust. Every factory source is generated locally from a seeded procedural recipe, so the
-            library ships with the app and never needs a download. The real VRAC+ library was built
+            library ships with the app and never needs a download. The real SliceForge library was built
             with foley artist Olivier Thys; this browser edition pays tribute with its own synthetic
             found-sound set.
           </p>
