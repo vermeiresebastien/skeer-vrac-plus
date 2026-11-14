@@ -2,9 +2,12 @@
 
 SKEER SliceForge is two editions of one instrument: a React/Vite browser app at the repo root
 (`src/`, documented in `README.md`) and a JUCE 8 VST3 + standalone under `native/`
-(documented in `native/README.md`). They are parallel C++ and TypeScript implementations of the
-same engine design — there is no shared source, so a parameter or range change usually belongs in
-both.
+(documented in `native/README.md`). They are C++ and TypeScript implementations of the same engine design — there is no shared
+source, so a parameter or range change usually belongs in both. "Usually" is not "always": the
+sequencer, the Sample Vault link and the sidechain-input recording are native-only, and `src/`
+contains no sequencer at all (`grep -ri "sequencer|pattern" src/` is empty). Mirror a change in
+both editions when both have the surface; when only one does, say so instead of building a second
+copy of a feature unasked.
 
 ## One launch folder
 
@@ -100,10 +103,23 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
 - `native/shots/*.png` is gitignored, so the image links in both READMEs are broken in a fresh
   clone. `native/artifact/` no longer exists — its zip became `launch/SliceForge-1.0.0-Windows-x64.zip`.
 - Committed docs lag the tree in this project. Verify a path in the current tree before quoting it.
+  The same goes for the numbers in it: the smoke total, the exposed-parameter count and the CPU
+  figure are all claims to re-measure, not facts.
+- `ctest --test-dir native/build -C Release` runs whatever binaries are already in the tree; it does
+  not build. After editing UI layout, a bare ctest can pass against a stale `SliceForgeLayoutTest.exe`
+  and rewrite `native/shots/*.png` without your change in them — which reads as "the control did not
+  render". Build the test targets first (`cmake --build native/build --config Release`) when a
+  snapshot or a check total looks wrong for no reason.
+- MSVC intermittently fails a parallel compile with `D8040: error creating or communicating with
+  child process`, sometimes alongside a bogus `C1001` internal compiler error in an unrelated file.
+  Re-running the same target sequentially succeeds; it is not a code problem.
 - `%LOCALAPPDATA%\Programs\Common\VST3\VRAC+.vst3` was removed on 2026-11-14; the bundle is
   installed at `%USERPROFILE%\Documents\VST3\SliceForge.vst3`, hash-matched against `launch/`. It
   carries the same `Erwm`/`Vrac` CID, so any other machine with the old copy still lists two plugins
-  for one identity until it is deleted.
+  for one identity until it is deleted. Whatever the previous install was, `launch/start.ps1`
+  overwrites it, so keep at most one `SliceForge*` folder in that scan directory — a `.old-build`
+  sibling is not scanned, but it is still clutter; `%LOCALAPPDATA%\SliceForge\previous-build\` is
+  where one was parked on 2026-11-14.
 - The local folder is still `D:\Projects\skeer-audio\vrac-plus` and cannot be renamed from inside a
   live session: the app holds the workspace root, so the root returns "Device or resource busy"
   while subdirectories move fine. `D:\Projects\skeer-audio\move-to-sliceforge.ps1` does the move
