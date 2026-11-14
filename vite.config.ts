@@ -16,6 +16,10 @@ export default defineConfig({
         '**/tests/**',
         '**/test-results/**',
         '**/native/**',
+        // The export target rewrites a 23 MB exe and a 24 MB VST3 module in place. Watching them
+        // makes `npm run dev` die with "EBUSY: resource busy or locked, watch launch/SliceForge.exe"
+        // the moment someone runs `--target launch` alongside it. Nothing there is source.
+        '**/launch/**',
         '**/*.zip',
         '**/*.wav',
         '**/dev-server.log',
