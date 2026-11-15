@@ -10,9 +10,11 @@ Install:
   %LOCALAPPDATA%\Programs\Common\VST3: it adds a duplicate entry to the browser and a
   second build that silently falls behind after the next compile. launch\start.ps1
   installs the one copy, removes the others and verifies the result against launch\.
-  If Documents\VST3 is still in your host's custom VST3 folder list, remove that entry and
-  rescan, or the plugin can be listed twice while two different builds sit in the two
-  folders.
+  If your host lists SliceForge twice, the cause is a second bundle sitting in one of those
+  folders, not the folder itself: delete that copy - launch\start.ps1 does it for you - and
+  rescan. Do NOT remove %USERPROFILE%\Documents\VST3 from your host's custom VST3 folder list
+  to fix a duplicate; other plugins may live only there and would disappear from the browser
+  with it.
 
 Standalone:
   Run SliceForge.exe.

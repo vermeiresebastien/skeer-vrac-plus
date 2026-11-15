@@ -136,8 +136,10 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
   identity until it is deleted.
 - The bundle lived in `%USERPROFILE%\Documents\VST3` from the rename until 2026-11-15, when the
   install location was moved to `%ProgramFiles%\Common Files\VST3` and the `Documents` copy removed.
-  `start.ps1` now prunes that duplicate on every run; other SKEER plugins are still in `Documents`
-  (Groovebox, SKULPT, SKEER Vault) and that is their repos' decision, not this one.
+  `start.ps1` prunes that duplicate on every run. Other SKEER plugins moved to the system folder
+  the same day, but `SKULPT.vst3` still exists only in `Documents\VST3` — so retire the duplicate
+  *bundle*, never the scan path: telling a host to stop scanning `Documents` would unregister
+  plugins that live nowhere else.
 - `launch/start.ps1` overwrites whatever previous build is in the destination, so keep at most one
   `SliceForge*` folder in a scan directory — a `.old-build` sibling is not scanned, but it is still
   clutter; `%LOCALAPPDATA%\SliceForge\previous-build\` is where one was parked on 2026-11-14.
