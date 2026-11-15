@@ -45,7 +45,7 @@ host-synced 32-step sequencer with pattern chaining, polymeter, parameter locks 
 | Installed plugin | `%USERPROFILE%\Documents\VST3\SliceForge.vst3` |
 | Installed standalone | `%LOCALAPPDATA%\Programs\SliceForge\SliceForge.exe` |
 | Launch folder | `..\launch\` — `SliceForge.exe`, `SliceForge.vst3`, `SliceForge-1.0.0-Windows-x64.zip`, `start.bat` |
-| Test suite | 109 engine/state checks, editor layout snapshots, VST3 host load |
+| Test suite | 117 engine/state checks, editor layout snapshots, VST3 host load |
 
 The plugin bundle is self-contained (factory audio and SKEER brand assets are embedded, no
 external resource folder). The build is about **24 MB**. The VST3 session identity is preserved
@@ -177,7 +177,11 @@ control falls outside its parent.
 - pattern duplicate: copies steps, ratchets, flams, nudges and locks plus lane mute/solo/loop to
   another slot, replaces the destination, leaves the source and the selection alone, refuses
   self-copies and out-of-range indices, reaches the engine, and is undone in one step
-- SKEER Sample Vault index query and indexed-sample loading
+- SKEER Sample Vault index query, plus the sample-loading path proven on files the test writes
+  itself: a generated wav loads with the right channel and sample counts, and a 4 KB macOS
+  AppleDouble sidecar named `.wav` is refused without replacing the loaded kit. Which of a real
+  music library's listed files still resolve is reported, not asserted — it is a property of the
+  machine, not of this plugin
 - vault audition playback: one-shot end, loop wrap, source-rate resampling, the output
   limiter and the bus-1 mix that carries it to the host
 - output stage: bypassed is bit-exact, nothing is attenuated below the knee, the tanh leaves
@@ -188,8 +192,10 @@ control falls outside its parent.
   host-state XML) restores bypassed and still plays
 - randomizer, Euclidean, parseable MIDI file and CPU-headroom checks
 
-Current result: **109/109 passed**, with the engine using about **5% of one core** while
-continuously triggering pads at 48 kHz / 512 samples.
+Current result: **117/117 passed**, with the engine using between **4.4% and 6.1% of one core** across
+separate runs of the same binary while continuously triggering pads at 48 kHz / 512 samples. The spread
+is real, so treat it as a range rather than a figure; the check itself only fails above 8 s of processing
+for 2.1 s of audio.
 
 ---
 
@@ -378,7 +384,7 @@ Source/
     SourcePanel / PadEditorPanel / HeaderBar / FooterBar / SequencerGrid / SequencerPanel /
     VaultPanel
 Tests/
-  SmokeTest.cpp         109 audio/state checks
+  SmokeTest.cpp         117 audio/state checks
   LayoutTest.cpp        editor bounds + PNG snapshots
   HostTest.cpp          scans and loads the built VST3 through JUCE's host path
 ```
