@@ -1,10 +1,18 @@
 ﻿SKEER SliceForge 1.0.0 native edition (Windows x64)
 
 Install:
-  Copy the SliceForge.vst3 bundle into a VST3 folder, for example:
-    %LOCALAPPDATA%\Programs\Common\VST3\
-  or (elevated):
+  Copy the SliceForge.vst3 bundle into the system VST3 folder:
     %ProgramFiles%\Common Files\VST3\
+  That is the folder every host scans by default, and it is the only one this product
+  installs into. Writing it needs administrator rights, so setup asks for elevation once -
+  the standalone and the browser edition are never started from that elevated process.
+  Do not install a second copy into %USERPROFILE%\Documents\VST3 or
+  %LOCALAPPDATA%\Programs\Common\VST3: it adds a duplicate entry to the browser and a
+  second build that silently falls behind after the next compile. launch\start.ps1
+  installs the one copy, removes the others and verifies the result against launch\.
+  If Documents\VST3 is still in your host's custom VST3 folder list, remove that entry and
+  rescan, or the plugin can be listed twice while two different builds sit in the two
+  folders.
 
 Standalone:
   Run SliceForge.exe.

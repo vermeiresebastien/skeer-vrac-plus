@@ -7,11 +7,16 @@
 
         launch\start.bat                 all three
         launch\start.ps1 -DryRun         show the plan, change nothing
-        launch\start.ps1 -Vst3Dir "..."  install into a specific VST3 folder
+        launch\start.ps1 -InstallOnly    step 1 only, and exit non-zero if it did not land
+        launch\start.ps1 -Vst3Dir "..."  install into a non-default VST3 folder
 #>
 [CmdletBinding()]
 param(
     [switch]$DryRun,
+    [switch]$InstallOnly,
+    # Internal: marks the UAC-elevated copy of this script, so it installs instead of asking
+    # again, and never starts the standalone or the dev server under an admin token.
+    [switch]$ElevatedInstall,
     [string]$Vst3Dir = ''
 )
 
@@ -27,6 +32,20 @@ $Url = 'http://127.0.0.1:5173/'
 function Write-Step([string]$Message) { Write-Host ('>> ' + $Message) -ForegroundColor Cyan }
 function Skip([string]$Message) { if ($DryRun) { Write-Host ('   [dry-run] ' + $Message); return $true } return $false }
 
+# The install step is the only part that may need elevation, so it runs again in a UAC-elevated
+# copy of this script with -ElevatedInstall. That copy has its own console, which closes when the
+# copy finishes, so its lines go to a log the calling process prints.
+$LogPath = Join-Path $env:TEMP 'SliceForge-vst3-install.log'
+$ChildLog = if ($ElevatedInstall) { $LogPath } else { $null }
+function Say([string]$Message, [string]$Colour = 'Gray') {
+    Write-Host ('   ' + $Message) -ForegroundColor $Colour
+    if ($ChildLog) { Add-Content -LiteralPath $ChildLog -Value $Message }
+}
+function Test-IsAdmin {
+    $id = [Security.Principal.WindowsIdentity]::GetCurrent()
+    return ([Security.Principal.WindowsPrincipal]$id).IsInRole([Security.Principal.WindowsBuiltInRole]::Administrator)
+}
+
 function Test-Port([int]$Port) {
     $client = New-Object System.Net.Sockets.TcpClient
     try {
@@ -38,45 +57,136 @@ function Test-Port([int]$Port) {
 
 # ---- 1. VST3 install ---------------------------------------------------------------
 Write-Step 'VST3 install'
-$BundleDll = Join-Path $Bundle 'Contents\x86_64-win\SliceForge.vst3'
+if ($ElevatedInstall) { Say "elevated child started, administrator token = $(Test-IsAdmin)" }
+
+# One destination, always: the system VST3 folder that every host scans by default. Installing
+# beside it into Documents\VST3 or %LOCALAPPDATA% is what produced two entries per plugin and two
+# copies that drifted apart after a rebuild, so a SliceForge bundle found in either is removed once
+# the system copy is hash-verified. -Vst3Dir still overrides for a machine with a custom scan root.
+$ModuleRel = Join-Path 'Contents' (Join-Path 'x86_64-win' 'SliceForge.vst3')
+$OtherVst3Dirs = @(
+    (Join-Path $env:USERPROFILE 'Documents\VST3'),
+    (Join-Path $env:LOCALAPPDATA 'Programs\Common\VST3')
+)
+
+function Test-DirWritable([string]$Dir) {
+    if (-not (Test-Path -LiteralPath $Dir)) { return $true }  # only the parent needs writing
+    $probe = Join-Path $Dir ('.sf-probe-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    try { New-Item -ItemType Directory -Path $probe | Out-Null; Remove-Item -Path $probe -Recurse -Force; return $true }
+    catch { return $false }
+}
+
+# Staged copy, verified, then swapped: deleting the previous bundle before the new one is proven
+# would leave the DAW with nothing if the copy failed halfway.
+function Install-Vst3Bundle([string]$SourceBundle, [string]$Destination) {
+    $dest = Join-Path $Destination 'SliceForge.vst3'
+    $staging = Join-Path $Destination ('SliceForge.vst3.staging-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    $wanted = (Get-FileHash -LiteralPath (Join-Path $SourceBundle $ModuleRel) -Algorithm SHA256).Hash
+
+    Copy-Item -LiteralPath $SourceBundle -Destination $staging -Recurse -Force
+    if ((Get-FileHash -LiteralPath (Join-Path $staging $ModuleRel) -Algorithm SHA256).Hash -ne $wanted) {
+        Remove-Item -LiteralPath $staging -Recurse -Force
+        throw 'the staged copy failed its hash check - nothing was replaced'
+    }
+    if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
+    Move-Item -LiteralPath $staging -Destination $dest
+    if ((Get-FileHash -LiteralPath (Join-Path $dest $ModuleRel) -Algorithm SHA256).Hash -ne $wanted) {
+        throw "the bundle in $dest does not match the one that was staged"
+    }
+    return $wanted
+}
+
+function Remove-DuplicateBundles([string]$KeptDir, [string]$WantedHash) {
+    foreach ($other in @($OtherVst3Dirs | Where-Object { $_ -ne $KeptDir })) {
+        $stale = Join-Path $other 'SliceForge.vst3'
+        if (-not (Test-Path -LiteralPath $stale)) { continue }
+        try {
+            $staleHash = (Get-FileHash -LiteralPath (Join-Path $stale $ModuleRel) -Algorithm SHA256).Hash
+            $note = if ($staleHash -eq $WantedHash) { 'identical to the installed bundle' }
+                    else { "a different build, $($staleHash.Substring(0, 8)) - superseded" }
+            Remove-Item -LiteralPath $stale -Recurse -Force
+            Say "removed $stale ($note)"
+        }
+        catch { Say "COULD NOT REMOVE $stale - close the DAW and re-run ($($_.Exception.Message))" 'Yellow' }
+    }
+}
+
+$BundleDll = Join-Path $Bundle $ModuleRel
 if (-not (Test-Path -LiteralPath $BundleDll)) {
-    Write-Host "   Missing $BundleDll - run: cmake --build native/build --config Release --target launch" -ForegroundColor Yellow
+    Say "Missing $BundleDll - run: cmake --build native/build --config Release --target launch" 'Yellow'
+    if ($InstallOnly) { exit 1 }
 }
 else {
-    if ($Vst3Dir) {
-        $targets = @($Vst3Dir)
-    }
-    else {
-        # Update whichever folder already carries a SliceForge install rather than guessing the host's
-        # custom scan path; candidates are the three this project has been installed into.
-        $candidates = @(
-            (Join-Path $env:USERPROFILE 'Documents\VST3'),
-            (Join-Path $env:LOCALAPPDATA 'Programs\Common\VST3'),
-            (Join-Path $env:ProgramFiles 'Common Files\VST3')
-        )
-        $targets = @($candidates | Where-Object { Test-Path -LiteralPath (Join-Path $_ 'SliceForge.vst3') })
+    $target = if ($Vst3Dir) { $Vst3Dir } else { Join-Path $env:ProgramFiles 'Common Files\VST3' }
+    $dest = Join-Path $target 'SliceForge.vst3'
+    $WantHash = (Get-FileHash -LiteralPath $BundleDll -Algorithm SHA256).Hash
+    $writable = Test-DirWritable $target
+
+    # -Vst3Dir is an escape hatch for a host whose scan root really is elsewhere, not a licence to
+    # keep a second copy: say out loud when the system folder still holds one, because that is the
+    # duplicate-browser-entry state this script exists to prevent.
+    $systemVst3 = Join-Path $env:ProgramFiles 'Common Files\VST3'
+    if ($target -ne $systemVst3) {
+        Say "installing to a non-default folder: $target" 'Yellow'
+        if (Test-Path -LiteralPath (Join-Path $systemVst3 'SliceForge.vst3')) {
+            Say "a copy still sits in $systemVst3 - the host will list SliceForge twice" 'Yellow'
+        }
     }
 
-    if ($targets.Count -eq 0) {
-        # First run under the new name: nothing matches yet, so install where the other SKEER
-        # plugins live and where this machine's DAW actually scans.
-        $fallback = Join-Path $env:USERPROFILE 'Documents\VST3'
-        Write-Host "   no existing SliceForge.vst3 install found - installing into $fallback"
-        $targets = @($fallback)
+    if ($DryRun) {
+        Say "[dry-run] install $Bundle -> $dest$(if ($writable) { '' } else { '   (needs elevation)' })"
+        foreach ($other in @($OtherVst3Dirs | Where-Object { $_ -ne $target })) {
+            $stale = Join-Path $other 'SliceForge.vst3'
+            if (Test-Path -LiteralPath $stale) { Say "[dry-run] remove superseded $stale" }
+        }
     }
-    foreach ($dir in $targets) {
-        $dest = Join-Path $dir 'SliceForge.vst3'
-        if (Skip "copy $Bundle -> $dest") { continue }
+    elseif (-not $writable) {
+        if ($ElevatedInstall) {
+            # Only reached when the prompt was declined, or this session cannot show one.
+            Say "still no write access to $target as $env:USERNAME - elevation did not happen" 'Red'
+        }
+        else {
+            Say "$target needs administrator rights - approving one UAC prompt for the install step only" 'Yellow'
+            $ps = Join-Path $PSHOME 'powershell.exe'
+            if (-not (Test-Path -LiteralPath $ps)) { $ps = Join-Path $PSHOME 'pwsh.exe' }
+            Remove-Item -LiteralPath $LogPath -Force -ErrorAction SilentlyContinue
+            # Every path argument is quoted by hand: Windows PowerShell 5.1 joins -ArgumentList
+            # with spaces without escaping elements that contain them, so an unquoted
+            # "C:\Program Files\..." silently arrives as three arguments and the child dies on a
+            # parameter error before it can report anything.
+            $quoted = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"",
+                        '-InstallOnly', '-ElevatedInstall', '-Vst3Dir', "`"$target`"")
+            $child = Start-Process -FilePath $ps -Verb RunAs -Wait -WindowStyle Hidden -PassThru -ArgumentList $quoted
+            if (Test-Path -LiteralPath $LogPath) {
+                Get-Content -LiteralPath $LogPath | ForEach-Object { Write-Host "   elevated: $_" }
+            }
+            else { Write-Host "   elevated: process exit $($child.ExitCode), no log - the child never got as far as the install" -ForegroundColor Yellow }
+        }
+    }
+    else {
         try {
-            New-Item -ItemType Directory -Force $dir | Out-Null
-            if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
-            Copy-Item -LiteralPath $Bundle -Destination $dest -Recurse -Force
-            Write-Host "   updated $dest"
+            $hash = Install-Vst3Bundle $Bundle $target
+            Say "installed $dest ($($hash.Substring(0, 8))...)" 'Green'
+            Remove-DuplicateBundles $target $hash
         }
         catch {
-            # A DAW with the plugin loaded holds the module open; skipping is safer than killing it.
-            Write-Host "   SKIPPED $dest - close the DAW and re-run ($($_.Exception.Message))" -ForegroundColor Yellow
+            # A DAW with the plugin loaded holds the module open; leaving the old install alone
+            # beats terminating the host.
+            Say "SKIPPED $dest - close the DAW and re-run ($($_.Exception.Message))" 'Yellow'
         }
+    }
+
+    if (-not $DryRun) {
+        # Read the folder back instead of trusting the copy: the elevated child runs under a
+        # different token in a console that has already closed, and an exit code of 0 from
+        # Start-Process says nothing about what it wrote.
+        $landed = $false
+        if (Test-Path -LiteralPath $dest) {
+            $landed = (Get-FileHash -LiteralPath (Join-Path $dest $ModuleRel) -Algorithm SHA256).Hash -eq $WantHash
+        }
+        if ($landed) { Say "check: $dest matches launch/ ($($WantHash.Substring(0, 8))...)" 'Green' }
+        else { Say "check: $dest is NOT the launch/ build - nothing was installed there" 'Red' }
+        if ($InstallOnly) { if ($landed) { exit 0 } else { exit 1 } }
     }
 }
 

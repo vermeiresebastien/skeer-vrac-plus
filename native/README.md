@@ -42,7 +42,7 @@ host-synced 32-step sequencer with pattern chaining, polymeter, parameter locks 
 | Branding | SKEER logo, IBM Plex Sans / IBM Plex Mono, Barlow Condensed, SKEER palette |
 | Theme | Light and dark SKEER skins, switched from the header and remembered per user |
 | Build toolchain | Visual Studio 18 2026 / MSVC 14.51, CMake 3.22+ |
-| Installed plugin | `%USERPROFILE%\Documents\VST3\SliceForge.vst3` |
+| Installed plugin | `%ProgramFiles%\Common Files\VST3\SliceForge.vst3` |
 | Installed standalone | `%LOCALAPPDATA%\Programs\SliceForge\SliceForge.exe` |
 | Launch folder | `..\launch\` — `SliceForge.exe`, `SliceForge.vst3`, `SliceForge-1.0.0-Windows-x64.zip`, `start.bat` |
 | Test suite | 117 engine/state checks, editor layout snapshots, VST3 host load |
@@ -102,11 +102,16 @@ VST3 folder by itself; installing is the explicit step below, or `start.bat`.
 
 ### Install
 
-`launch\start.bat` does the install, the standalone and the browser edition together: it copies
-the bundle into whichever VST3 folder already holds a SliceForge install — or into
-`%USERPROFILE%\Documents\VST3`, where the other SKEER plugins live, on a first run — skips a folder
-locked by an open DAW instead of killing it, and reuses a dev server that is already listening on 5173.
-`launch\start.ps1 -DryRun` prints the plan without touching anything.
+`launch\start.bat` does the install, the standalone and the browser edition together. The install
+has one destination, `%ProgramFiles%\Common Files\VST3` — the system VST3 folder every host scans
+by default — so it asks for elevation with a single UAC prompt covering the copy step only, never
+the standalone or the dev server. It stages the bundle beside its target, SHA-256-compares the
+staged module against `launch\`, swaps, then removes any `SliceForge.vst3` left in
+`%USERPROFILE%\Documents\VST3` or `%LOCALAPPDATA%\Programs\Common\VST3`, because a second copy
+only produces a duplicate browser entry and two builds that drift apart. A folder locked by an
+open DAW is skipped rather than the host terminated, and a dev server already listening on 5173 is
+reused. `launch\start.ps1 -DryRun` prints that plan without touching anything; `-InstallOnly` runs
+step 1 alone and exits non-zero if the bundle did not land.
 
 For the manual path, system-wide (the terminal must be elevated):
 
@@ -114,19 +119,14 @@ For the manual path, system-wide (the terminal must be elevated):
 Copy-Item "launch\SliceForge.vst3" "$env:ProgramFiles\Common Files\VST3\" -Recurse -Force
 ```
 
-Per-user (no elevation), the folder the other SKEER plugins are scanned from:
+Only if a host genuinely will not scan the system folder, point it there instead of installing a
+second copy beside it. `-Vst3Dir` exists for a machine whose scan root really is somewhere else.
 
-```powershell
-$dest = "$env:USERPROFILE\Documents\VST3"
-New-Item -ItemType Directory -Force $dest | Out-Null
-Copy-Item "launch\SliceForge.vst3" $dest -Recurse -Force
-```
-
-Then rescan VST3 plugins in your DAW. The pre-rename `VRAC+.vst3` is still installed in
-`%LOCALAPPDATA%\Programs\Common\VST3`; it carries the same VST3 session identity as SliceForge, so
-delete that copy once the new bundle scans, or the host lists two entries for one plugin. If a
-previous build is still open in a DAW, close the DAW before replacing a `.vst3` bundle and rescan
-after restarting it.
+Then rescan VST3 plugins in your DAW. The pre-rename `VRAC+.vst3` carried the same VST3 session
+identity as SliceForge and was deleted from `%LOCALAPPDATA%\Programs\Common\VST3` on 2026-11-14; on
+a machine that still has it, delete that copy once the new bundle scans, or the host lists two
+entries for one plugin. If a previous build is still open in a DAW, close the DAW before replacing
+a `.vst3` bundle and rescan after restarting it.
 
 Standalone: run `launch\SliceForge.exe` directly, or install a copy:
 

@@ -39,9 +39,10 @@ playhead and transport indicator.
 > `SliceForge.exe`, the `SliceForge.vst3` bundle and the portable
 > [`launch/SliceForge-1.0.0-Windows-x64.zip`](launch/SliceForge-1.0.0-Windows-x64.zip). Double-click
 > [`launch/start.bat`](launch/start.bat) to refresh the VST3 install, open the standalone and
-> serve the browser edition. With nothing installed yet it copies the bundle into
-> `%USERPROFILE%\Documents\VST3`, the folder that already holds the other SKEER plugins; add that
-> folder to your DAW's VST3 scan paths if it is not already scanned.
+> serve the browser edition. The install goes to one place,
+> `%ProgramFiles%\Common Files\VST3` — the system folder your DAW already scans — so it asks for
+> elevation once, for the copy step only, and removes any older copy left in `Documents\VST3` or
+> `%LOCALAPPDATA%\Programs\Common\VST3`.
 
 The browser edition remains fully functional with its original interface styling and is
 documented below.

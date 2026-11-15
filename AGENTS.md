@@ -36,14 +36,32 @@ launch/start.bat / start.ps1                install + standalone + browser editi
   and a byte-identical file keeps the mtime of the copy that was skipped.
 - The export refuses to run while `SliceForge.exe` is running. Close it rather than killing it — the
   standalone has no autosave.
-- `launch/start.ps1` installs into whichever VST3 folder already contains `SliceForge.vst3` (checked:
-  `%USERPROFILE%\Documents\VST3`, `%LOCALAPPDATA%\Programs\Common\VST3`,
-  `%ProgramFiles%\Common Files\VST3`) and falls back to `Documents\VST3`, where the other SKEER
-  plugins are scanned, when none does; override with `-Vst3Dir`. It skips a folder locked by an
-  open DAW instead of terminating the host. `-DryRun` prints the plan.
+- `launch/start.ps1` installs into one folder: `%ProgramFiles%\Common Files\VST3`, the system VST3
+  path every host scans by default. Never install into `%USERPROFILE%\Documents\VST3` or
+  `%LOCALAPPDATA%\Programs\Common\VST3` — a second copy buys nothing (the system folder is already
+  scanned) and produces duplicate browser entries plus two builds that drift apart. The script
+  removes a `SliceForge.vst3` it finds in either of those once the system copy is hash-verified,
+  elevates itself through one UAC prompt for the copy step only, and reads the installed module
+  back against `launch/` before reporting success; `-InstallOnly` exits non-zero when it did not
+  land. Override the destination with `-Vst3Dir`, e.g. for a host with a custom scan root. A
+  folder locked by an open DAW is skipped rather than the host terminated. `-DryRun` prints the plan.
 - `launch/` is tracked in git here (owner decision, 2026-11-14). This deliberately differs from
   the other skeer-audio projects, where `launch/` is fully gitignored; it costs ~75 MB of blobs
   and there is no `.gitattributes`, so Git LFS is configured but inactive.
+- There is no Inno Setup installer in this repo (verified 2026-11-15: no `*.iss` anywhere). The
+  things that can place a bundle are `launch/start.ps1` and, for the repo folder only,
+  `native/package-launch.ps1`; `COPY_PLUGIN_AFTER_BUILD` is `FALSE` (`native/CMakeLists.txt:116`)
+  so the build never writes to a scan folder. If an installer is ever added, the grep-smell for a
+  second destination is `{userdocs}\VST3`, `{localappdata}\Programs\Common\VST3`, a `Check=`/`Tasks=`
+  on the `[Files]` line, and `PrivilegesRequired=lowest` or
+  `PrivilegesRequiredOverridesAllowed` — all four mean the fallback copy is still being offered.
+- The bundle is self-contained: factory audio and brand assets are compiled in as the
+  `SliceForgeAssets` binary-data target (`native/CMakeLists.txt:49`, linked at `:127`), so the
+  module needs **nothing** next to it. This is what makes a machine-wide install safe. Do not add
+  a payload file that is discovered relative to the module: for the VST3 that path is the *host's*
+  folder, so it would work in the standalone and silently fail in every DAW. Anything shipped with
+  the product belongs in binary data; anything the user owns belongs in `%APPDATA%\SliceForge`,
+  which the plugin writes from the host's own (unelevated) process.
 
 ## Commands
 
@@ -113,13 +131,16 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
 - MSVC intermittently fails a parallel compile with `D8040: error creating or communicating with
   child process`, sometimes alongside a bogus `C1001` internal compiler error in an unrelated file.
   Re-running the same target sequentially succeeds; it is not a code problem.
-- `%LOCALAPPDATA%\Programs\Common\VST3\VRAC+.vst3` was removed on 2026-11-14; the bundle is
-  installed at `%USERPROFILE%\Documents\VST3\SliceForge.vst3`, hash-matched against `launch/`. It
-  carries the same `Erwm`/`Vrac` CID, so any other machine with the old copy still lists two plugins
-  for one identity until it is deleted. Whatever the previous install was, `launch/start.ps1`
-  overwrites it, so keep at most one `SliceForge*` folder in that scan directory — a `.old-build`
-  sibling is not scanned, but it is still clutter; `%LOCALAPPDATA%\SliceForge\previous-build\` is
-  where one was parked on 2026-11-14.
+- `%LOCALAPPDATA%\Programs\Common\VST3\VRAC+.vst3` was removed on 2026-11-14. It carries the same
+  `Erwm`/`Vrac` CID as SliceForge, so any machine still holding it lists two plugins for one
+  identity until it is deleted.
+- The bundle lived in `%USERPROFILE%\Documents\VST3` from the rename until 2026-11-15, when the
+  install location was moved to `%ProgramFiles%\Common Files\VST3` and the `Documents` copy removed.
+  `start.ps1` now prunes that duplicate on every run; other SKEER plugins are still in `Documents`
+  (Groovebox, SKULPT, SKEER Vault) and that is their repos' decision, not this one.
+- `launch/start.ps1` overwrites whatever previous build is in the destination, so keep at most one
+  `SliceForge*` folder in a scan directory — a `.old-build` sibling is not scanned, but it is still
+  clutter; `%LOCALAPPDATA%\SliceForge\previous-build\` is where one was parked on 2026-11-14.
 - The local folder is still `D:\Projects\skeer-audio\vrac-plus` and cannot be renamed from inside a
   live session: the app holds the workspace root, so the root returns "Device or resource busy"
   while subdirectories move fine. `D:\Projects\skeer-audio\move-to-sliceforge.ps1` does the move
