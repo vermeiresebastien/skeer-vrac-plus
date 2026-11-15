@@ -58,10 +58,21 @@ SliceForgeAudioProcessorEditor::SliceForgeAudioProcessorEditor (SliceForgeAudioP
     sourcePanel->onToggleRecording = [this]
     {
         if (processorRef.isRecordingTakeReady())
+        {
             processorRef.adoptRecordingTake();
+            refreshAll();
+        }
         else
+        {
             processorRef.toggleRecording();
-        sourcePanel->refreshFromProcessor();
+            sourcePanel->refreshRecordingState();
+        }
+        repaint();
+    };
+    sourcePanel->onDiscardRecording = [this]
+    {
+        processorRef.discardRecordingTake();
+        sourcePanel->refreshRecordingState();
         repaint();
     };
     sourcePanel->onSourceChanged = [this] { refreshAll(); };
@@ -323,15 +334,12 @@ void SliceForgeAudioProcessorEditor::timerCallback()
         header->refresh();
         padEditor->refreshFromProcessor();
         footer->repaint();
-        if (processorRef.isRecordingTakeReady() && ! processorRef.isRecording())
-        {
-            processorRef.adoptRecordingTake();
-            sourcePanel->refreshFromProcessor();
-            padEditor->refreshFromProcessor();
-            repaint();
-        }
-        if (processorRef.isRecording())
-            sourcePanel->refreshFromProcessor();
+        // A finished take used to be adopted here on its own, which meant the USE button
+        // never really appeared and a bad take silently replaced the kit - and cleared the
+        // undo stack while doing it, because that is what adopting a source does. It now
+        // waits for USE or DISCARD. This also re-reads the sidechain bus state, so REC goes
+        // grey the moment the host stops offering the input, instead of arming on silence.
+        sourcePanel->refreshRecordingState();
     }
     juce::ignoreUnused (statusTicks);
 }
@@ -344,6 +352,13 @@ void SliceForgeAudioProcessorEditor::changeListenerCallback (juce::ChangeBroadca
 bool SliceForgeAudioProcessorEditor::keyPressed (const juce::KeyPress& key)
 {
     const auto code = key.getKeyCode();
+    // Ctrl and Cmd belong to the host. Without this guard Ctrl+A, Cmd+D and Ctrl+Z were
+    // swallowed by the pad grid, so the plugin ate the shortcuts of the program holding it.
+    // Shift and Alt stay legal: they are the accent and ghost modifiers on the pad keys,
+    // which is what the web edition does too (src/App.tsx).
+    const auto mods = key.getModifiers();
+    if (mods.isCtrlDown() || mods.isCommandDown())
+        return false;
     if (currentPage == sliceforge::ui::Page::vault)
         return false;
     if (code == juce::KeyPress::spaceKey)

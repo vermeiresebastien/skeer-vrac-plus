@@ -104,6 +104,33 @@ namespace sliceforge
             trigger.locks = step.locks;
         }
 
+        /** The probability draw for one step, decided by *position* rather than by the
+            shared RNG.
+
+            A step's events are not contiguous: the grace hits sit before the main hit and
+            the ratchet hits after it, so with a 512-sample block a single step is evaluated
+            by two or three different blocks. A coin flip made at each of those evaluations
+            would let a rolled-out hit still leave its flam behind, and would let the main
+            hit play while its ratchets did not. The draw therefore has to be a pure function
+            of where in the timeline the step is.
+
+            The absolute step keeps counting while the pattern loops, so every pass through
+            the bar still gets an independent draw; splitmix64 keeps that distribution flat.
+        */
+        double probabilityRollFor (int patternIndex, int pad, int64_t absoluteStep) noexcept
+        {
+            std::uint64_t h = 0x9E3779B97F4A7C15ull
+                                  + (std::uint64_t) absoluteStep * 0xFF51AFD7ED558CCDull
+                                  + (std::uint64_t) (pad + 1) * 0xC2B2AE3D27D4EB4Full
+                                  + (std::uint64_t) (patternIndex + 1) * 0x165667B19E3779F9ull;
+            h ^= h >> 30;
+            h *= 0xBF58476D1CE4E5B9ull;
+            h ^= h >> 27;
+            h *= 0x94D049BB133111EBull;
+            h ^= h >> 31;
+            return (double) (h >> 11) * (1.0 / 9007199254740992.0); // [0, 1)
+        }
+
         void scheduleAbsoluteStep (const SequencerData& data,
                                    int64_t absoluteStep,
                                    double blockStartPpq,
@@ -116,6 +143,7 @@ namespace sliceforge
                                    SeqPlaybackState& state,
                                    SeqBlockOutput& output)
         {
+            juce::ignoreUnused (random); // see probabilityRollFor: the draw is positional now
             const int globalLength = juce::jlimit (1, kSeqSteps, data.length);
             const int division = sanitiseDivision (data.division);
             const auto patternIndex = patternIndexForStep (data, absoluteStep);
@@ -125,53 +153,69 @@ namespace sliceforge
             const double swing = (absoluteStep & 1) != 0
                                      ? juce::jlimit (0.0, 0.66, (double) data.swing) / division
                                      : 0.0;
-            const double stepSamples = juce::jmax (1.0, 60.0 * sampleRate
-                                                            / (juce::jmax (20.0, bpm) * division));
+            const double samplesPerPpq = 60.0 * sampleRate / juce::jmax (20.0, bpm);
+            const double stepPpq = 1.0 / (double) division; // one step, in quarter notes
 
             for (int pad = 0; pad < kNumPads; ++pad)
             {
                 auto& history = histories[(size_t) pad];
-                if (wasRecentlyTriggered (history, absoluteStep))
-                    continue;
-
                 const int laneLength = laneLengthForPad (pattern, pad, globalLength);
                 const auto& step = pattern.rows[(size_t) pad][(size_t) wrapStep (absoluteStep, laneLength)];
                 const double eventPpq = basePpq + swing + (double) step.nudge / division;
-                if (eventPpq < blockStartPpq - 1.0e-9 || eventPpq >= blockEndPpq - 1.0e-9)
-                    continue;
 
-                // Mark the step as handled once its event time is inside this block,
-                // even if it is muted or probabilitistically skipped.
-                rememberTriggered (history, absoluteStep);
+                const auto baseOffset = (int) std::llround ((eventPpq - blockStartPpq)
+                                                            * samplesPerPpq);
+                const bool baseDue = eventPpq >= blockStartPpq - 1.0e-9
+                                         && eventPpq < blockEndPpq - 1.0e-9
+                                         && baseOffset >= 0 && baseOffset < numSamples;
 
+                // The main hit is the one event that the neighbouring blocks also consider,
+                // because their look-ahead and look-back windows overlap here, so it keeps
+                // the per-step history guard. The sub-hits do not need one: each has its own
+                // place on the timeline, and a place falls inside exactly one block.
+                // A step is consumed as soon as its main hit is due, even if it turns out to
+                // be muted or rolled out below, exactly as before — otherwise un-muting a lane
+                // would let the step fire late instead of not at all.
+                const bool freshBase = baseDue && ! wasRecentlyTriggered (history, absoluteStep);
+                if (baseDue)
+                    rememberTriggered (history, absoluteStep);
+
+                // Whether this step sounds at all is a property of the step, not of the
+                // block that happens to be rendering it, so every block that looks at this
+                // position has to come to the same answer.
                 if (! laneIsAudible (pattern, pad) || ! step.on || step.probability <= 0.0f)
                     continue;
-                if (step.probability < 0.999f && random.nextFloat() > step.probability)
+                if (step.probability < 0.999f
+                    && probabilityRollFor (patternIndex, pad, absoluteStep) > step.probability)
                     continue;
 
-                const int baseOffset = (int) std::round ((eventPpq - blockStartPpq)
-                                                         * 60.0 * sampleRate / bpm);
-                if (baseOffset < 0 || baseOffset >= numSamples)
-                    continue;
-
+                // Grace hits come *before* the main hit, which usually means they belong to
+                // the block before the one carrying it. Their own position decides.
                 const int flams = juce::jlimit (0, 2, step.flam);
                 for (int f = 1; f <= flams; ++f)
                 {
-                    const auto offset = baseOffset - (int) std::round (f * stepSamples * kFlamStep);
+                    const auto offset = (int) std::llround ((eventPpq
+                                                             - (double) f * kFlamStep * stepPpq
+                                                             - blockStartPpq) * samplesPerPpq);
                     if (offset >= 0 && offset < numSamples)
                         addTrigger (output, offset, pad,
                                     juce::jlimit (0.02f, 1.0f, step.velocity * (float) kFlamVelocity),
                                     step);
                 }
 
+                if (freshBase)
+                    addTrigger (output, baseOffset, pad,
+                                juce::jlimit (0.02f, 1.0f, step.velocity), step);
+
                 const int ratchets = juce::jlimit (1, 4, step.ratchet);
-                for (int r = 0; r < ratchets; ++r)
+                for (int r = 1; r < ratchets; ++r)
                 {
-                    const auto offset = baseOffset + (int) std::round (r * stepSamples / ratchets);
+                    const auto offset = (int) std::llround ((eventPpq
+                                                             + (double) r * stepPpq / (double) ratchets
+                                                             - blockStartPpq) * samplesPerPpq);
                     if (offset >= 0 && offset < numSamples)
                         addTrigger (output, offset, pad,
-                                    juce::jlimit (0.02f, 1.0f, step.velocity * (r == 0 ? 1.0f : 0.72f)),
-                                    step);
+                                    juce::jlimit (0.02f, 1.0f, step.velocity * 0.72f), step);
                 }
             }
         }

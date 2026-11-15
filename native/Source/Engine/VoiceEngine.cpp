@@ -84,9 +84,13 @@ namespace sliceforge
     class Voice
     {
     public:
-        Voice() = default;
+        Voice() { configureWarpCoefficients(); }
 
-        void setSampleRate (double sr) { sampleRate = (float) sr; }
+        void setSampleRate (double sr)
+        {
+            sampleRate = (float) juce::jmax (8000.0, sr);
+            configureWarpCoefficients();
+        }
 
         bool isActive() const noexcept { return active; }
         double getAge() const noexcept { return t; }
@@ -132,7 +136,7 @@ namespace sliceforge
             busIndex = juce::jlimit (0, kNumBuses - 1, settings.bus - 1);
             chokeGroup = settings.choke;
             sample = source;
-            sampleRate = (float) engineSampleRate;
+            setSampleRate (engineSampleRate); // keeps the warp corners tied to this rate
             rng = Rng (seedValue);
             resampleRatio = 1.0;
 
@@ -521,9 +525,19 @@ namespace sliceforge
         float tone1Phase = 0.0f;
         float tone2Phase = 0.0f;
         float metalPhase = 0.0f;
+        void configureWarpCoefficients() noexcept
+        {
+            // Warp is a pair of one-poles around a 200 Hz / 4.2 kHz split, so its
+            // coefficients belong to the sample rate. They used to be initialised against a
+            // literal 48 kHz and never revisited: every other host rate got the wrong split,
+            // and native disagreed with the web edition, which does recompute them.
+            warpLowCoef = 1.0f - std::exp (-kTwoPi * 200.0f / sampleRate);
+            warpHighCoef = 1.0f - std::exp (-kTwoPi * 4200.0f / sampleRate);
+        }
+
         float warpLowL = 0.0f, warpLowR = 0.0f, warpHighL = 0.0f, warpHighR = 0.0f;
-        float warpLowCoef = 1.0f - std::exp (-kTwoPi * 200.0f / 48000.0f);
-        float warpHighCoef = 1.0f - std::exp (-kTwoPi * 4200.0f / 48000.0f);
+        float warpLowCoef = 0.0f;
+        float warpHighCoef = 0.0f;
         float mL = 0.0f, mR = 0.0f;
 
         Biquad toneL, toneR, eqLowL, eqLowR, eqMidL, eqMidR, eqHighL, eqHighR;

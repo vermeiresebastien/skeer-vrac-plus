@@ -2,10 +2,33 @@
 #include "PluginProcessor.h"
 #include "PluginEditor.h"
 #include "UI/SequencerPanel.h"
+#include "UI/SourcePanel.h"
 #include "UI/VaultPanel.h"
 #include "UI/Theme.h"
 
+#include <cmath>
 #include <iostream>
+
+namespace
+{
+    int failures = 0;
+    int checks = 0;
+
+    void check (bool condition, const juce::String& name, const juce::String& detail = {})
+    {
+        ++checks;
+        if (condition)
+            std::cout << "  ok    " << name << '\n';
+        else
+        {
+            std::cout << "  FAIL  " << name;
+            if (detail.isNotEmpty())
+                std::cout << "  [" << detail << "]";
+            std::cout << '\n';
+            ++failures;
+        }
+    }
+}
 
 namespace
 {
@@ -224,6 +247,132 @@ int main()
     if (! png.writeImageToStream (darkVault, darkVaultStream))
         return 1;
 
-    std::cout << "PASS layout screenshot: " << file.getFullPathName() << '\n';
+    // Behavioural gates, kept after every snapshot so a synthetic key press or a live
+    // recording cannot leak into the screenshots.
+    sliceforgeEditor->showVaultPage (false);
+    sliceforgeEditor->showSequencerPage (false);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+
+    const auto press = [sliceforgeEditor] (int code, juce::ModifierKeys mods)
+    {
+        return sliceforgeEditor->keyPressed (juce::KeyPress (code, mods, 0));
+    };
+
+    // The guard is only evidence if the editor does swallow a bare letter: without this
+    // precondition, "Ctrl+Q falls through" would also pass on an editor that ignores keys.
+    check (press ('q', juce::ModifierKeys::noModifiers), "a bare letter triggers a pad");
+    check (press ('q', juce::ModifierKeys::shiftModifier), "shift keeps its accent role");
+    check (press ('q', juce::ModifierKeys::altModifier), "alt keeps its ghost role");
+    check (! press ('q', juce::ModifierKeys::ctrlModifier), "Ctrl+letter falls through to the host");
+    check (! press ('a', juce::ModifierKeys::commandModifier), "Cmd+letter falls through to the host");
+    check (! press (' ', juce::ModifierKeys::ctrlModifier), "Ctrl+Space falls through to the host");
+    check (press (' ', juce::ModifierKeys::noModifiers), "Space still chokes the buses");
+    check (! press ('y', juce::ModifierKeys::noModifiers), "an unmapped letter is not swallowed");
+
+    // The sidechain input ships disabled, so a recorder that would capture silence has
+    // to say so instead of arming.
+    if (auto* source = findComponentOfType<sliceforge::ui::SourcePanel> (*editor))
+    {
+        juce::AudioProcessor::BusesLayout shipped;
+        shipped.inputBuses.add (juce::AudioChannelSet::disabled());
+        for (int i = 0; i < sliceforge::kNumBuses; ++i)
+            shipped.outputBuses.add (juce::AudioChannelSet::stereo());
+        processor.setBusesLayout (shipped);
+        processor.prepareToPlay (48000.0, 512);
+        source->refreshRecordingState();
+        check (! processor.isSidechainInputActive(), "a closed sidechain bus is reported as inactive");
+        check (! source->isRecordControlEnabledForTesting(),
+               "REC is unavailable while the host input bus is closed",
+               source->getRecordControlTextForTesting());
+        check (source->getRecordControlTextForTesting() == "REC" && ! source->isDiscardControlVisibleForTesting(),
+               "the record chip reads REC with no take pending");
+
+        // Same control, now with the bus open: proves the check above is not a dead button.
+        juce::AudioProcessor::BusesLayout opened;
+        opened.inputBuses.add (juce::AudioChannelSet::stereo());
+        for (int i = 0; i < sliceforge::kNumBuses; ++i)
+            opened.outputBuses.add (juce::AudioChannelSet::stereo());
+        processor.setBusesLayout (opened);
+        processor.prepareToPlay (48000.0, 512);
+        source->refreshRecordingState();
+        check (processor.isSidechainInputActive(), "an open sidechain bus is reported as active");
+        check (source->isRecordControlEnabledForTesting(),
+               "REC becomes available once the host opens the input bus");
+
+        processor.toggleRecording();
+        source->refreshRecordingState();
+        check (source->getRecordControlTextForTesting() == "STOP" && source->isRecordControlEnabledForTesting(),
+               "REC reads STOP while armed");
+        juce::AudioBuffer<float> block (juce::jmax (2, processor.getTotalNumOutputChannels()), 512);
+        juce::MidiBuffer midi;
+        for (int b = 0; b < 24; ++b)
+        {
+            block.clear();
+            auto input = processor.getBusBuffer (block, true, 0);
+            for (int channel = 0; channel < input.getNumChannels(); ++channel)
+                for (int i = 0; i < input.getNumSamples(); ++i)
+                    input.setSample (channel, i, 0.25f * std::sin (juce::MathConstants<float>::twoPi * 220.0f
+                                                                   * (float) (b * 512 + i) / 48000.0f));
+            processor.processBlock (block, midi);
+        }
+        processor.toggleRecording();
+        for (int b = 0; b < 3; ++b)
+        {
+            block.clear();
+            processor.processBlock (block, midi);
+        }
+        source->refreshRecordingState();
+        check (processor.isRecordingTakeReady(), "the stopped take is reported ready");
+        check (source->getRecordControlTextForTesting() == "USE" && source->isDiscardControlVisibleForTesting(),
+               "a ready take offers USE and DISCARD", source->getRecordControlTextForTesting());
+        checkChildren (*editor); // the DISCARD chip is only on screen in this state, so measure it here
+
+        // USE is the only way a take becomes the source now. The UI timer used to adopt it on
+        // its own about 330 ms after STOP, which replaced the kit with no confirmation.
+        if (source->onToggleRecording)
+            source->onToggleRecording(); // the same callback, take-ready branch
+        source->refreshRecordingState();
+        check (processor.getSourceName() == "RECORDED INPUT" && ! processor.isRecordingTakeReady()
+                   && ! source->isDiscardControlVisibleForTesting()
+                   && source->getRecordControlTextForTesting() == "REC",
+               "USE adopts the take through the control that armed REC", processor.getSourceName());
+
+        // Then a second take, this one dropped instead of adopted.
+        if (source->onToggleRecording)
+            source->onToggleRecording();
+        check (processor.isRecording(), "the UI record control reaches the processor");
+        for (int b = 0; b < 2; ++b)
+        {
+            block.clear();
+            processor.processBlock (block, midi);
+        }
+        processor.toggleRecording();
+        for (int b = 0; b < 3; ++b)
+        {
+            block.clear();
+            processor.processBlock (block, midi);
+        }
+        source->refreshRecordingState();
+        check (processor.isRecordingTakeReady(), "a take of near-silence is still offered back");
+        if (source->onDiscardRecording)
+            source->onDiscardRecording();
+        source->refreshRecordingState();
+        check (! processor.isRecordingTakeReady() && ! source->isDiscardControlVisibleForTesting()
+                   && source->getRecordControlTextForTesting() == "REC",
+               "DISCARD drops the take and restores the idle chip");
+    }
+    else
+    {
+        std::cout << "  FAIL  no SourcePanel in the editor\n";
+        ++failures;
+    }
+
+    if (failures > 0)
+    {
+        std::cout << "FAIL layout checks: " << failures << " of " << checks << '\n';
+        return 1;
+    }
+
+    std::cout << "PASS layout screenshot: " << file.getFullPathName() << " (" << checks << " checks)\n";
     return 0;
 }

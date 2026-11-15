@@ -2,9 +2,11 @@
 #include "PluginProcessor.h"
 #include "VaultLibrary.h"
 
+#include <algorithm>
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <vector>
 
 namespace
 {
@@ -481,35 +483,134 @@ int main()
         host.playing = true;
         host.bpm = 120.0;
 
+        // Everything below renders at the block size a real host uses. That is the point:
+        // a step's events are not contiguous (the flam graces precede the main hit, the
+        // ratchets follow it), so with a small block they straddle two or three blocks.
+        // The oversized 7000-sample block this suite used to pass hid a whole step inside
+        // one block and never exercised that handover. Offsets come back as absolute
+        // sample positions on the timeline, so a step split across blocks stays measurable.
+        const auto renderOffsets = [] (const sliceforge::SequencerData& data,
+                                       sliceforge::SeqHostInfo host,
+                                       int numBlocks, int blockSize)
         {
+            sliceforge::SeqPlaybackState state;
+            juce::Random random (42);
+            std::vector<int> offsets;
+            const double blockPpq = (double) blockSize * (host.bpm / 60.0) / 48000.0;
+            for (int block = 0; block < numBlocks; ++block)
+            {
+                host.ppq = blockPpq * (double) block;
+                sliceforge::SeqBlockOutput out;
+                sliceforge::processSequencerBlock (data, host, false, 48000.0, blockSize,
+                                                   random, state, out);
+                for (int i = 0; i < out.triggerCount; ++i)
+                    offsets.push_back (block * blockSize + out.triggers[(size_t) i].sampleOffset);
+            }
+            return offsets;
+        };
+
+        const auto countAt = [] (const std::vector<int>& values, int position)
+        {
+            return (int) std::count (values.begin(), values.end(), position);
+        };
+
+        const auto describe = [] (const std::vector<int>& values)
+        {
+            juce::String detail (juce::String ((int) values.size()) + ":");
+            for (size_t i = 0; i < values.size() && i < 8; ++i)
+                detail << " " + juce::String (values[i]);
+            return detail;
+        };
+
+        {
+            // 120 BPM / 48 kHz / 4 steps per quarter note -> one step is 6000 samples,
+            // so nudge 0.5 puts this hit at 3000.
             auto data = makeFeatureSequence();
             auto& step = data->patterns[0].rows[0][0];
             step.on = true;
             step.velocity = 1.0f;
             step.nudge = 0.5f;
-            sliceforge::SeqPlaybackState featureState;
-            sliceforge::SeqBlockOutput out;
-            juce::Random random (7);
-            host.ppq = 0.0;
-            sliceforge::processSequencerBlock (*data, host, false, 48000.0, 7000, random, featureState, out);
-            check (out.triggerCount == 1 && out.triggers[0].sampleOffset > 2500,
-                   "step nudge shifts trigger timing", juce::String (out.triggerCount));
+            const auto offsets = renderOffsets (*data, host, 24, 512);
+            check (offsets.size() == 1 && std::abs (offsets[0] - 3000) <= 1,
+                   "step nudge shifts trigger timing", describe (offsets));
         }
 
         {
+            // Grace gap is 0.12 of a step = 720 samples, so it lands in the block *before*
+            // the one carrying the main hit. The old code subtracted the gap from a
+            // block-local offset, got a negative number and silently dropped the grace.
             auto data = makeFeatureSequence();
-            auto& step = data->patterns[0].rows[0][0];
+            auto& step = data->patterns[0].rows[0][1];
             step.on = true;
             step.velocity = 1.0f;
-            step.nudge = 0.5f;
             step.flam = 1;
-            sliceforge::SeqPlaybackState featureState;
-            sliceforge::SeqBlockOutput out;
-            juce::Random random (8);
-            host.ppq = 0.0;
-            sliceforge::processSequencerBlock (*data, host, false, 48000.0, 7000, random, featureState, out);
-            check (out.triggerCount == 2, "flam generates a grace hit",
-                   juce::String (out.triggerCount));
+            const auto offsets = renderOffsets (*data, host, 24, 512);
+            check (offsets.size() == 2 && countAt (offsets, 5280) == 1 && countAt (offsets, 6000) == 1,
+                   "flam generates a grace hit at host block size", describe (offsets));
+        }
+
+        {
+            // x4 ratchet is one hit per 1500 samples; three of the four used to fall outside
+            // the 512-sample window and were dropped with the main hit.
+            auto data = makeFeatureSequence();
+            auto& step = data->patterns[0].rows[0][1];
+            step.on = true;
+            step.velocity = 1.0f;
+            step.ratchet = 4;
+            const auto offsets = renderOffsets (*data, host, 24, 512);
+            check (offsets.size() == 4 && countAt (offsets, 6000) == 1 && countAt (offsets, 7500) == 1
+                       && countAt (offsets, 9000) == 1 && countAt (offsets, 10500) == 1,
+                   "ratchet repeats survive a host block boundary", describe (offsets));
+        }
+
+        {
+            // Flam and ratchet on one step: the handover must neither lose an event nor emit
+            // one twice while neighbouring blocks look at the same position.
+            auto data = makeFeatureSequence();
+            auto& step = data->patterns[0].rows[0][1];
+            step.on = true;
+            step.velocity = 1.0f;
+            step.flam = 2;
+            step.ratchet = 4;
+            const auto offsets = renderOffsets (*data, host, 24, 512);
+            int duplicates = 0;
+            for (const int position : { 4560, 5280, 6000, 7500, 9000, 10500 })
+                duplicates += countAt (offsets, position) != 1 ? 1 : 0;
+            check (offsets.size() == 6 && duplicates == 0,
+                   "a step with flam and ratchet fires each event exactly once", describe (offsets));
+        }
+
+        {
+            // A probability draw belongs to the step, not to the block rendering it. With an
+            // independent coin at each of the three blocks that see a step, a rolled-out hit
+            // could still leave its flam behind, or play the hit without its ratchets.
+            auto data = makeFeatureSequence();
+            for (int s = 0; s < 16; ++s)
+            {
+                auto& step = data->patterns[0].rows[0][(size_t) s];
+                step.on = true;
+                step.velocity = 1.0f;
+                step.probability = 0.5f;
+                step.flam = 1;
+                step.ratchet = 2;
+            }
+            const auto offsets = renderOffsets (*data, host, 400, 512);
+            int mixed = 0, played = 0, skipped = 0;
+            for (int s = 1; s <= 33; ++s) // s = 0 is skipped: its grace precedes the timeline start
+            {
+                const int events = countAt (offsets, s * 6000 - 720) + countAt (offsets, s * 6000)
+                                     + countAt (offsets, s * 6000 + 3000);
+                if (events == 3)
+                    ++played;
+                else if (events == 0)
+                    ++skipped;
+                else
+                    ++mixed;
+            }
+            juce::String spread = "mixed=";
+            spread << mixed << " played=" << played << " skipped=" << skipped;
+            check (mixed == 0 && played > 0 && skipped > 0,
+                   "probability is decided per step, not per block", spread);
         }
 
         {
@@ -648,23 +749,84 @@ int main()
                        && tracks.front().path.isNotEmpty(),
                    "SKEER Sample Vault index is readable");
 
-            juce::File loadable;
+            // What the vault contributes that no other check here does is a path written
+            // by *another app's* database. How many of those paths still resolve is a
+            // property of this machine's music library — 152,273 of its rows have never
+            // been analysed and most of the ones flagged `missing=0` are gone — so the
+            // scan below reports and is deliberately not asserted. Asserting on it makes
+            // the suite go red when nothing in SliceForge changed, which is what it did
+            // on 2026-11-15 with a 4 KB macOS sidecar.
+            int vaultTried = 0;
+            int vaultLoaded = 0;
+            SliceForgeAudioProcessor vaultProcessor;
+            vaultProcessor.prepareToPlay (48000.0, 512);
             for (const auto& track : tracks)
             {
-                const juce::File candidate (track.path);
-                if (candidate.existsAsFile() && candidate.hasFileExtension ("wav"))
-                {
-                    loadable = candidate;
+                if (vaultTried == 8)
                     break;
-                }
+                const juce::File candidate (track.path);
+                if (! candidate.existsAsFile() || ! candidate.hasFileExtension ("wav")
+                        || candidate.getSize() > 64 * 1024 * 1024)
+                    continue;
+                ++vaultTried;
+                if (vaultProcessor.loadUserSampleFromFile (candidate))
+                    ++vaultLoaded;
             }
-            if (loadable.existsAsFile())
+            vaultProcessor.releaseResources();
+            std::cout << "  info  vault: " << vaultTried << " listed wavs readable, "
+                      << vaultLoaded << " decoded\n";
+
+            // The gate for the loader itself, on a file this test owns. The writer is
+            // asserted first because a broken writer would otherwise make the loader
+            // check pass by loading a file nobody can trust.
+            const auto temp = juce::File::getSpecialLocation (juce::File::tempDirectory);
+            const auto probeFile = temp.getChildFile ("SliceForgeLoaderProbe.wav");
+            const auto sidecarFile = temp.getChildFile ("SliceForgeSidecarProbe.wav");
+            juce::AudioBuffer<float> tone (2, 12000);
+            for (int i = 0; i < tone.getNumSamples(); ++i)
             {
-                SliceForgeAudioProcessor vaultProcessor;
-                vaultProcessor.prepareToPlay (48000.0, 512);
-                check (vaultProcessor.loadUserSampleFromFile (loadable),
-                       "a Sample Vault track loads into SliceForge");
+                const auto phase = juce::MathConstants<float>::twoPi * 220.0f * (float) i / 48000.0f;
+                tone.setSample (0, i, 0.4f * std::sin (phase));
+                tone.setSample (1, i, 0.4f * std::sin (phase * 1.5f));
             }
+            check (sliceforge::writeStereoWav (probeFile, tone, 48000.0) && probeFile.existsAsFile(),
+                   "the loader probe writes a wav");
+
+            SliceForgeAudioProcessor loader;
+            loader.prepareToPlay (48000.0, 512);
+            const auto loaded = loader.loadUserSampleFromFile (probeFile);
+            const auto loadedSample = loader.getSamplePtr();
+            check (loaded && loadedSample != nullptr && loadedSample->buffer.getNumSamples() == 12000
+                       && loadedSample->buffer.getNumChannels() == 2,
+                   "a real wav loads through the user-sample path",
+                   loaded ? juce::String (loadedSample == nullptr ? -1
+                                                                  : loadedSample->buffer.getNumSamples())
+                          : juce::String ("load returned false"));
+
+            // The file that turned this suite red on a real library: a macOS AppleDouble
+            // sidecar, `.wav` by suffix, 4096 bytes, `Mac ` at offset 8, not audio at all.
+            // The vault lists it as a track, so refusing it is the plugin's job. Refusal is
+            // measured as "the kit is still the one you had", because a fresh processor
+            // already carries a factory source and a null sample is not what refusing looks
+            // like — that mistake made this check fail on a plugin that was behaving.
+            juce::MemoryBlock sidecar ((size_t) 4096);
+            sidecar.fillWith (0);
+            const char sidecarHeader[12] { '\x00', '\x05', '\x16', '\x07',
+                                           '\x00', '\x02', '\x00', '\x00', 'M', 'a', 'c', ' ' };
+            std::memcpy (sidecar.getData(), sidecarHeader, 12);
+            check (sidecarFile.replaceWithData (sidecar.getData(), sidecar.getSize()),
+                   "the sidecar probe writes its fixture");
+            const auto refused = loader.loadUserSampleFromFile (sidecarFile);
+            const auto afterRefusal = loader.getSamplePtr();
+            check (! refused && afterRefusal != nullptr
+                       && afterRefusal->buffer.getNumSamples() == 12000,
+                   "a non-audio file named .wav is refused and does not replace the kit",
+                   refused ? juce::String ("load returned true")
+                           : juce::String (afterRefusal == nullptr ? -1
+                                                                    : afterRefusal->buffer.getNumSamples()));
+            loader.releaseResources();
+            probeFile.deleteFile();
+            sidecarFile.deleteFile();
         }
         else
         {
@@ -934,6 +1096,89 @@ int main()
             check (legacyHit.finite && legacyHit.total > 0.001f, "the older kit still plays");
             legacy.releaseResources();
         }
+    }
+
+    // Warp crossover versus the engine sample rate.
+    {
+        const auto toneSource = [] (double rate, float freq, float amp, double seconds)
+        {
+            const auto numSamples = (int) std::llround (rate * seconds);
+            juce::MemoryBlock pcm ((size_t) numSamples * 4);
+            auto* out = static_cast<int16_t*> (pcm.getData());
+            for (int i = 0; i < numSamples; ++i)
+            {
+                const auto v = amp * std::sin (juce::MathConstants<float>::twoPi * freq
+                                                                * (float) i / (float) rate);
+                out[(size_t) i * 2] = (int16_t) std::round (v * 32767.0f);
+                out[(size_t) i * 2 + 1] = (int16_t) std::round (v * 32767.0f);
+            }
+            return sliceforge::decodePcm16 (pcm, 2, rate, "WARP PROBE");
+        };
+
+        const auto warpRms = [&toneSource] (double rate, float warp)
+        {
+            sliceforge::EngineRuntime runtime;
+            runtime.audible[0] = true;
+            auto& pad = runtime.pads[0];
+            pad.drumify = 0.0f;
+            pad.originalGain = 0.0f;
+            pad.drumifiedGain = 0.0f;
+            pad.impact = 0.0f;
+            pad.instability = 0.0f;
+            pad.super = 0.0f;
+            pad.toneShift = 0.0f;
+            pad.eqLow = 0.0f;
+            pad.eqMid = 0.0f;
+            pad.eqHigh = 0.0f;
+            pad.length = 1.0f;
+            pad.volume = 0.0f;
+            pad.warp = warp;
+            sliceforge::DrumEngine engine;
+            engine.prepare (rate, 512);
+            engine.setSample (toneSource (rate, 300.0f, 0.3f, 1.5));
+            engine.setRuntime (runtime);
+            engine.trigger (0, 1.0f);
+            double sum = 0.0;
+            int count = 0;
+            for (int block = 0; block < 40; ++block)
+            {
+                engine.clearBusBuffers (512);
+                engine.processSegment (0, 512);
+                engine.processMaster (512);
+                auto& bus = engine.getBusBuffer (0);
+                for (int channel = 0; channel < 2; ++channel)
+                    for (int i = 0; i < 512; ++i)
+                    {
+                        const auto value = (double) bus.getSample (channel, i);
+                        sum += value * value;
+                        ++count;
+                    }
+            }
+            return (float) std::sqrt (sum / (double) juce::jmax (1, count));
+        };
+
+        // Gate for the warp crossover: what Warp does must not depend on the host's sample
+        // rate. The 300 Hz probe tone is deliberate — the split is 200 Hz / 4.2 kHz, so a
+        // coefficient pair computed for 48 kHz but running at 96 kHz moves the low corner to
+        // 400 Hz and drops this tone into the boosted low band. Measured before the fix:
+        // 2.19 / 2.41 / 4.13 dB across the three rates. After it: 2.39 / 2.41 / 2.50 dB,
+        // and the 48 kHz numbers are bit-identical, so the reference rate does not move.
+        const auto warpAmountDb = [&warpRms] (double rate)
+        {
+            const auto off = warpRms (rate, 0.0f);
+            const auto on = warpRms (rate, 1.0f);
+            return off > 0.0f && on > 0.0f ? 20.0 * std::log10 (on / off) : 0.0;
+        };
+
+        const auto at44 = warpAmountDb (44100.0);
+        const auto at48 = warpAmountDb (48000.0);
+        const auto at96 = warpAmountDb (96000.0);
+        const auto spread = juce::jmax (juce::jmax (at44, at48), at96)
+                              - juce::jmin (juce::jmin (at44, at48), at96);
+        check (at48 > 1.0, "warp lifts a tone that sits above its low crossover",
+               juce::String (at48, 2) + " dB");
+        check (spread < 0.5, "warp does the same work at 44.1, 48 and 96 kHz",
+               juce::String (at44, 2) + " / " + juce::String (at48, 2) + " / " + juce::String (at96, 2) + " dB");
     }
 
     // CPU benchmark.

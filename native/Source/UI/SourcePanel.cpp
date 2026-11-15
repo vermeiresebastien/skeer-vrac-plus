@@ -9,12 +9,16 @@ namespace sliceforge::ui
         stylePrimaryButton (loadButton);
         styleChip (libraryButton);
         styleChip (recordButton);
+        styleChip (discardTakeButton);
         addAndMakeVisible (loadButton);
         addAndMakeVisible (libraryButton);
         addAndMakeVisible (recordButton);
+        addAndMakeVisible (discardTakeButton);
         loadButton.onClick = [this] { if (onLoadFile) onLoadFile(); };
         libraryButton.onClick = [this] { showLibraryMenu(); };
         recordButton.onClick = [this] { if (onToggleRecording) onToggleRecording(); };
+        discardTakeButton.onClick = [this] { if (onDiscardRecording) onDiscardRecording(); };
+        discardTakeButton.setTooltip ("Throw the recorded take away and keep the current source");
 
         addAndMakeVisible (waveform);
         waveform.onGestureStart = [this] { processorRef.pushUndoSnapshot(); };
@@ -66,15 +70,50 @@ namespace sliceforge::ui
         waveform.setSample (processorRef.getSamplePtr());
         waveform.setSlices (processorRef.getSlices());
         waveform.setStart (processorRef.getPadStart (selectedPad));
+        applyRecordingState();
+        repaint();
+    }
+
+    void SourcePanel::refreshRecordingState()
+    {
+        applyRecordingState();
+        repaint();
+    }
+
+    void SourcePanel::applyRecordingState()
+    {
         const bool recording = processorRef.isRecording();
-        recordButton.setButtonText (recording ? "STOP" : "REC");
-        styleChip (recordButton, recording);
-        if (processorRef.isRecordingTakeReady())
+        const bool takeReady = processorRef.isRecordingTakeReady();
+        // The recorder reads the optional sidechain input bus. When the host has not enabled
+        // it there is nothing to capture, and saying so is better than arming a button that
+        // records silence — this call is the reason the state was previously invisible.
+        const bool inputActive = processorRef.isSidechainInputActive();
+
+        if (takeReady)
         {
             recordButton.setButtonText ("USE");
             styleChip (recordButton, true);
+            recordButton.setEnabled (true);
+            recordButton.setTooltip ("Adopt the recorded take as the new source");
         }
-        repaint();
+        else if (recording)
+        {
+            recordButton.setButtonText ("STOP");
+            styleChip (recordButton, true);
+            recordButton.setEnabled (true);
+            recordButton.setTooltip ("Stop recording");
+        }
+        else
+        {
+            recordButton.setButtonText ("REC");
+            styleChip (recordButton, false);
+            recordButton.setEnabled (inputActive);
+            recordButton.setTooltip (inputActive
+                                         ? "Record the sidechain input as a new source"
+                                         : "Enable the sidechain input bus in your host to record");
+        }
+        discardTakeButton.setVisible (takeReady);
+        discardTakeButton.setEnabled (takeReady);
     }
 
     void SourcePanel::showLibraryMenu()
@@ -105,6 +144,7 @@ namespace sliceforge::ui
         loadButton.setBounds (12, 174, 72, 24);
         libraryButton.setBounds (89, 174, 84, 24);
         recordButton.setBounds (178, 174, 54, 24);
+        discardTakeButton.setBounds (237, 174, 62, 24);
 
         sensitivity.setBounds (15, 224, getWidth() - 30, 38);
 
@@ -218,11 +258,21 @@ namespace sliceforge::ui
                     juce::Justification::centredLeft, false);
         g.drawText ("16", info.getX() + 202, info.getY() + 24, 40, 12, juce::Justification::centredLeft, false);
 
-        g.setColour (processorRef.isRecording() ? c.red : c.green);
+        const bool recording = processorRef.isRecording();
+        const bool takeReady = processorRef.isRecordingTakeReady();
+        const bool inputActive = processorRef.isSidechainInputActive();
+        g.setColour (recording ? c.red : (takeReady ? c.accent : c.green));
         g.fillEllipse ((float) info.getX() + 2.0f, (float) info.getY() + 51.0f, 4.0f, 4.0f);
         g.setColour (c.muted);
         g.setFont (font (6.8f, true));
-        g.drawText (processorRef.isRecording() ? "RECORDING INPUT..." : "SKEER FACTORY LIBRARY / SWAP ANY TIME",
+        juce::String status = "SKEER FACTORY LIBRARY / SWAP ANY TIME";
+        if (recording)
+            status = "RECORDING INPUT... " + juce::String (processorRef.getRecordingSeconds(), 1) + "s";
+        else if (takeReady)
+            status = "TAKE READY - USE IT OR DISCARD IT";
+        else if (! inputActive)
+            status = "REC NEEDS THE SIDECHAIN INPUT BUS ENABLED IN THE HOST";
+        g.drawText (status,
                     info.getX() + 11, info.getY() + 48, info.getWidth() - 12, 12,
                     juce::Justification::centredLeft, false);
         g.drawText (processorRef.getMidiLearnTarget().isNotEmpty()
