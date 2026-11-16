@@ -1624,16 +1624,17 @@ one the brief predicted - and the reason it is not is more useful than the predi
   probability/flam/ratchet setup. Unrelated code in every blob, which is what reading a working tree at
   06:21 costs.
 - **The mutation, applied and reverted byte-exactly (`item15-mut1-*`).** One line, line-neutral, in
-  `setParameterValue` at `native/Source/PluginProcessor.cpp:252` - the brief's `:195-201` was exact for the
-  committed file at 06:21 (`git show e0b246d:native/Source/PluginProcessor.cpp` puts the function there and
-  the call at `:199`), and it has since moved:
-  `parameter->setValueNotifyingHost (range.convertTo0to1 (value));` became
-  `parameter->setValue (range.convertTo0to1 (value));`. Pre-mutation worktree `e8a4c882…`,
-  `git hash-object` `584537fc…`, commit blob `a73bf191…`; mutated worktree `43d3d200…`; after the restore the
-  worktree hash is `e8a4c882…` again, `cmp` against the copy taken before the edit is clean, `git diff`
-  prints nothing and `git status --porcelain` is empty. No stash and no checkout were used, per 13f: this is
-  the tree's only `i/lf w/crlf` source, so a smudge-filter write would have moved the worktree hash while
-  `git status` still read clean. Red window 12:37:40 to 12:39:22.
+  `setParameterValue` at `native/Source/PluginProcessor.cpp:252` - the brief's `:195-201` was exact for
+  the committed file at 06:21 (`git show e0b246d:native/Source/PluginProcessor.cpp` puts the function
+  there and the call at `:199`), and it has since moved. Before:
+  `parameter->setValueNotifyingHost (range.convertTo0to1 (value));`. After:
+  `parameter->setValue (range.convertTo0to1 (value));`. Pre-mutation worktree SHA-256 `e8a4c882…`,
+  blob id (SHA-1, `git hash-object`) `584537fc…`, commit-blob SHA-256 `a73bf191…`; mutated worktree
+  `43d3d200…`; after the restore the worktree hash is `e8a4c882…` again, `cmp` against the copy taken
+  before the edit is clean, `git diff` prints nothing and `git status --porcelain` is empty. No stash
+  and no checkout were used, per 13f: this is the tree's only `i/lf w/crlf` source, so a smudge-filter
+  write would have moved the worktree hash while `git status` still read clean. Red window 12:37:40
+  to 12:39:22.
 - **Red, quoted verbatim from `item15-mut1-verify.log`.** Build `BUILD_EXIT=0`, census closes the TU:
   `PluginProcessor.cpp` 12:37:40 < `SliceForgeSmokeTest.dir/Release/PluginProcessor.obj` 12:38:09 < the smoke
   exe 12:38:10, VST3 12:38:00. Smoke: `FAIL - 183/190 checks passed`, `SMOKE_EXIT=1`, CPU 4.65%. The seven
