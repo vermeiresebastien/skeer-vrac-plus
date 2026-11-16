@@ -520,7 +520,7 @@ int main()
         `block * blockPpq` instead of accumulated, so the only rounding in the fixture is one
         multiplication per block. That same arithmetic is why the head has to report 225 BPM and not
         the 120 it is constructed with: scheduleHostBlock prefers the host's tempo over the document's
-        (Sequencer.cpp:261), so the ppq-to-sample conversion that decides an offset is the head's. A
+        (Sequencer.cpp:274), so the ppq-to-sample conversion that decides an offset is the head's. A
         head lying about the tempo would still be self-consistent - the audio would play the same
         wrong sample - but the list below would be pinning a transcription of the head's fiction
         rather than the step grid, and the two would only be reconcilable by re-deriving it. */
@@ -1550,9 +1550,9 @@ int main()
                 0.021333 ppq - step 1 lands in the twelfth block of sixteen, which the transport engage
                 cannot produce. With the head frozen instead, the observable would be what the engage
                 path plays and the hit count would be a function of the resync tolerance rule
-                (Sequencer.cpp:291) rather than of a host that is moving. Stamps give pad identity, not
+                (Sequencer.cpp:304) rather than of a host that is moving. Stamps give pad identity, not
                 iteration, so nothing here measures how often a step repeated, and the mid-block half of
-                the once-per-block parameter read (PluginProcessor.cpp:315-316) is still untested -
+                the once-per-block parameter read (PluginProcessor.cpp:369-371) is still untested -
                 section 8C of docs/next-steps-plan.md says so in both places. */
             // Two pads per pattern - one on step 0, one on step 1 - in the order the scan below reads
             // them, and no pad equal to its own pattern number, so neither the bank order nor a document
@@ -1561,8 +1561,55 @@ int main()
                 { { 3, 10, 9, 4, 1, 12, 6, 7 } };
             constexpr double blockPpq = 512.0 * 120.0 / 60.0 / 48000.0;
 
-            for (int p = 0; p < sliceforge::kSeqPatterns; ++p)
+            /*  Stop, re-engage on step 0, run sixteen blocks with the head advancing by exactly one
+                block per render, and return the pads the engine stamped. Both gates below call it, so
+                the two questions differ only in the document they hand it. `peak` comes back so a
+                failure can tell silence apart from the wrong pattern. */
+            const auto stampAfterSixteen = [&] (SliceForgeAudioProcessor& proc,
+                                                MockHostPlayHead& head, float& peak)
             {
+                head.ppq = 0.0;
+                head.playing = false;
+                render (proc, 1, 1.0f, 0, -1, 999); // stop, so the arm re-engages on step 0
+                head.playing = true;
+                peak = 0.0f;
+                for (int block = 0; block < 16; ++block)
+                {
+                    peak = juce::jmax (peak, render (proc, 1, 1.0f, 0, -1, 999).total);
+                    head.ppq += blockPpq; // after the block, so step 0 stays inside this run
+                }
+                juce::String heard;
+                for (const auto pad : wirePads)
+                    if (proc.getPadHitStamp (pad) != 0)
+                        heard << pad << " ";
+                return heard;
+            };
+            // The literal is read off the fixture, not remembered: pattern q owns exactly wirePads[2q]
+            // and wirePads[2q + 1], in the order the scan above reads them.
+            const auto padsFor = [&wirePads] (int pattern)
+            {
+                juce::String expected;
+                expected << wirePads[(size_t) (2 * pattern)] << " "
+                         << wirePads[(size_t) (2 * pattern + 1)] << " ";
+                return expected;
+            };
+
+            /*  Five arms, as (parameter, document mirror) pairs. The first four are the ladder the gate
+                was written with: the mirror is always the next pattern, so no arm can be satisfied by
+                the sentinel fallback and every one of the four is load-bearing. The ladder has one
+                invariant, and that is the reason for arm 5 - in all four cases the mirror equals
+                (parameter + 1) mod 4, so an implementation keyed on the *relation* rather than on the
+                value leaves the whole ladder green. The witness is real if unlikely code,
+                `mirror == (live + 1) % kSeqPatterns ? live : mirror`, which is what "the mirror looks
+                stale, trust the document instead" would say; every ladder arm matches it and arm 5
+                does not. No ordinary mutation of the two branches of patternIndexForStep needs arm 5,
+                and it is here for the pair coverage, not as a fourth independent proof. */
+            for (int arm = 0; arm < sliceforge::kSeqPatterns + 1; ++arm)
+            {
+                const int p = arm < sliceforge::kSeqPatterns ? arm : 0;
+                const int mirror = arm < sliceforge::kSeqPatterns
+                                       ? (arm + 1) % sliceforge::kSeqPatterns
+                                       : sliceforge::kSeqPatterns - 1;
                 MockHostPlayHead playHead;
                 SliceForgeAudioProcessor wire;
                 wire.setPlayHead (&playHead);
@@ -1586,59 +1633,108 @@ int main()
                     document->patterns[(size_t) q].rows[(size_t) wirePads[(size_t) (2 * q)]][0].on = true;
                     document->patterns[(size_t) q].rows[(size_t) wirePads[(size_t) (2 * q + 1)]][1].on = true;
                 }
-                /*  The mirror deliberately disagrees with the parameter on every arm - the next
+                /*  The mirror deliberately disagrees with the parameter on every ladder arm - the next
                     pattern, wrapping - because the callee falls back to `data.activePattern` on the
                     sentinel. Left at its default, the arm whose parameter equals the document would
                     pass by construction and the differential would be three arms wide, not four. */
-                document->activePattern = (p + 1) % sliceforge::kSeqPatterns;
+                document->activePattern = mirror;
                 wire.setSequencerData (document);
                 wire.setPatternParameter (p);
 
                 juce::String detail;
                 // Both records read back before the first render. setPatternParameter writes the cache
                 // through setValueNotifyingHost today; if that ever hops to the message thread this arm
-                // stops being evidence, and this line says so instead of blaming the wire.
-                if (wire.getPatternParameter() != p
-                    || document->activePattern != (p + 1) % sliceforge::kSeqPatterns)
-                {
+                // stops being evidence, and this line says so instead of blaming the wire. A bad read
+                // does not excuse the render, though: measured on the previous cut of this gate, the
+                // readActivePattern-stub mutation reddened arms B, C and D *only* through this branch,
+                // so the pad comparison never ran and the suite held no audible evidence about the wire
+                // at all. Both causes print now, so a dead wire is also a wrong thing heard.
+                if (wire.getPatternParameter() != p || document->activePattern != mirror)
                     detail << "fixture invalid param=" << wire.getPatternParameter()
                            << " want " << p << " mirror=" << document->activePattern;
-                }
-                else
-                {
-                    playHead.ppq = 0.0;
-                    playHead.playing = false;
-                    render (wire, 1, 1.0f, 0, -1, 999); // stop, so the arm re-engages on step 0
-                    playHead.playing = true;
-                    float peak = 0.0f;
-                    for (int block = 0; block < 16; ++block)
-                    {
-                        peak = juce::jmax (peak, render (wire, 1, 1.0f, 0, -1, 999).total);
-                        playHead.ppq += blockPpq; // after the block, so step 0 stays inside this run
-                    }
 
-                    juce::String heard, expected;
-                    for (const auto pad : wirePads)
-                        if (wire.getPadHitStamp (pad) != 0)
-                            heard << pad << " ";
-                    expected << wirePads[(size_t) (2 * p)] << " "
-                             << wirePads[(size_t) (2 * p + 1)] << " ";
-                    if (heard != expected)
-                    {
-                        // Naming the mirror's pattern in the failure says which record the render read:
-                        // the pads listed are that pattern's two, so "fell back to the document" and
-                        // "emitted nothing at all" cannot be mistaken for each other.
-                        detail << "saw [" << heard << "] expected [" << expected
-                               << "] mirror holds pattern " << (p + 1) % sliceforge::kSeqPatterns
-                               << " peak " << peak;
-                    }
+                float peak = 0.0f;
+                const auto heard = stampAfterSixteen (wire, playHead, peak);
+                const auto expected = padsFor (p);
+                if (heard != expected)
+                {
+                    // Naming the mirror's pattern in the failure says which record the render read:
+                    // the pads listed are that pattern's two, so "fell back to the document" and
+                    // "emitted nothing at all" cannot be mistaken for each other.
+                    detail << " saw [" << heard << "] expected [" << expected
+                           << "] mirror holds pattern " << mirror << " peak " << peak;
                 }
 
                 juce::String name = "the host path plays the pattern the parameter names (pattern ";
-                name << static_cast<char> ('A' + p) << ")";
+                name << static_cast<char> ('A' + p);
+                if (arm >= sliceforge::kSeqPatterns)
+                    name << " against a document on D";
+                name << ")";
                 check (detail.isEmpty(), name, detail);
                 wire.setPlayHead (nullptr);
                 wire.releaseResources();
+            }
+
+            /*  Song mode through the same route, which makes it the only check in the suite that
+                renders a processor with `songMode` set. Every other song-mode case hands the document
+                straight to processSequencerBlock, so two things were ungated: the flag's trip from
+                setSequencerData into processBlock, and the claim this step rests on, that the live
+                parameter stays silent while the chain owns the choice. Each chain is filled with one
+                pattern, so no arm depends on which slot the transport reached; the only variables are
+                the chain and the parameter, and the mirror is 0 on all three arms.
+                  Arms 0 and 1 are the invariance: one chain, two parameters, the same two pads heard.
+                  Arm 2 is the control that turns that into a claim rather than a tautology: the
+                  parameter arm 1 used, a chain it does not name, and a different pad pair as the
+                  answer. Arm 1 is green by construction under "the parameter wins" - its parameter is
+                  its chain - which is exactly why the invariance is stated against a chain on D, where
+                  arm 0 hears a parameter of 0 refused. */
+            constexpr std::array<int, 3> songChain { { 3, 3, 1 } };
+            constexpr std::array<int, 3> songParam { { 0, 3, 3 } };
+            for (int arm = 0; arm < 3; ++arm)
+            {
+                MockHostPlayHead playHead;
+                SliceForgeAudioProcessor live;
+                live.setPlayHead (&playHead);
+                live.prepareToPlay (48000.0, 512);
+                auto document = sliceforge::cloneSequencerData (*live.getSequencerData());
+                document->hostSync = true;
+                document->songMode = true;
+                document->chainPatterns.fill (songChain[(size_t) arm]);
+                document->chainLength = sliceforge::kSeqChainLength;
+                document->bpm = 120.0;
+                document->length = 16;
+                document->division = 4;
+                document->swing = 0.0f;
+                for (auto& pattern : document->patterns)
+                {
+                    sliceforge::clearPattern (pattern);
+                    pattern.laneMute.fill (false);
+                    pattern.laneSolo.fill (false);
+                    pattern.laneLength.fill (0);
+                }
+                for (int q = 0; q < sliceforge::kSeqPatterns; ++q)
+                {
+                    document->patterns[(size_t) q].rows[(size_t) wirePads[(size_t) (2 * q)]][0].on = true;
+                    document->patterns[(size_t) q].rows[(size_t) wirePads[(size_t) (2 * q + 1)]][1].on = true;
+                }
+                document->activePattern = 0;
+                live.setSequencerData (document);
+                live.setPatternParameter (songParam[(size_t) arm]);
+
+                float peak = 0.0f;
+                const auto heard = stampAfterSixteen (live, playHead, peak);
+                const auto expected = padsFor (songChain[(size_t) arm]);
+                juce::String detail;
+                detail << "chain holds pattern " << songChain[(size_t) arm]
+                       << " parameter " << songParam[(size_t) arm]
+                       << " mirror 0";
+                if (heard != expected)
+                    detail << " saw [" << heard << "] expected [" << expected << "] peak " << peak;
+                juce::String name = "in song mode the host path hears the chain, not the parameter (chain ";
+                name << songChain[(size_t) arm] << ", parameter " << songParam[(size_t) arm] << ")";
+                check (heard == expected, name, detail);
+                live.setPlayHead (nullptr);
+                live.releaseResources();
             }
         }
 
