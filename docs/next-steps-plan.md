@@ -1619,7 +1619,10 @@ one the brief predicted - and the reason it is not is more useful than the predi
   all 60 blocks, `list == "1 "` at `:1388`, the chain-slot justification at `:1379-1383`: all eight slots
   hold pattern 1, and pattern p lights row p. The five `firedPads` hits are the shared lambda at `:1299` and
   its four uses. Nothing was owed here, and the brief's `:1041` and `:1069-1072` cannot be re-pointed,
-  because no blob holds the bytes they were read from.
+  because they were never committed bytes: at `e0b246d` those addresses sit in the Vault block, at
+  `c57f277` in a grid-drawing lambda and the torn-lane counter, and from `5f8815d` onward in the
+  probability/flam/ratchet setup. Unrelated code in every blob, which is what reading a working tree at
+  06:21 costs.
 - **The mutation, applied and reverted byte-exactly (`item15-mut1-*`).** One line, line-neutral, in
   `setParameterValue` at `native/Source/PluginProcessor.cpp:252` - the brief's `:195-201` was exact for the
   committed file at 06:21 (`git show e0b246d:native/Source/PluginProcessor.cpp` puts the function there and
