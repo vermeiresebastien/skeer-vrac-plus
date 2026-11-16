@@ -679,9 +679,14 @@ namespace sliceforge
             auto& chain = masterChains[(size_t) busIndex];
             chain.setParameters (g.filter, g.tone, g.volume);
             auto& bus = busBuffers[(size_t) busIndex];
-            chain.process (bus.getWritePointer (0), bus.getWritePointer (1), numSamples);
+            // clearBusBuffers and processSegment both clamp to the prepared size; this stage writes
+            // the buffer it is handed, so an unclamped host block would run past it.
+            const int count = juce::jlimit (0, bus.getNumSamples(), numSamples);
+            if (count <= 0)
+                continue;
+            chain.process (bus.getWritePointer (0), bus.getWritePointer (1), count);
             float peak = 0.0f;
-            for (int i = 0; i < numSamples; ++i)
+            for (int i = 0; i < count; ++i)
                 peak = juce::jmax (peak, std::abs (bus.getSample (0, i)), std::abs (bus.getSample (1, i)));
             const auto previous = busPeaks[(size_t) busIndex].load (std::memory_order_relaxed);
             busPeaks[(size_t) busIndex].store (juce::jmax (peak, previous * 0.82f), std::memory_order_relaxed);

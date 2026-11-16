@@ -31,6 +31,9 @@ namespace sliceforge::ui
         void randomizeShortcut();
         void refreshTheme();
         void showStepInspectorForTesting (int pad, int step);
+        // The layout test measures the duplicate control directly: a button that exists but never
+        // reaches the screen is the failure it is there to catch.
+        const juce::TextButton& copyToControlForTesting() const { return copyToButton; }
 
         void paint (juce::Graphics&) override;
         void resized() override;

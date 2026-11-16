@@ -8,7 +8,7 @@
 import type { GlobalParams, PadParams, SourceSample } from '../types';
 import { PAD_COUNT, clamp } from '../types';
 import { SliceForgeEngine } from './engineCore';
-import { MasterChain } from './masterChain';
+import { MasterChain, masterFold } from './masterChain';
 import { applyOutputStage } from './outputStage';
 import { encodeWav } from './wav';
 import { createZip, type ZipFile } from './zip';
@@ -82,9 +82,11 @@ function fallbackMaster(input: StereoPcm, global: GlobalParams): StereoPcm {
   const left = new Float32Array(input.left.length);
   const right = new Float32Array(input.right.length);
   for (let i = 0; i < left.length; i++) {
-    // Same folding the live master chain does, then the same output stage on the way out.
-    left[i] = applyOutputStage(Math.tanh(input.left[i] * gain * 1.15), global.clip, global.outGain);
-    right[i] = applyOutputStage(Math.tanh(input.right[i] * gain * 1.15), global.clip, global.outGain);
+    // Same folding the live master chain does — fold first, then the volume, exactly as native's
+    // MasterChain::process orders it — then the same output stage on the way out. Folding after
+    // the gain would make the amount of saturation depend on the master fader.
+    left[i] = applyOutputStage(masterFold(input.left[i]) * gain, global.clip, global.outGain);
+    right[i] = applyOutputStage(masterFold(input.right[i]) * gain, global.clip, global.outGain);
   }
   return { left, right, sampleRate: input.sampleRate };
 }

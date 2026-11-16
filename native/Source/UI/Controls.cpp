@@ -22,7 +22,25 @@ namespace sliceforge::ui
                 || id.endsWith ("_impact") || id.endsWith ("_instability") || id.endsWith ("_super")
                 || id == "global.width" || id == "global.clip" || id == "source.sensitivity";
         }
+
+        /** The pad controls drawn as button rows: their value selects a name or a toggle, so they
+            never need a text value. Anything else that is not covered by a branch below is a
+            parameter that was added without being given a unit. */
+        bool isButtonParam (const juce::String& id)
+        {
+            return id.endsWith ("_model") || id.endsWith ("_choke") || id.endsWith ("_bus")
+                || id.endsWith ("_mute") || id.endsWith ("_solo");
+        }
     } // namespace
+
+    bool isKnownParamId (const juce::String& id)
+    {
+        return isGainParam (id) || isPitchParam (id) || isPercentParam (id) || isButtonParam (id)
+            || id == "global.fine" || id == "global.drumify" || id == "global.length"
+            || id == "global.filter" || id == "global.tone"
+            || id.endsWith ("_length") || id.endsWith ("_pan")
+            || id.endsWith ("_eqLow") || id.endsWith ("_eqMid") || id.endsWith ("_eqHigh");
+    }
 
     juce::String formatParamValue (const juce::String& id, double value)
     {
@@ -33,6 +51,17 @@ namespace sliceforge::ui
             return formatSemitones (v);
         if (id == "global.fine")
             return formatCents (v);
+        // Global DRUMIFY is already a percentage of the pad amount, and its range is 0..200, so it
+        // takes the value as-is; formatPercent would multiply a 0..1 knob and this one would read
+        // "10000%".
+        if (id == "global.drumify")
+            return juce::String ((int) std::round (v)) + "%";
+        // Global TONE is a spectral tilt, not a pitch move: the value drives two shelf gains
+        // (VoiceEngine's master chain scales it by 0.36 and 0.58 dB), so it reads as a signed
+        // amount with no unit. The per-pad tone shift, by contrast, moves a filter centre in
+        // semitones and keeps the "st" suffix.
+        if (id == "global.tone")
+            return std::abs (v) < 0.05f ? "0.0" : (v > 0.0f ? "+" : "") + juce::String (v, 1);
         if (id.endsWith ("_length"))
             return juce::String ((int) std::round (v * 1000.0f)) + " ms";
         if (id == "global.length")

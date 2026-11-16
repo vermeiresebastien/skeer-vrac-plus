@@ -167,6 +167,7 @@ add_custom_target(launch
     COMMAND "${POWERSHELL_EXE}" -NoProfile -ExecutionPolicy Bypass
             -File "${CMAKE_CURRENT_SOURCE_DIR}/package-launch.ps1"
             -Version "${PROJECT_VERSION}"
+            -Config "$<CONFIG>"
     DEPENDS SliceForge_Standalone SliceForge_VST3
     WORKING_DIRECTORY "${CMAKE_CURRENT_SOURCE_DIR}"
     VERBATIM

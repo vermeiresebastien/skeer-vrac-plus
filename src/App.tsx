@@ -6,7 +6,7 @@ import { midiHub, type MidiInputInfo, type MidiStatus } from './audio/midi';
 import { decodeAudioFile } from './lib/audioFiles';
 import { applyMidiValue, formatMidiTarget, parseMidiTarget } from './lib/midiTargets';
 import { useKit } from './state/useKit';
-import { loadUserSample as restoreUserSample, persistUserSample } from './state/sampleStore';
+import { loadUserSample as restoreUserSample, persistUserSample, requestPersistentStorage } from './state/sampleStore';
 import { FACTORY_PRESETS } from './state/factoryPresets';
 import {
   downloadBlob,
@@ -118,6 +118,13 @@ export default function App() {
     return () => {
       timers.forEach((timer) => window.clearTimeout(timer));
     };
+  }, []);
+
+  // Ask once, at startup, for storage the browser may not evict: without the grant it can drop the
+  // IndexedDB samples that saved kits reference, and the user finds out when a kit will not reload.
+  // Declining is the browser's call, so nothing here changes behaviour either way.
+  useEffect(() => {
+    void requestPersistentStorage();
   }, []);
 
   const startAudio = useCallback(() => {
@@ -265,8 +272,10 @@ export default function App() {
       try {
         const loaded = await decodeAudioFile(file);
         actionsRef.current.loadUserSample(loaded);
-        void persistUserSample(loaded);
         notify(`${loaded.name} loaded and sliced.`, 'success');
+        if (!(await persistUserSample(loaded))) {
+          notify('This browser would not store the audio, so a kit saved against it will not reload. The sample itself is fine for now.', 'error');
+        }
       } catch (error) {
         console.error('[SliceForge] sample load failed', error);
         notify(error instanceof Error ? error.message : 'Could not decode that file.', 'error');
@@ -285,11 +294,13 @@ export default function App() {
   );
 
   const recordSample = useCallback(
-    (loaded: SourceSample) => {
+    async (loaded: SourceSample) => {
       actionsRef.current.loadUserSample(loaded);
-      void persistUserSample(loaded);
       setModal(null);
       notify(`Recording loaded: ${loaded.duration.toFixed(1)}s, sliced.`, 'success');
+      if (!(await persistUserSample(loaded))) {
+        notify('This browser would not store the recording, so a kit saved against it will not reload.', 'error');
+      }
     },
     [notify],
   );
@@ -401,10 +412,19 @@ export default function App() {
 
   const savePreset = useCallback(
     (name: string) => {
-      const next = saveUserKit(name, kitRef.current);
-      setSavedKits(next);
-      actionsRef.current.renameKit(name);
+      const { kits, persisted } = saveUserKit(name, kitRef.current);
       setModal(null);
+      if (!persisted) {
+        // The list on screen keeps showing what is actually on disk; a phantom entry would read
+        // as a saved kit and vanish on the next reload.
+        notify(
+          `Could not save "${name}" — the browser refused to write to local storage, so nothing was stored. Free up space (or re-enable storage for this site) and try again.`,
+          'error',
+        );
+        return;
+      }
+      setSavedKits(kits);
+      actionsRef.current.renameKit(name);
       notify(`Kit saved as ${name}.`, 'success');
     },
     [notify],

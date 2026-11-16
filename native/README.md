@@ -45,7 +45,7 @@ host-synced 32-step sequencer with pattern chaining, polymeter, parameter locks 
 | Installed plugin | `%ProgramFiles%\Common Files\VST3\SliceForge.vst3` |
 | Installed standalone | `%LOCALAPPDATA%\Programs\SliceForge\SliceForge.exe` |
 | Launch folder | `..\launch\` — `SliceForge.exe`, `SliceForge.vst3`, `SliceForge-1.0.0-Windows-x64.zip`, `start.bat` |
-| Test suite | 117 engine/state checks, editor layout snapshots, VST3 host load |
+| Test suite | 139 engine/state checks, editor layout snapshots, VST3 host load |
 
 The plugin bundle is self-contained (factory audio and SKEER brand assets are embedded, no
 external resource folder). The build is about **24 MB**. The VST3 session identity is preserved
@@ -151,9 +151,11 @@ native\build\SliceForgeLayoutTest_artefacts\Release\SliceForgeLayoutTest.exe
 native\build\SliceForgeHostTest_artefacts\Release\SliceForgeHostTest.exe
 ```
 
-The host test asks JUCE's VST3 hosting path to scan and instantiate the built bundle, checks the
-349 exposed parameters, accepts an eight-stereo-output bus layout, processes MIDI note 36,
-checks the output is finite and non-silent, and round-trips the plugin state.
+The host test asks JUCE's VST3 hosting path to scan and instantiate the built bundle, asserts the
+349 exposed parameters (347 from `createParameterLayout` — 11 global plus 21 for each of 16 pads —
+with the wrapper's own `Bypass` and `Program` on top), accepts an eight-stereo-output bus layout,
+processes MIDI note 36, checks the output is finite and non-silent, and round-trips the plugin
+state. The total is asserted exactly, not printed and compared against a round number.
 
 The layout test writes light and dark snapshots for the kit, sequencer, step inspector and
 Sample Vault pages, opens the step inspector through the real UI path and verifies that no child
@@ -192,10 +194,10 @@ control falls outside its parent.
   host-state XML) restores bypassed and still plays
 - randomizer, Euclidean, parseable MIDI file and CPU-headroom checks
 
-Current result: **117/117 passed**, with the engine using between **4.4% and 6.1% of one core** across
-separate runs of the same binary while continuously triggering pads at 48 kHz / 512 samples. The spread
-is real, so treat it as a range rather than a figure; the check itself only fails above 8 s of processing
-for 2.1 s of audio.
+Current result: **139/139 passed**, with the engine using between **4.4% and 6.1% of one core** across
+separate runs of the same binary while continuously triggering pads at 48 kHz / 512 samples (this run,
+5.04%). The spread is real, so the figure is reported and never asserted: real-time safety rests on the
+finite-and-in-ceiling checks, not on a wall-clock bound that measured the machine rather than the engine.
 
 ---
 
@@ -384,7 +386,7 @@ Source/
     SourcePanel / PadEditorPanel / HeaderBar / FooterBar / SequencerGrid / SequencerPanel /
     VaultPanel
 Tests/
-  SmokeTest.cpp         117 audio/state checks
+  SmokeTest.cpp         139 audio/state checks
   LayoutTest.cpp        editor bounds + PNG snapshots
   HostTest.cpp          scans and loads the built VST3 through JUCE's host path
 ```

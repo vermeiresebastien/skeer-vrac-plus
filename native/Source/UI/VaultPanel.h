@@ -24,6 +24,12 @@ namespace sliceforge::ui
         void selectFirstRowForTesting();
         void selectFirstAnalysedRowForTesting();
         void searchForTesting (const juce::String& text);
+        // The layout test asserts the search row, the result list and the two buttons a user needs
+        // to load what it found are all actually on screen.
+        const juce::TextEditor& vaultSearchForTesting() const { return search; }
+        const juce::ListBox& vaultListForTesting() const { return list; }
+        const juce::TextButton& vaultLoadForTesting() const { return loadButton; }
+        const juce::TextButton& vaultPreviewForTesting() const { return previewButton; }
 
         void paint (juce::Graphics&) override;
         void resized() override;

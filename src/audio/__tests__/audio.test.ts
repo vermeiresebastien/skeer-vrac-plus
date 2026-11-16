@@ -141,21 +141,37 @@ describe('voice engine', () => {
   });
 
   it('chokes voices in the same group', () => {
-    const pads = createDefaultPads();
-    // two different pads in group 2
-    pads[6].choke = 2;
-    pads[7].choke = 2;
-    const engine = new SliceForgeEngine(48000);
-    engine.setParams({ pads, global: { ...DEFAULT_GLOBAL } });
-    engine.trigger(6, 1);
-    render(engine, 4);
-    const first = engine.activeVoiceCount;
-    engine.trigger(7, 1);
-    render(engine, 4);
-    // The first voice is fading, so both are still technically active for a
-    // few milliseconds, but the count never exceeds two.
-    expect(first).toBeGreaterThanOrEqual(1);
-    expect(engine.activeVoiceCount).toBeLessThanOrEqual(2);
+    // The old claim here was activeVoiceCount <= 2 after two triggers, which is also what an
+    // engine that ignored choke entirely would report. This measures the pad that is supposed to
+    // be silenced, on a bus the second hit never touches: an unchoked hat of length 0.09 s is
+    // still ~35 blocks into its tail here, while the choke ramp is 12 ms (~4.5 blocks).
+    function chokedBusPeak(choke: number): number {
+      const pads = createDefaultPads();
+      pads[6].choke = choke;
+      pads[7].choke = choke;
+      pads[7].bus = 2; // keep pad 8 off bus 1 so the measurement sees only pad 7's target
+      const engine = new SliceForgeEngine(48000);
+      engine.setParams({ pads, global: { ...DEFAULT_GLOBAL } });
+      engine.trigger(6, 1);
+      render(engine, 4);
+      engine.trigger(7, 1);
+      // Eight blocks first, which is past the 12 ms choke ramp and still short of the hat's own
+      // 0.09 s tail: measuring from here is what separates a killed voice from a ringing one.
+      render(engine, 8);
+      let peak = 0;
+      for (let i = 0; i < 8; i++) {
+        const outputs = render(engine, 1);
+        for (const channel of outputs[0]) {
+          for (let s = 0; s < channel.length; s++) peak = Math.max(peak, Math.abs(channel[s]));
+        }
+      }
+      return peak;
+    }
+
+    const grouped = chokedBusPeak(2);
+    const open = chokedBusPeak(0);
+    expect(open).toBeGreaterThan(0.001); // the control really is still ringing
+    expect(grouped).toBeLessThan(open * 0.2);
   });
 
   it('allOff silences the engine', () => {

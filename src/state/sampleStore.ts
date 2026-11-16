@@ -33,8 +33,11 @@ function openDatabase(): Promise<IDBDatabase> {
   return dbPromise;
 }
 
-export async function persistUserSample(sample: SourceSample): Promise<void> {
-  if (!sample.isUser || typeof indexedDB === 'undefined') return;
+/** False means the sample exists only in this page's memory, so a kit saved against it will not
+ *  come back after a reload — which is worth saying out loud rather than console.warn-ing, because
+ *  the load itself looked like it succeeded. A library sample has nothing to store and returns true. */
+export async function persistUserSample(sample: SourceSample): Promise<boolean> {
+  if (!sample.isUser || typeof indexedDB === 'undefined') return !sample.isUser;
   try {
     const db = await openDatabase();
     await new Promise<void>((resolve, reject) => {
@@ -49,9 +52,25 @@ export async function persistUserSample(sample: SourceSample): Promise<void> {
       } satisfies StoredSample);
       tx.oncomplete = () => resolve();
       tx.onerror = () => reject(tx.error ?? new Error('Could not save the sample'));
+      tx.onabort = () => reject(tx.error ?? new Error('The browser aborted the sample write'));
     });
+    return true;
   } catch (error) {
     console.warn('[SliceForge] could not persist user sample', error);
+    return false;
+  }
+}
+
+/** Without a persistent-storage grant the browser may evict this IndexedDB under disk pressure,
+ *  silently deleting the samples that saved kits point at. The request is best-effort — it resolves
+ *  false when the user or the browser declines — so the answer is reported, never acted on. */
+export async function requestPersistentStorage(): Promise<boolean> {
+  if (typeof navigator === 'undefined' || !navigator.storage?.persist) return false;
+  try {
+    if (await navigator.storage.persisted?.()) return true;
+    return (await navigator.storage.persist()) === true;
+  } catch {
+    return false;
   }
 }
 

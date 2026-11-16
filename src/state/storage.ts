@@ -29,15 +29,29 @@ export function loadSavedKits(): SavedKit[] {
   return parsed.filter((item) => item && item.kit && item.id && item.name);
 }
 
-export function writeSavedKits(kits: SavedKit[]): void {
+/** What a write actually produced: the list the UI should show, and whether the browser really
+ *  kept it. `persisted: false` means the bytes never left the process, so nothing may claim the
+ *  kit is saved. */
+export interface KitWriteResult {
+  kits: SavedKit[];
+  persisted: boolean;
+}
+
+/** localStorage throws on quota, refuses writes in some private modes and can be poisoned by a
+ *  corrupt origin, so the list is read back through the same loader the UI uses instead of
+ *  trusting that setItem returned. */
+function writeSavedKits(kits: SavedKit[]): boolean {
+  if (typeof localStorage === 'undefined') return false;
   try {
     localStorage.setItem(PRESET_KEY, JSON.stringify(kits));
+    return loadSavedKits().length === kits.length;
   } catch (error) {
     console.warn('[SliceForge] could not save presets', error);
+    return false;
   }
 }
 
-export function saveUserKit(name: string, kit: KitState): SavedKit[] {
+export function saveUserKit(name: string, kit: KitState): KitWriteResult {
   const kits = loadSavedKits();
   const trimmed = name.trim() || 'MY KIT';
   const existing = kits.findIndex((item) => item.name.toLowerCase() === trimmed.toLowerCase());
@@ -49,14 +63,12 @@ export function saveUserKit(name: string, kit: KitState): SavedKit[] {
   };
   if (existing >= 0) kits[existing] = saved;
   else kits.unshift(saved);
-  writeSavedKits(kits);
-  return kits;
+  return { kits, persisted: writeSavedKits(kits) };
 }
 
-export function deleteUserKit(id: string): SavedKit[] {
+export function deleteUserKit(id: string): KitWriteResult {
   const kits = loadSavedKits().filter((item) => item.id !== id);
-  writeSavedKits(kits);
-  return kits;
+  return { kits, persisted: writeSavedKits(kits) };
 }
 
 export function getThemePreference(): 'light' | 'dark' {

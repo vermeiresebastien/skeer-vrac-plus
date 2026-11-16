@@ -40,7 +40,13 @@ export function softClip(x: number, clip: number): number {
   return x < 0 ? -bend : bend;
 }
 
+/** The ordering below bounds a large sample but not an undefined one: every comparison fails
+ *  against NaN, so a NaN walked straight out of the app and poisoned whatever it was summed
+ *  into. Infinities already land on the ceiling via those same comparisons, so only the value
+ *  that cannot be ordered needs its own branch — and it gets silence, because no level can be
+ *  meant by it. Same rule as sliceforge::clampToCeiling in native/Source/Engine/Dsp.h. */
 export function clampToCeiling(x: number): number {
+  if (Number.isNaN(x)) return 0;
   if (x > OUTPUT_CEILING) return OUTPUT_CEILING;
   if (x < -OUTPUT_CEILING) return -OUTPUT_CEILING;
   return x;

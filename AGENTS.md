@@ -29,22 +29,30 @@ launch/start.bat / start.ps1                install + standalone + browser editi
 
   It runs `native/package-launch.ps1`. A post-build copy would turn Ableton's lock on a loaded
   VST3 module into a failed compile, hiding the result of the build being tested.
-- The script deletes its previous export before copying so a stale file cannot survive a build,
-  restamps the zip from `launch/` binaries plus `native/Package/INSTALL.txt` and
-  `native/README.md`, and SHA-256-compares every copy against its build-tree original.
-  Timestamps are not evidence: a skipped copy leaves an old mtime on a file that exported fine,
-  and a byte-identical file keeps the mtime of the copy that was skipped.
+- The script stages its copies, SHA-256-compares the stage against the build tree, and only then
+  replaces what is already in `launch/`; the zip is written last. Nothing in `launch/` is deleted
+  before its replacement has been proven, so a failed export leaves the previous deliverables
+  standing instead of emptying a tracked folder. The zip is restamped from the `launch/` binaries
+  plus `native/Package/INSTALL.txt` and `native/README.md`, and every archive member is hashed back
+  against the file it claims to be. Timestamps are not evidence: a skipped copy leaves an old mtime
+  on a file that exported fine, and a byte-identical file keeps the mtime of the copy that was
+  skipped. The CMake target passes `-Config "$<CONFIG>"`, so a Debug build exports Debug binaries
+  rather than quietly shipping whatever Release artefact was already on disk.
 - The export refuses to run while `SliceForge.exe` is running. Close it rather than killing it — the
   standalone has no autosave.
 - `launch/start.ps1` installs into one folder: `%ProgramFiles%\Common Files\VST3`, the system VST3
   path every host scans by default. Never install into `%USERPROFILE%\Documents\VST3` or
   `%LOCALAPPDATA%\Programs\Common\VST3` — a second copy buys nothing (the system folder is already
-  scanned) and produces duplicate browser entries plus two builds that drift apart. The script
-  removes a `SliceForge.vst3` it finds in either of those once the system copy is hash-verified,
-  elevates itself through one UAC prompt for the copy step only, and reads the installed module
-  back against `launch/` before reporting success; `-InstallOnly` exits non-zero when it did not
-  land. Override the destination with `-Vst3Dir`, e.g. for a host with a custom scan root. A
-  folder locked by an open DAW is skipped rather than the host terminated. `-DryRun` prints the plan.
+  scanned) and produces duplicate browser entries plus two builds that drift apart. A stray
+  `SliceForge.vst3` found in either of those is only deleted when it is byte-identical to the
+  installed bundle; a stray whose module hash differs is a build that exists nowhere else, so it is
+  moved to `%LOCALAPPDATA%\SliceForge\retired\<yyyyMMdd-HHmmss>-<module-hash8>` instead. Retiring
+  beats deleting: "superseded" and "the last copy of it" look identical until you try to rebuild
+  them. The script elevates itself through one UAC prompt for the copy step only, and reads the
+  installed module back against `launch/` before reporting success; `-InstallOnly` exits non-zero
+  when it did not land. Override the destination with `-Vst3Dir`, e.g. for a host with a custom
+  scan root. A folder locked by an open DAW is skipped rather than the host terminated. `-DryRun`
+  prints the plan.
 - `launch/` is tracked in git here (owner decision, 2026-11-14). This deliberately differs from
   the other skeer-audio projects, where `launch/` is fully gitignored; it costs ~75 MB of blobs
   and there is no `.gitattributes`, so Git LFS is configured but inactive.
@@ -88,18 +96,19 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
 - `COPY_PLUGIN_AFTER_BUILD` stays `FALSE`; installing is an explicit step.
 - Product name is SliceForge, but these identifiers are frozen and must never be renamed — they
   are data keys, not branding:
-  - `PLUGIN_CODE Vrac` and `PLUGIN_MANUFACTURER_CODE Erwm` (`native/CMakeLists.txt:105-106`): the
+  - `PLUGIN_CODE Vrac` and `PLUGIN_MANUFACTURER_CODE Erwm` (`native/CMakeLists.txt:106-107`): the
     pair is the VST3 module identity in the host session; changing either orphans every saved set.
   - `"VRACPlus"` (the APVTS ValueTree type, `native/Source/PluginProcessor.cpp:23`) and
-    `"VRAC_EXTRA"` (`:932`, `:936`, `:994`, `:999`): the host-state XML the plugin reads back.
+    `"VRAC_EXTRA"` (`:974`, `:978`, `:1036`, `:1041`): the host-state XML the plugin reads back.
     Renaming them silently drops slices, sequencer and custom-sample data.
   - `0x56524143` / `'VRAC'` in `native/Source/Sequencer.cpp:12`: the magic written into and
     validated on `.vracpattern` files.
   - the `.vracpreset` / `.vracpattern` extensions: users' on-disk presets and patterns. The
-    folder holding them is not frozen — it moved to `%APPDATA%\SliceForge` on 2026-11-14
-    (`Theme.cpp:75`, `PluginEditor.cpp:446`, `:476`, `VaultLibrary.cpp:143`), with the old
-    `VRACPlus` contents copied over and hash-verified. Nothing reads the old path any more, so a
-    checkout on a machine that still has one needs the same one-time copy.
+    folder holding them is not frozen — it moved to `%APPDATA%\SliceForge` on 2026-11-14 (all under
+    `native/`: `Source/UI/Theme.cpp:75`, `Source/PluginEditor.cpp:461`, `:491`, and
+    `Source/VaultLibrary.cpp:143`), with the old `VRACPlus` contents copied over and hash-verified.
+    Nothing reads the old path any more, so a checkout on a machine that still has one needs the same
+    one-time copy.
   - Web storage keys `vrac-plus.presets.v1`, `.theme.v1`, `.midi.v1` (`src/state/storage.ts:5-7`),
     IndexedDB `vrac-plus` (`src/state/sampleStore.ts:7`), `'vrac-plus-preset'` and
     `_vrac-kit.zip` download names — renaming any of these loses saved kits or MIDI maps.
@@ -121,8 +130,14 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
 - `native/shots/*.png` is gitignored, so the image links in both READMEs are broken in a fresh
   clone. `native/artifact/` no longer exists — its zip became `launch/SliceForge-1.0.0-Windows-x64.zip`.
 - Committed docs lag the tree in this project. Verify a path in the current tree before quoting it.
-  The same goes for the numbers in it: the smoke total, the exposed-parameter count and the CPU
-  figure are all claims to re-measure, not facts.
+  The same goes for the numbers in it, but only for some of them: the smoke total and the CPU figure
+  are claims to re-measure, not facts — `native/Tests/SmokeTest.cpp` prints both and asserts neither,
+  because a wall-clock bound fails on a loaded machine rather than on an engine that got slower. The
+  exposed-parameter count is the exception, and the one that used to drift: `native/Tests/HostTest.cpp:68`
+  asserts exactly 349 host-visible parameters — 347 from `createParameterLayout` (11 global + 21 for
+  each of 16 pads) plus the VST3 wrapper's own `Bypass` and `Program` — so a README that says 347 is
+  now a failing test, not a stale document. Quote the total as 349 and name the composition; a bare
+  number is how the two got confused in the first place.
 - `ctest --test-dir native/build -C Release` runs whatever binaries are already in the tree; it does
   not build. After editing UI layout, a bare ctest can pass against a stale `SliceForgeLayoutTest.exe`
   and rewrite `native/shots/*.png` without your change in them — which reads as "the control did not

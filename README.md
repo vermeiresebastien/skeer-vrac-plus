@@ -167,7 +167,7 @@ src/
     engineCore.ts          polyphonic voices, model synthesis, sample morph, 8 buses
     worklet.ts             AudioWorkletProcessor wrapper (bundled to public/sliceforge-worklet.js)
     audioEngine.ts         main-thread AudioContext, worklet, master chain, meters
-    masterChain.ts         global filter/tone/compressor/limiter/volume + output stage
+    masterChain.ts         global filter/tone/master fold/volume + output stage
     outputStage.ts         soft clipper → OUT gain → ±0.999 ceiling (same math as native Dsp.h)
     sampleLibrary.ts       six deterministic procedural sources and peak data
     slicer.ts              RMS-flux onset detector, slice ownership and remapping
@@ -197,7 +197,7 @@ sample layer ─┐
 model layer ──┘                                                        │
                                                                        master
                          ┌─────────────────────────────────────────────┘
-                         └─ filter ─ tone shelves ─ compressor ─ limiter ─ volume
+                         └─ filter ─ tone shelves ─ master fold ─ volume
                                        ─ soft clip ─ OUT gain ─ ceiling ─ out
 ```
 
@@ -241,8 +241,8 @@ model layer ──┘                                                        │
 ## Tests
 
 Unit tests cover the deterministic library, slicer behaviour, WAV/ZIP correctness, offline
-one-shot rendering, voice gating, choke groups, the output-stage curve and every model in the
-bank (30 tests, 3 files):
+one-shot rendering, voice gating, choke groups, the output-stage curve, the master fold, and every
+number that comes back out of local storage (43 tests, 5 files):
 
 ```powershell
 npm test

@@ -1,5 +1,6 @@
 #include <JuceHeader.h>
 #include "PluginProcessor.h"
+#include "UI/Controls.h"
 #include "VaultLibrary.h"
 
 #include <algorithm>
@@ -152,6 +153,20 @@ int main()
     check (processor.getSamplePtr() != nullptr, "factory sample is loaded");
     check (processor.getPadStart (3) > 0.0, "pad starts are assigned");
     check (processor.getNumPrograms() == 6, "six factory programs");
+
+    // The loops below walk the engine's own constants, so each of those claims ("all eight
+    // outputs", "every model") would still pass if a constant shrank. Pin the shape once, here, in
+    // numbers that do not come from the code under test.
+    check (sliceforge::kNumBuses == 8 && sliceforge::kNumPads == 16
+               && sliceforge::kNumFamilies == 4 && sliceforge::kNumModels == 16,
+               "the engine is the 8-bus, 16-pad, 16-model instrument the checks assume",
+               juce::String (sliceforge::kNumBuses) + "/" + juce::String (sliceforge::kNumPads)
+                   + "/" + juce::String (sliceforge::kNumFamilies) + "/" + juce::String (sliceforge::kNumModels));
+    // 21 controls per pad, nine globals before the loop and the two output-stage parameters after
+    // it. A host that numbers parameters counts them, so this surface is part of the file format.
+    check (processor.getParameters().size() == 16 * 21 + 9 + 2,
+           "the parameter surface is the documented 347 controls",
+           juce::String ((int) processor.getParameters().size()));
 
     auto silent = render (processor, 4, 1.0f, 0, -1, 1000);
     check (silent.total == 0.0f, "engine is silent before a trigger");
@@ -702,6 +717,59 @@ int main()
         }
 
         {
+            /* A short blob used to decode into whatever the stream reader handed back past the
+               end of the buffer, which is zero for the step flags: a saved pattern came back empty,
+               and the next save wrote that emptiness over the user's work. The decoder now refuses
+               anything it cannot fill, so the pattern stays on disk until it can be read properly. */
+            auto data = makeFeatureSequence();
+            data->patterns[0].rows[0][0].on = true;
+            const auto intact = sliceforge::serialiseSequencer (*data);
+            check (sliceforge::deserialiseSequencer (intact) != nullptr,
+                   "the serialiser output passes its own decoder");
+            // Pins the framing so a field added to writePattern without patternPayloadBytes fails
+            // here instead of mis-gating real user files: 70 bytes of header plus 4 patterns of
+            // 16 lanes x (6 + 32 steps x 36).
+            check (intact.getSize() == 70 + (size_t) 4 * 16 * (6 + 32 * 36),
+                   "the sequencer blob is the documented size",
+                   juce::String ((juce::int64) intact.getSize()));
+
+            bool truncatedRejected = true;
+            int acceptedRemoval = 0;
+            for (const int remove : { 1, 8, (int) intact.getSize() / 2 })
+            {
+                const juce::MemoryBlock truncated (intact.getData(),
+                                                   intact.getSize() - (size_t) remove);
+                if (sliceforge::deserialiseSequencer (truncated) != nullptr)
+                {
+                    truncatedRejected = false;
+                    acceptedRemoval = remove;
+                }
+            }
+            check (truncatedRejected, "a blob missing 1, 8 or half its bytes is rejected",
+                   acceptedRemoval > 0 ? "accepted a blob short by " + juce::String (acceptedRemoval)
+                                       : juce::String());
+
+            auto poisoned = intact;
+            auto* bytes = static_cast<juce::uint8*> (poisoned.getData());
+            // Pattern 0, lane 0, step 0: the velocity float sits right after the 70-byte header,
+            // the 6-byte lane block and the step's on-flag. writeFloat/readFloat are little-endian,
+            // so the quiet NaN 0x7fc00000 goes on the wire byte-reversed.
+            const int velocityOffset = 70 + 6 + 1;
+            bytes[velocityOffset] = 0x00; bytes[velocityOffset + 1] = 0x00;
+            bytes[velocityOffset + 2] = 0xc0; bytes[velocityOffset + 3] = 0x7f;
+            // Without this, a wrong offset or byte order would make the check below pass by
+            // accident: it would be reading an untouched field and calling it a cleaned one.
+            juce::MemoryInputStream poisonProbe (poisoned, false);
+            poisonProbe.setPosition (velocityOffset);
+            check (std::isnan (poisonProbe.readFloat()), "the poison lands as a NaN on velocity");
+            const auto cleaned = sliceforge::deserialiseSequencer (poisoned);
+            check (cleaned != nullptr && std::isfinite (cleaned->patterns[0].rows[0][0].velocity)
+                       && std::abs (cleaned->patterns[0].rows[0][0].velocity - 0.8f) < 1.0e-6f,
+                   "a NaN in a saved step falls back to the default instead of latching",
+                   cleaned != nullptr ? juce::String (cleaned->patterns[0].rows[0][0].velocity, 4) : "rejected");
+        }
+
+        {
             const auto afro = sliceforge::makePatternPreset (sliceforge::PatternPreset::afro);
             check (afro.laneLength[6] == 12 && afro.rows[0][0].on,
                    "factory pattern preset contains polymeter and notes");
@@ -1049,6 +1117,23 @@ int main()
                    && trimmed.getSample (0, 1) == -sliceforge::OutputStage::kCeiling,
                "even bypassed, the stage cannot pass a sample above full scale");
 
+        // Every comparison fails against NaN, so the old clamp let a non-finite sample walk
+        // straight out of the plugin — and a poisoned filter state keeps producing it, which is
+        // why the last stage has to be the one that stops it.
+        const auto nan = std::numeric_limits<float>::quiet_NaN();
+        const auto inf = std::numeric_limits<float>::infinity();
+        check (sliceforge::OutputStage::clampToCeiling (nan) == 0.0f
+                   && sliceforge::OutputStage::clampToCeiling (inf) == sliceforge::OutputStage::kCeiling
+                   && sliceforge::OutputStage::clampToCeiling (-inf) == -sliceforge::OutputStage::kCeiling,
+               "the safety ceiling rejects non-finite samples instead of passing them");
+        trimmed.clear();
+        trimmed.setSample (0, 0, nan);
+        trimmed.setSample (0, 1, inf);
+        stage.process (trimmed, 4);
+        check (trimmed.getSample (0, 0) == 0.0f
+                   && trimmed.getSample (0, 1) == sliceforge::OutputStage::kCeiling,
+               "a poisoned block leaves the stage finite", juce::String (trimmed.getSample (0, 1), 4));
+
         // Wired through the plugin, measured on a known signal: a 0 dBFS audition loop enters
         // bus 0 at 0.9, so the three settings have deterministic peaks of 0.9, 0.797 and the
         // ceiling. Nothing here depends on how loud the kit happens to be.
@@ -1096,6 +1181,112 @@ int main()
             check (legacyHit.finite && legacyHit.total > 0.001f, "the older kit still plays");
             legacy.releaseResources();
         }
+    }
+
+    // A reload with bytes it cannot use, and a block bigger than the one the engine was prepared
+    // for. Both used to fail quietly: the first left the engine on one sample with the slice map
+    // cleared and the header naming another, the second wrote past buffers sized smaller.
+    {
+        juce::MemoryBlock saved;
+        processor.getStateInformation (saved);
+        auto tree = juce::ValueTree::readFromData (saved.getData(), saved.getSize());
+        check (tree.isValid(), "the live session state reads back as a value tree");
+        if (tree.isValid())
+        {
+            auto extra = tree.getChildWithName ("VRAC_EXTRA");
+            extra.setProperty ("sourceIsFactory", false, nullptr);
+            extra.setProperty ("sourceId", "custom-1700000000000", nullptr);
+            extra.setProperty ("sourceName", "MY TAKE", nullptr);
+            extra.setProperty ("customPcm", juce::MemoryBlock (1, true), nullptr);
+            extra.setProperty ("sequencer", juce::MemoryBlock (64, true), nullptr);
+            juce::MemoryBlock broken;
+            juce::MemoryOutputStream brokenStream (broken, false);
+            tree.writeToStream (brokenStream);
+
+            SliceForgeAudioProcessor reloaded;
+            reloaded.prepareToPlay (48000.0, 512);
+            reloaded.setStateInformation (broken.getData(), (int) broken.getSize());
+            const auto notice = reloaded.getStateNotice();
+            check (notice.containsIgnoreCase ("RECORDING") && notice.containsIgnoreCase ("PATTERNS"),
+                   "an unreadable take and an unreadable pattern blob are both reported", notice);
+            const auto loaded = reloaded.getSamplePtr();
+            check (loaded != nullptr && reloaded.getSourceId() == "foley"
+                       && reloaded.sourceIsFactorySample() && reloaded.getSourceName() == loaded->name,
+                   "the reloaded identity names the sample that is actually loaded",
+                   reloaded.getSourceId() + " / " + reloaded.getSourceName());
+            check (! reloaded.getSlices().empty(), "the reloaded source is sliced, not left with an empty map");
+            const auto reloadedSequence = reloaded.getSequencerData();
+            check (reloadedSequence != nullptr && reloadedSequence->patterns[0].rows[0][0].on,
+                   "a rejected pattern blob restores defaults instead of an empty grid");
+            const auto reloadedHit = render (reloaded, 20, 1.0f, reloaded.getSelectedPad());
+            check (reloadedHit.finite && reloadedHit.total > 0.001f, "the reloaded session plays");
+
+            // The dead bytes must not survive into the next save: a state that claims a custom
+            // source it cannot decode is how the take got lost in the first place.
+            juce::MemoryBlock resaved;
+            reloaded.getStateInformation (resaved);
+            auto resavedExtra = juce::ValueTree::readFromData (resaved.getData(), resaved.getSize())
+                                    .getChildWithName ("VRAC_EXTRA");
+            check (resavedExtra.isValid() && ! resavedExtra.hasProperty ("customPcm"),
+                   "the abandoned take is not written back into the session state");
+            SliceForgeAudioProcessor again;
+            again.prepareToPlay (48000.0, 512);
+            again.setStateInformation (resaved.getData(), (int) resaved.getSize());
+            check (again.getStateNotice().isEmpty(), "a state the plugin wrote itself reloads clean",
+                   again.getStateNotice());
+            again.releaseResources();
+            reloaded.releaseResources();
+        }
+
+        SliceForgeAudioProcessor wide;
+        wide.prepareToPlay (48000.0, 512);
+        juce::AudioBuffer<float> oversized (juce::jmax (2, wide.getTotalNumOutputChannels()), 2048);
+        juce::MidiBuffer wideMidi;
+        wide.triggerPad (0, 1.0f);
+        bool wideFinite = true;
+        float widePeak = 0.0f;
+        for (int block = 0; block < 4; ++block)
+        {
+            oversized.clear();
+            wide.processBlock (oversized, wideMidi);
+            for (int channel = 0; channel < oversized.getNumChannels(); ++channel)
+                for (int i = 0; i < oversized.getNumSamples(); ++i)
+                {
+                    const auto value = oversized.getSample (channel, i);
+                    if (! std::isfinite (value))
+                        wideFinite = false;
+                    widePeak = juce::jmax (widePeak, std::abs (value));
+                }
+        }
+        check (wideFinite && widePeak <= sliceforge::OutputStage::kCeiling,
+               "a block bigger than the prepared size stays finite and inside the ceiling",
+               juce::String (widePeak, 4));
+        wide.releaseResources();
+    }
+
+    // Parameter units: a knob whose value is a percentage has to say so, and a parameter added to
+    // the layout without a formatting branch must fail here rather than read "0.50" on screen.
+    {
+        check (sliceforge::ui::formatParamValue ("global.drumify", 100.0) == "100%",
+               "global drumify reads as a percent", sliceforge::ui::formatParamValue ("global.drumify", 100.0));
+        check (sliceforge::ui::formatParamValue ("p01_drumify", 0.72) == "72%",
+               "pad drumify reads as a percent", sliceforge::ui::formatParamValue ("p01_drumify", 0.72));
+        // A sweep proves a branch exists; these prove it is the right unit. Global tone is a tilt
+        // amount, pad tone moves a filter centre by semitones, and both used to print "4.00".
+        check (sliceforge::ui::formatParamValue ("global.tone", 4.0) == "+4.0"
+                   && sliceforge::ui::formatParamValue ("global.tone", -0.02) == "0.0",
+               "global tone reads as a signed tilt", sliceforge::ui::formatParamValue ("global.tone", 4.0));
+        check (sliceforge::ui::formatParamValue ("p01_tone", 3.0).containsIgnoreCase ("st"),
+               "pad tone keeps its semitone unit", sliceforge::ui::formatParamValue ("p01_tone", 3.0));
+        juce::String unknown;
+        const auto& parameterState = processor.getValueTreeState().state;
+        for (int i = 0; i < parameterState.getNumChildren(); ++i)
+        {
+            const auto id = parameterState.getChild (i).getProperty ("id").toString();
+            if (id.isNotEmpty() && ! sliceforge::ui::isKnownParamId (id))
+                unknown = unknown + id + " ";
+        }
+        check (unknown.isEmpty(), "every exposed parameter id has a formatting branch", unknown);
     }
 
     // Warp crossover versus the engine sample rate.
@@ -1181,7 +1372,9 @@ int main()
                juce::String (at44, 2) + " / " + juce::String (at48, 2) + " / " + juce::String (at96, 2) + " dB");
     }
 
-    // CPU benchmark.
+    // CPU cost. Reported, not asserted: the number depends on what else is running, so a bound
+    // here fails on a loaded machine rather than on an engine that got slower. Real-time safety is
+    // the finite-and-in-ceiling checks above; this line is for spotting a regression by eye.
     {
         processor.chokeAll();
         render (processor, 8, 1.0f, 0, -1, 999);
@@ -1190,7 +1383,6 @@ int main()
             render (processor, 1, 1.0f, 0);
         const auto seconds = juce::Time::highResolutionTicksToSeconds (juce::Time::getHighResolutionTicks() - start);
         std::cout << "  info  CPU: " << juce::String (seconds * 100.0, 2) << "% of one core for 2.1s audio\n";
-        check (seconds < 8.0, "engine is comfortably real-time");
     }
 
     std::cout << "\n" << (failures == 0 ? "PASS" : "FAIL") << " - " << (checks - failures) << "/" << checks

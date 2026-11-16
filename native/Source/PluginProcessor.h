@@ -60,6 +60,9 @@ public:
     juce::String getSourceId() const;
     bool sourceIsFactorySample() const noexcept { return sourceIsFactory; }
     juce::String getPresetName() const;
+    /** Why the last session reload could not restore everything it was given, empty when it
+        could. A rejected blob or an undecodable recording is otherwise invisible. */
+    const juce::String& getStateNotice() const noexcept { return stateNotice; }
     juce::String getMidiLearnTarget() const;
     juce::String getMidiMappingForCc (int cc) const;
     int getLastTriggeredPad() const noexcept { return lastTriggeredPad.load (std::memory_order_relaxed); }
@@ -67,6 +70,10 @@ public:
     uint32_t getPadHitStamp (int pad) const;
     float getBusPeak (int bus) const;
     int getActiveVoiceCount() const { return engine.getActiveVoiceCount(); }
+    /** Cumulative hits a block could not fit, from either the sequencer's trigger list or the
+        processor's own event cap. A dropped hit is audible as a missing note, so it is counted
+        instead of swallowed. */
+    int getDroppedHitCount() const noexcept { return droppedHits.load (std::memory_order_relaxed); }
     bool isSidechainInputActive() const noexcept { return sidechainActive.load (std::memory_order_relaxed); }
     double getEngineSampleRate() const noexcept { return currentSampleRate; }
 
@@ -111,6 +118,21 @@ public:
     void postUiChange() { uiBroadcaster.sendChangeMessage(); }
 
 private:
+    struct PlaybackEvent
+    {
+        int sampleOffset = 0;
+        int pad = 0;
+        float velocity = 0.8f;
+        bool followAutoSelection = true;
+        bool hasLocks = false;
+        sliceforge::StepLocks locks {};
+    };
+
+    std::vector<PlaybackEvent> playbackEvents;   // reused every block: a fresh 1024-element array
+                                                  // would run its default members over per block
+    int playbackEventCapacity = 512;              // bounded so a pathological block cannot grow here
+    std::atomic<int> droppedHits { 0 };           // sequencer + playback events that did not fit
+
     struct Snapshot
     {
         juce::ValueTree parameterState;
@@ -155,6 +177,7 @@ private:
     juce::String sourceName { "FOLEY TRASH" };
     bool sourceIsFactory = true;
     juce::MemoryBlock customSamplePcm;
+    juce::String stateNotice;
 
     std::atomic<bool> sidechainActive { false };
     std::atomic<bool> recordingActive { false };

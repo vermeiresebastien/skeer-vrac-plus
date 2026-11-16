@@ -224,6 +224,14 @@ namespace sliceforge::ui
     {
         return (value > 0.0f ? "+" : "") + juce::String (value, 0) + " ct";
     }
+
+    bool isPlacedOnScreen (const juce::Component& component) noexcept
+    {
+        for (auto* c = &component; c != nullptr; c = c->getParentComponent())
+            if (! c->isVisible() || c->getWidth() <= 0 || c->getHeight() <= 0)
+                return false;
+        return true;
+    }
 } // namespace sliceforge::ui
 
 

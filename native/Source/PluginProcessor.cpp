@@ -77,7 +77,28 @@ void SliceForgeAudioProcessor::prepareToPlay (double sampleRate, int samplesPerB
     engine.setSample (engine.getSample());
     preview.prepare (sampleRate);
     outputStage.prepare();
-    recordSampleRate = (int) std::round (sampleRate);
+    // Worst case per block: every queued UI trigger, every sequencer trigger and one event per
+    // MIDI sample position, with a margin. Fixed so the event list never allocates live.
+    playbackEventCapacity = maxBlockSize + sliceforge::kNumPads * 4 + 384;
+    playbackEvents.reserve ((size_t) playbackEventCapacity);
+    const auto newRecordRate = (int) std::round (sampleRate);
+    if (newRecordRate != recordSampleRate
+        && (recordingActive.load (std::memory_order_relaxed) || recordingTakeReady.load (std::memory_order_relaxed)))
+    {
+        // A take is stamped with the rate it was captured at. If the host changes rate with a take
+        // still in flight or unclaimed, that label no longer describes the buffer, and adopting it
+        // would hand the engine a sample that plays at the wrong speed. Drop the take rather than
+        // mislabel it, and say so in the same place a failed reload does.
+        recordingActive.store (false, std::memory_order_relaxed);
+        recordingTakeReady.store (false, std::memory_order_relaxed);
+        recordedSamples.store (0, std::memory_order_relaxed);
+        recordBuffer.clear();
+        audioWasRecording = false;
+        stateNotice = "RECORDING ABANDONED - HOST CHANGED SAMPLE RATE";
+        juce::Logger::writeToLog ("SliceForge: " + stateNotice);
+        triggerAsyncUpdate();
+    }
+    recordSampleRate = newRecordRate;
     sidechainActive.store (getBus (true, 0) != nullptr && getBus (true, 0)->isEnabled(), std::memory_order_relaxed);
     seqInternalPlaying.store (false, std::memory_order_relaxed);
     seqResetRequested.store (false, std::memory_order_relaxed);
@@ -238,24 +259,17 @@ void SliceForgeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     buffer.clear();
     engine.clearBusBuffers (numSamples);
 
-    struct PlaybackEvent
+    playbackEvents.clear();
+    auto addPlaybackEvent = [this] (int offset, int pad, float velocity,
+                                    bool followSelection,
+                                    const sliceforge::StepLocks* locks = nullptr)
     {
-        int sampleOffset = 0;
-        int pad = 0;
-        float velocity = 0.8f;
-        bool followAutoSelection = true;
-        bool hasLocks = false;
-        sliceforge::StepLocks locks {};
-    };
-    std::array<PlaybackEvent, 1024> playbackEvents {};
-    int playbackEventCount = 0;
-    auto addPlaybackEvent = [&playbackEvents, &playbackEventCount] (int offset, int pad, float velocity,
-                                                                     bool followSelection,
-                                                                     const sliceforge::StepLocks* locks = nullptr)
-    {
-        if (playbackEventCount >= (int) playbackEvents.size())
+        if ((int) playbackEvents.size() >= playbackEventCapacity)
+        {
+            droppedHits.fetch_add (1, std::memory_order_relaxed);
             return;
-        auto& event = playbackEvents[(size_t) playbackEventCount++];
+        }
+        auto& event = playbackEvents.emplace_back();
         event.sampleOffset = juce::jmax (0, offset);
         event.pad = pad;
         event.velocity = juce::jlimit (0.0f, 1.0f, velocity);
@@ -301,6 +315,9 @@ void SliceForgeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         sliceforge::processSequencerBlock (*sequence, hostInfo, seqInternalPlaying.load (std::memory_order_relaxed),
                                      currentSampleRate, numSamples, seqRandom, seqPlaybackState, sequenceOutput);
 
+    if (sequenceOutput.droppedTriggers > 0)
+        droppedHits.fetch_add (sequenceOutput.droppedTriggers, std::memory_order_relaxed);
+
     seqHostPlaying.store (sequenceOutput.hostPlaying, std::memory_order_relaxed);
     seqTransportPlaying.store (sequenceOutput.transportPlaying, std::memory_order_relaxed);
     seqPlayheadStep.store (sequenceOutput.playheadStep, std::memory_order_relaxed);
@@ -344,6 +361,7 @@ void SliceForgeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
         }
     }
 
+    const int playbackEventCount = (int) playbackEvents.size();
     std::sort (playbackEvents.begin(), playbackEvents.begin() + playbackEventCount,
                [] (const PlaybackEvent& a, const PlaybackEvent& b)
                {
@@ -1034,21 +1052,42 @@ void SliceForgeAudioProcessor::setStateInformation (const void* data, int sizeIn
 
     sliceforge::SamplePtr sample;
     customSamplePcm.reset();
+    stateNotice.clear();
     if (sourceIsFactory)
     {
         sample = sliceforge::loadFactorySource (sourceId);
+        if (sample == nullptr)
+        {
+            stateNotice = "SOURCE '" + sourceId + "' NOT IN FACTORY LIBRARY";
+            sourceId = "foley";
+            sample = sliceforge::loadFactorySource (sourceId);
+            juce::Logger::writeToLog ("SliceForge: " + stateNotice);
+        }
     }
     else
     {
         if (auto* pcm = extra.getProperty ("customPcm").getBinaryData())
         {
             customSamplePcm = *pcm;
-            sample = sliceforge::decodePcm16 (customSamplePcm, 2, extra.getProperty ("customSampleRate", 48000.0), sourceName);
+            auto rate = (double) extra.getProperty ("customSampleRate", 48000.0);
+            if (! std::isfinite (rate) || rate < 8000.0 || rate > 192000.0)
+                rate = 48000.0;
+            sample = sliceforge::decodePcm16 (customSamplePcm, 2, rate, sourceName);
         }
         if (sample == nullptr)
         {
-            sample = sliceforge::loadFactorySource (sourceId.isNotEmpty() ? sourceId : "foley");
-            sourceIsFactory = sample != nullptr && ! sourceId.startsWith ("custom-");
+            /* The embedded recording is unreadable, so there is nothing custom left to restore.
+               Half-restoring was the bug: the engine kept the previous session's sample while the
+               slice map below was cleared and the header showed this source's name, which plays
+               audio the interface does not describe. The identity is rewritten to the source that
+               is actually loaded, and the unreadable bytes go with it - keeping them would let the
+               next save claim a live custom source that cannot be decoded twice. */
+            customSamplePcm.reset();
+            sourceId = "foley";
+            sourceIsFactory = true;
+            sample = sliceforge::loadFactorySource (sourceId);
+            stateNotice = "RECORDING LOST - COULD NOT BE READ, LOADED FOLEY TRASH";
+            juce::Logger::writeToLog ("SliceForge: " + stateNotice);
         }
     }
     if (sample != nullptr)
@@ -1090,8 +1129,16 @@ void SliceForgeAudioProcessor::setStateInformation (const void* data, int sizeIn
         }
 
     std::shared_ptr<sliceforge::SequencerData> loadedSequence;
-    if (auto* sequenceBlob = extra.getProperty ("sequencer").getBinaryData())
+    const auto* sequenceBlob = extra.getProperty ("sequencer").getBinaryData();
+    if (sequenceBlob != nullptr)
         loadedSequence = sliceforge::deserialiseSequencer (*sequenceBlob);
+    if (loadedSequence == nullptr && sequenceBlob != nullptr)
+    {
+        stateNotice = stateNotice.isNotEmpty()
+                          ? stateNotice + "  /  PATTERNS CORRUPT"
+                          : juce::String ("PATTERNS COULD NOT BE READ - RESET TO DEFAULTS");
+        juce::Logger::writeToLog ("SliceForge: " + stateNotice);
+    }
     if (loadedSequence == nullptr)
         loadedSequence = sliceforge::cloneSequencerData (*sliceforge::makeDefaultSequencerData());
     sequencerData.store (loadedSequence, std::memory_order_release);

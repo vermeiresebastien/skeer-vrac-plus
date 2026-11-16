@@ -135,6 +135,7 @@ namespace sliceforge
     {
         std::array<SeqTrigger, 256> triggers {};
         int triggerCount = 0;
+        int droppedTriggers = 0;   // hits the block could not fit; audible as a missing note
         int playheadStep = -1;
         bool transportPlaying = false;
         bool hostPlaying = false;

@@ -100,11 +100,14 @@ export function RecordModal({
   const connect = async () => {
     setError(null);
     setStatus('connecting');
+    // Whatever a previous attempt left behind is released before this one starts, and again below
+    // if it fails partway. A MediaStream whose tracks were never stopped keeps the browser's
+    // recording light on after the modal closes, and a second meter() would start another
+    // requestAnimationFrame chain that stopMeter() can never cancel: rafRef only ever holds the
+    // newest frame id, so the older chain keeps re-arming itself.
+    cleanupStream();
     try {
       if (!navigator.mediaDevices?.getUserMedia) throw new Error('This browser does not expose audio inputs.');
-      if (streamRef.current) {
-        streamRef.current.getTracks().forEach((track) => track.stop());
-      }
       const stream = await navigator.mediaDevices.getUserMedia({
         audio: deviceId
           ? { deviceId: { exact: deviceId }, echoCancellation: false, noiseSuppression: false, autoGainControl: false }
@@ -126,6 +129,7 @@ export function RecordModal({
       setStatus('ready');
       meter();
     } catch (err) {
+      cleanupStream();
       console.error('[SliceForge] input failed', err);
       setError(err instanceof Error ? err.message : 'Could not open the input');
       setStatus('error');

@@ -95,7 +95,12 @@ namespace sliceforge
                          float velocity, const SeqStep& step)
         {
             if (output.triggerCount >= (int) output.triggers.size())
+            {
+                // A dropped hit is audible as a missing note and invisible otherwise, so the
+                // block reports it instead of returning quietly.
+                ++output.droppedTriggers;
                 return;
+            }
             auto& trigger = output.triggers[(size_t) output.triggerCount++];
             trigger.sampleOffset = sampleOffset;
             trigger.pad = pad;
@@ -298,6 +303,35 @@ namespace sliceforge
             state.internalWasPlaying = true;
         }
 
+        /** Decodes a float and rejects a non-finite one.
+            `jlimit` compares, so NaN passes straight through it and latches into the filter and
+            voice state, where it stays for the rest of the session; a corrupt blob therefore has to
+            fail to a default rather than to a clamped NaN. */
+        float readFinite (juce::MemoryInputStream& stream, float lo, float hi, float fallback)
+        {
+            const auto v = stream.readFloat();
+            return std::isfinite (v) ? juce::jlimit (lo, hi, v) : fallback;
+        }
+
+        double readFinite (juce::MemoryInputStream& stream, double lo, double hi, double fallback)
+        {
+            const auto v = stream.readDouble();
+            return std::isfinite (v) ? juce::jlimit (lo, hi, v) : fallback;
+        }
+
+        /** The exact byte count writePattern emits, so a truncated buffer can be refused instead
+            of decoding as an empty pattern that the next save then writes over the user's work.
+            One lane is mute + solo (+ laneLength) = 2 or 6 bytes; one step is on, velocity,
+            probability and ratchet = 10 bytes, plus nudge, flam, the locks flag and five lock
+            floats = 26 more from version 2. The smoke test pins this against the serialiser's own
+            output size, so moving a field in writePattern fails there rather than mis-gating here. */
+        int patternPayloadBytes (int version) noexcept
+        {
+            const auto laneBytes = 2 + (version >= 2 ? 4 : 0);
+            const auto stepBytes = 10 + (version >= 2 ? 26 : 0);
+            return kNumPads * (laneBytes + kSeqSteps * stepBytes);
+        }
+
         void writePattern (juce::MemoryOutputStream& stream, const SeqPattern& pattern)
         {
             for (int pad = 0; pad < kNumPads; ++pad)
@@ -326,6 +360,8 @@ namespace sliceforge
 
         bool readPattern (juce::MemoryInputStream& stream, int version, SeqPattern& pattern)
         {
+            if (stream.getNumBytesRemaining() < patternPayloadBytes (version))
+                return false;
             for (int pad = 0; pad < kNumPads; ++pad)
             {
                 pattern.laneMute[(size_t) pad] = stream.readBool();
@@ -336,23 +372,23 @@ namespace sliceforge
                 {
                     auto& s = pattern.rows[(size_t) pad][(size_t) step];
                     s.on = stream.readBool();
-                    s.velocity = juce::jlimit (0.0f, 1.0f, stream.readFloat());
-                    s.probability = juce::jlimit (0.0f, 1.0f, stream.readFloat());
+                    s.velocity = readFinite (stream, 0.0f, 1.0f, 0.8f);
+                    s.probability = readFinite (stream, 0.0f, 1.0f, 1.0f);
                     s.ratchet = juce::jlimit (1, 4, (int) stream.readByte());
                     if (version >= 2)
                     {
-                        s.nudge = juce::jlimit (-0.5f, 0.5f, stream.readFloat());
+                        s.nudge = readFinite (stream, -0.5f, 0.5f, 0.0f);
                         s.flam = juce::jlimit (0, 2, (int) stream.readByte());
                         s.locks.enabled = stream.readBool();
-                        s.locks.pitch = juce::jlimit (-24.0f, 24.0f, stream.readFloat());
-                        s.locks.volume = juce::jlimit (-60.0f, 6.0f, stream.readFloat());
-                        s.locks.pan = juce::jlimit (-1.0f, 1.0f, stream.readFloat());
-                        s.locks.tone = juce::jlimit (-12.0f, 12.0f, stream.readFloat());
-                        s.locks.length = juce::jlimit (0.02f, 2.0f, stream.readFloat());
+                        s.locks.pitch = readFinite (stream, -24.0f, 24.0f, 0.0f);
+                        s.locks.volume = readFinite (stream, -60.0f, 6.0f, 0.0f);
+                        s.locks.pan = readFinite (stream, -1.0f, 1.0f, 0.0f);
+                        s.locks.tone = readFinite (stream, -12.0f, 12.0f, 0.0f);
+                        s.locks.length = readFinite (stream, 0.02f, 2.0f, 0.25f);
                     }
                 }
             }
-            return stream.getNumBytesRemaining() >= 0;
+            return true;
         }
     } // namespace
 
@@ -716,8 +752,8 @@ namespace sliceforge
         result->activePattern = juce::jlimit (0, kSeqPatterns - 1, stream.readInt());
         result->length = juce::jlimit (1, kSeqSteps, stream.readInt());
         result->division = sanitiseDivision (stream.readInt());
-        result->swing = juce::jlimit (0.0f, 0.66f, stream.readFloat());
-        result->bpm = juce::jlimit (20.0, 300.0, stream.readDouble());
+        result->swing = readFinite (stream, 0.0f, 0.66f, 0.0f);
+        result->bpm = readFinite (stream, 20.0, 300.0, 128.0);
         result->hostSync = stream.readBool();
         if (version >= 2)
         {
@@ -825,6 +861,7 @@ namespace sliceforge
                                 SeqBlockOutput& output)
     {
         output.triggerCount = 0;
+        output.droppedTriggers = 0;
         output.playheadStep = -1;
         output.transportPlaying = false;
         output.hostPlaying = false;

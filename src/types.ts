@@ -244,30 +244,35 @@ export const DEFAULT_GLOBAL: GlobalParams = {
   outGain: 0,
 };
 
-const FAMILY_LENGTH: Record<Family, number> = {
-  kick: 0.42,
-  snare: 0.24,
-  hat: 0.13,
-  clap: 0.3,
-};
-
-const KIT_LAYOUT: Array<{ family: Family; model: number; drumify: number; choke: number }> = [
-  { family: 'kick', model: 0, drumify: 0.72, choke: 1 },
-  { family: 'kick', model: 1, drumify: 0.58, choke: 1 },
-  { family: 'snare', model: 0, drumify: 0.68, choke: 0 },
-  { family: 'clap', model: 0, drumify: 0.62, choke: 0 },
-  { family: 'snare', model: 1, drumify: 0.76, choke: 0 },
-  { family: 'snare', model: 2, drumify: 0.48, choke: 0 },
-  { family: 'hat', model: 0, drumify: 0.8, choke: 2 },
-  { family: 'hat', model: 0, drumify: 0.64, choke: 2 },
-  { family: 'hat', model: 1, drumify: 0.85, choke: 2 },
-  { family: 'hat', model: 2, drumify: 0.55, choke: 2 },
-  { family: 'clap', model: 3, drumify: 0.7, choke: 0 },
-  { family: 'clap', model: 2, drumify: 0.52, choke: 0 },
-  { family: 'hat', model: 3, drumify: 0.6, choke: 2 },
-  { family: 'hat', model: 0, drumify: 0.9, choke: 2 },
-  { family: 'snare', model: 3, drumify: 0.66, choke: 0 },
-  { family: 'clap', model: 0, drumify: 0.74, choke: 0 },
+/** One row per pad, in the same order as kPadDefaults in native/Source/Params.cpp. The two
+ *  editions ship the same factory kit, so a change to any column here belongs there too —
+ *  including `length` and `pan`, which are per-pad values, not per-family ones: pads 7 and 8 are
+ *  the same hat model at different lengths with opposite pan, and a family-keyed table cannot
+ *  express that. */
+const KIT_LAYOUT: Array<{
+  family: Family;
+  model: number;
+  drumify: number;
+  length: number;
+  choke: number;
+  pan: number;
+}> = [
+  { family: 'kick', model: 0, drumify: 0.72, length: 0.42, choke: 1, pan: 0 },
+  { family: 'kick', model: 1, drumify: 0.58, length: 0.26, choke: 1, pan: 0 },
+  { family: 'snare', model: 0, drumify: 0.68, length: 0.24, choke: 0, pan: 0 },
+  { family: 'clap', model: 0, drumify: 0.62, length: 0.3, choke: 0, pan: 0 },
+  { family: 'snare', model: 1, drumify: 0.76, length: 0.22, choke: 0, pan: 0 },
+  { family: 'snare', model: 2, drumify: 0.48, length: 0.34, choke: 0, pan: 0 },
+  { family: 'hat', model: 0, drumify: 0.8, length: 0.09, choke: 2, pan: -0.12 },
+  { family: 'hat', model: 0, drumify: 0.64, length: 0.08, choke: 2, pan: 0.12 },
+  { family: 'hat', model: 1, drumify: 0.85, length: 0.3, choke: 2, pan: 0 },
+  { family: 'hat', model: 2, drumify: 0.55, length: 0.14, choke: 2, pan: -0.2 },
+  { family: 'clap', model: 3, drumify: 0.7, length: 0.15, choke: 0, pan: 0 },
+  { family: 'clap', model: 2, drumify: 0.52, length: 0.38, choke: 0, pan: 0 },
+  { family: 'hat', model: 3, drumify: 0.6, length: 0.2, choke: 2, pan: 0.2 },
+  { family: 'hat', model: 0, drumify: 0.9, length: 0.06, choke: 2, pan: 0 },
+  { family: 'snare', model: 3, drumify: 0.66, length: 0.12, choke: 0, pan: 0 },
+  { family: 'clap', model: 0, drumify: 0.74, length: 0.28, choke: 0, pan: 0 },
 ];
 
 export function makePad(id: number): PadParams {
@@ -284,12 +289,12 @@ export function makePad(id: number): PadParams {
     originalGain: -4.4,
     drumifiedGain: -4.5,
     pitch: 0,
-    length: FAMILY_LENGTH[family],
+    length: layout.length,
     volume: 0,
-    pan: 0,
+    pan: layout.pan,
     choke: layout.choke,
     velocityAmount: 0.65,
-    warp: 0.22,
+    warp: 0.2,
     impact: 0.35,
     instability: 0.08,
     toneShift: 0,
@@ -325,8 +330,12 @@ export function createInitialKit(name = 'BIG CAT'): KitState {
  * Math / formatting helpers
  * ------------------------------------------------------------------ */
 
+/** Every comparison fails against NaN, so the two-sided test below would hand a corrupt saved
+ *  value straight back out again — and this function is the only numeric guard the state loaders
+ *  have. The infinities are still bounded the way juce::jlimit bounds them, so only a value that
+ *  cannot be ordered at all falls back to the low end. */
 export const clamp = (v: number, lo: number, hi: number): number =>
-  v < lo ? lo : v > hi ? hi : v;
+  v > hi ? hi : v < lo ? lo : Number.isFinite(v) ? v : lo;
 
 export const lerp = (a: number, b: number, t: number): number => a + (b - a) * t;
 
@@ -404,4 +413,125 @@ export function busLabel(bus: number): string {
 /** Accepts a few spellings so simple preset files survive hand editing. */
 export function isFamily(value: unknown): value is Family {
   return typeof value === 'string' && (FAMILIES as string[]).includes(value);
+}
+
+/* ------------------------------------------------------------------ *
+ * State sanitising
+ * ------------------------------------------------------------------ */
+
+/** The bounds native declares in createParameterLayout (native/Source/Params.cpp), repeated here so
+ *  the browser edition refuses the same out-of-range values the VST3 does. */
+type NumberRange = readonly [number, number];
+
+const PAD_NUMBER_RANGES: Record<string, NumberRange> = {
+  drumify: [0, 1],
+  originalGain: [-24, 12],
+  drumifiedGain: [-24, 12],
+  pitch: [-24, 24],
+  length: [0.02, 2],
+  volume: [-60, 6],
+  pan: [-1, 1],
+  choke: [0, 4],
+  velocityAmount: [0, 1],
+  warp: [0, 1],
+  impact: [0, 1],
+  instability: [0, 1],
+  toneShift: [-12, 12],
+  super: [0, 1],
+  eqLow: [-12, 12],
+  eqMid: [-12, 12],
+  eqHigh: [-12, 12],
+  bus: [1, 8],
+};
+
+const GLOBAL_NUMBER_RANGES: Record<keyof GlobalParams, NumberRange> = {
+  fineTune: [-50, 50],
+  drumify: [0, 200],
+  volume: [-24, 6],
+  transpose: [-24, 24],
+  length: [0.25, 2],
+  tone: [-12, 12],
+  filter: [-1, 1],
+  width: [0, 1],
+  clip: [0, 1],
+  outGain: [-24, 12],
+} satisfies Record<keyof GlobalParams, [number, number]>;
+
+/** A value read out of localStorage, a dropped JSON file or an AudioParam is data, not a number:
+ *  it can be a string, NaN, Infinity or absent. Anything that is not a finite number falls back to
+ *  the factory value, then the whole thing is bounded — the same rejection native performs while
+ *  decoding a host session, so a corrupt file cannot hand the engine a 1e30 gain. */
+function boundNumber(raw: unknown, fallback: number, range: NumberRange): number {
+  const value = typeof raw === 'number' ? raw : Number(raw);
+  const start = Number.isFinite(value) ? value : fallback;
+  return clamp(start, range[0], range[1]);
+}
+
+function boundInt(raw: unknown, fallback: number, range: NumberRange): number {
+  return Math.round(boundNumber(raw, fallback, range));
+}
+
+/** The same binding sanitizePad performs, for the kit-level numbers that are read straight out of
+ *  storage and have no range of their own to look up: a string or a NaN in localStorage reaches
+ *  here rather than into the engine. */
+export function sanitizeNumber(raw: unknown, fallback: number, lo: number, hi: number): number {
+  return boundNumber(raw, fallback, [lo, hi]);
+}
+
+/** One pad from an untrusted object, with makePad(index) supplying whatever it does not carry.
+ *  maxStart is the length of the source sample the kit points at, because a start time beyond the
+ *  end of that file is the one value that cannot be bounded by a parameter range. */
+export function sanitizePad(raw: unknown, index: number, maxStart = Number.POSITIVE_INFINITY): PadParams {
+  const base = makePad(index);
+  // Array.isArray is not paranoia: an array is an object, and its built-in length property reads
+  // as a hit length of 0, which then clamps to the shortest pad the engine allows.
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return base;
+  const source = raw as Record<string, unknown>;
+  const familyOk = isFamily(source.family);
+  const family = familyOk ? (source.family as Family) : base.family;
+  const modelCount = MODEL_BANK[family].length;
+  return {
+    ...base,
+    id: index,
+    note: PAD_NOTES[index],
+    family,
+    // A model index is only meaningful inside the bank it was written against, so a pad whose
+    // family was rejected does not get to keep a model number from the family it lost.
+    model: familyOk
+      ? clamp(Number.isInteger(source.model) ? (source.model as number) : base.model, 0, modelCount - 1)
+      : base.model,
+    sampleStart: boundNumber(source.sampleStart, base.sampleStart, [0, Math.max(0, maxStart)]),
+    sliceIndex: Number.isInteger(source.sliceIndex) ? (source.sliceIndex as number) : base.sliceIndex,
+    drumify: boundNumber(source.drumify, base.drumify, PAD_NUMBER_RANGES.drumify),
+    originalGain: boundNumber(source.originalGain, base.originalGain, PAD_NUMBER_RANGES.originalGain),
+    drumifiedGain: boundNumber(source.drumifiedGain, base.drumifiedGain, PAD_NUMBER_RANGES.drumifiedGain),
+    pitch: boundNumber(source.pitch, base.pitch, PAD_NUMBER_RANGES.pitch),
+    length: boundNumber(source.length, base.length, PAD_NUMBER_RANGES.length),
+    volume: boundNumber(source.volume, base.volume, PAD_NUMBER_RANGES.volume),
+    pan: boundNumber(source.pan, base.pan, PAD_NUMBER_RANGES.pan),
+    choke: boundInt(source.choke, base.choke, PAD_NUMBER_RANGES.choke),
+    velocityAmount: boundNumber(source.velocityAmount, base.velocityAmount, PAD_NUMBER_RANGES.velocityAmount),
+    warp: boundNumber(source.warp, base.warp, PAD_NUMBER_RANGES.warp),
+    impact: boundNumber(source.impact, base.impact, PAD_NUMBER_RANGES.impact),
+    instability: boundNumber(source.instability, base.instability, PAD_NUMBER_RANGES.instability),
+    toneShift: boundNumber(source.toneShift, base.toneShift, PAD_NUMBER_RANGES.toneShift),
+    super: boundNumber(source.super, base.super, PAD_NUMBER_RANGES.super),
+    eqLow: boundNumber(source.eqLow, base.eqLow, PAD_NUMBER_RANGES.eqLow),
+    eqMid: boundNumber(source.eqMid, base.eqMid, PAD_NUMBER_RANGES.eqMid),
+    eqHigh: boundNumber(source.eqHigh, base.eqHigh, PAD_NUMBER_RANGES.eqHigh),
+    bus: boundInt(source.bus, base.bus, PAD_NUMBER_RANGES.bus),
+    mute: source.mute === true,
+    solo: source.solo === true,
+  };
+}
+
+export function sanitizeGlobal(raw: unknown, fallback: GlobalParams): GlobalParams {
+  const base = { ...DEFAULT_GLOBAL, ...fallback };
+  if (typeof raw !== 'object' || raw === null || Array.isArray(raw)) return base;
+  const source = raw as Record<string, unknown>;
+  const out = { ...base };
+  (Object.keys(GLOBAL_NUMBER_RANGES) as Array<keyof GlobalParams>).forEach((key) => {
+    out[key] = boundNumber(source[key], base[key], GLOBAL_NUMBER_RANGES[key]);
+  });
+  return out;
 }

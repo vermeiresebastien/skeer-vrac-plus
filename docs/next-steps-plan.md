@@ -93,10 +93,15 @@ Five findings drove the ranking. All four code ones are verified defects, not op
 
 ## 1. Two things the research corrected
 
-- **The parameter count in `native/README.md:155` is wrong: it is 347, not 349.** The layout is
-  8 global + `source.sensitivity` + 21 parameters × 16 pads + `global.clip` + `global.out` =
-  **347** (`native/Source/Params.cpp`, the pad loop adds exactly 21 ids). Nothing catches the
-  drift: `native/Tests/HostTest.cpp:61` only *prints* the count and `:65` asserts `< 300`.
+- **The parameter count is two numbers, and `native/README.md:155` now states both.** The layout
+  declares **347** — 8 global + `source.sensitivity` + 21 parameters × 16 pads + `global.clip` +
+  `global.out` (`native/Source/Params.cpp`, the pad loop adds exactly 21 ids) — while the host sees
+  **349**, because JUCE's VST3 wrapper appends its own `Bypass` and `Program` to whatever the
+  processor exposes. Round 2 of this plan read the 347 it had derived from the layout, saw the 349 the
+  test printed, and concluded the README was wrong by two; it was the reading that was wrong. Nothing
+  used to catch a disagreement between them: `HostTest.cpp` only *printed* the count and asserted
+  `< 300`, which 347, 349 and 345 all satisfy. `native/Tests/HostTest.cpp:68` now asserts exactly
+  349, so the composition in the README is a test result rather than a claim.
 - **The naming risk the market lane flagged is mostly already retired.** The installed bundle is
   `SliceForge.vst3`; the `VRAC+.vst3` copy in `%LOCALAPPDATA%\Programs\Common\VST3` was deleted on
   2026-11-14. The `Vrac` / `Erwm` codes remain in the binary, but they are invisible session
@@ -105,17 +110,19 @@ Five findings drove the ranking. All four code ones are verified defects, not op
   (research surfaced a `sliceforge.io` beat-saber tool and a game-audio tool of the same name;
   **unverified** — check it before any public release, not before a personal build).
 
-Four stale line references in `AGENTS.md` were confirmed wrong and re-confirmed today:
-`native/CMakeLists.txt:105-106` should be `:106-107` (Erwm at 106, Vrac at 107), and the four
-`VRAC_EXTRA` sites are `PluginProcessor.cpp:956`, `:960`, `:1018`, `:1023` — each about 24 lines off
-what `AGENTS.md` says. Round 2 also asserted that `native/README.md:155` should read 347, not **349** —
-that correction is retracted: `SliceForgeHostTest.exe` prints `parameters: 349` on this build, so the
-README was right and the plan was wrong. What the README *was* wrong about is its check counts (109
-against a 117-check suite) and "about 5% of one core"; both were fixed with Step 29 on 2026-11-15, and
-`AGENTS.md`'s line references are still live work in Step 5. Everything else in `AGENTS.md`'s frozen list
-checked out, including `Sequencer.cpp:12`, `storage.ts:5-7`, `sampleStore.ts:7`, `Theme.cpp:75` and
-`VaultLibrary.cpp:143` — that last one is `native/Source/VaultLibrary.cpp`, not under `Source/UI/`, and
-round 1's Step 11 cited it without the directory.
+`AGENTS.md`'s frozen-identifier anchors were corrected with Step 30 (section 8B) on 2026-11-16: the codes are
+`native/CMakeLists.txt:106-107` (Erwm at 106, Vrac at 107), the four `VRAC_EXTRA` sites are
+`PluginProcessor.cpp:974`, `:978`, `:1036`, `:1041`, and the preset folder sits at
+`PluginEditor.cpp:461` and `:491` rather than `:446` and `:476`. Read those numbers as a snapshot, not
+as an address: this paragraph recommended `:956`, `:960`, `:1018` and `:1023` for `VRAC_EXTRA`, and they
+were stale inside a day, because every step that lands edits the very files it cites. The grep strings
+(`VRAC_EXTRA`, `PLUGIN_CODE`, `getChildFile ("SliceForge")`) are the durable half. Round 2's claim that
+the README should read 347 is retracted above. What the README *was* wrong about is its check counts
+(109 against a 117-check suite) and "about 5% of one core"; both were fixed with Step 29 on 2026-11-15.
+Everything else in `AGENTS.md`'s frozen list checked out, including `Sequencer.cpp:12`,
+`storage.ts:5-7`, `sampleStore.ts:7`, `UI/Theme.cpp:75` and `VaultLibrary.cpp:143` — the last is
+`native/Source/VaultLibrary.cpp`, not under `Source/UI/`, and round 1's Step 11 cited it without the
+directory. `Theme.cpp` is the reverse: it lives in `Source/UI/`, and `AGENTS.md` now says so.
 
 The smoke total has moved three times since round 1 and none of the moves was a DSP change: 109 → 114
 when the Phase 0 gates landed, 114 → **113 passing / 1 failing** from the library-coupled vault check,
@@ -333,6 +340,15 @@ have split. The three that matter: native runs the master chain once **per bus**
 `DynamicsCompressor` at −7 dB 5:1 (`src/audio/masterChain.ts:57-62`) that native does not have at all;
 13 of 16 default pad lengths differ between `native/Source/Params.cpp:49-66` and `types.ts:247-252`; and
 `fastTanh` (`VoiceEngine.cpp:75-81`) is a rational approximation against `Math.tanh`.
+
+Two of those three were closed by the Step 30 (section 8B) parity pass on 2026-11-16, and the sentence above is
+left as the measurement it was: web no longer has a `DynamicsCompressor` at all (`src/audio/masterChain.ts`
+is filter → tone → master fold → volume → output stage, matching `sliceforge::MasterChain`), and
+`KIT_LAYOUT` (`src/types.ts:252-276`) is now a row-for-row transcription of `kPadDefaults`
+(`native/Source/Params.cpp:49-66`) — all 16 rows were compared column by column, and `length` and `pan`
+are per-pad rather than per-family because pads 7 and 8 are the same hat model at 0.09/0.08 with
+opposite pan. What is *not* closed is the per-bus-versus-one-chain topology, which is Step 10's design
+question and is why this step stopped promising a golden-vector harness.
 
 Round 2 changes what to *do* with this. A golden-vector harness asserts "equal within tolerance", and
 the topology difference above is not within any tolerance: per-bus compression and global compression
@@ -721,6 +737,85 @@ as "the kit is still the one you had", on the same processor, not "no kit".
 
 ---
 
+## 8B. Phase 7 — round 3, the hardening and parity pass (recorded 2026-11-16)
+
+**Step 30 — Record the hardening/parity pass that landed without a spec (0 d, documentation).**
+
+Verified state: Steps 1-29 were the entire plan, yet the tree took its largest single change since
+the sequencer landed, and none of it had a step, a gate record or a `Built` line. Two sentences
+compensated by inventing one: the frozen-identifier paragraph in section 2 credited the `AGENTS.md`
+anchor corrections to a step that does not exist, and section 6 credited two of the 23 parity
+divergences to a parity "pass" that was never numbered. Both now point here, with their measurements
+left intact.
+
+Decision: one entry, because the two halves are one pass and one rollback point, and because the
+distinction worth recording is not native-versus-web but *which claims are now backed by a check*.
+What the pass changed, re-verified in the current tree:
+
+- **Native hardening.** `readFinite` (`Sequencer.cpp:310-320`) rejects a non-finite float and clamps
+  the rest instead of letting a NaN latch into voice and filter state; it is applied to every step
+  field and to the two header floats the pattern deserialiser reads (`:375-387`, `:755-756`). A blob
+  shorter than `patternPayloadBytes` is refused rather than decoding as an empty pattern
+  (`:328-333`, applied `:362-364`). A hit a block cannot fit is counted (`Sequencer.h:138`,
+  `Sequencer.cpp:94-110`) and accumulated in the processor (`PluginProcessor.cpp:318-319`,
+  `PluginProcessor.h:76`) so the footer can name it (`FooterBar.cpp:21-25`). The master stage clamps
+  the block it is handed to the prepared buffer size (`VoiceEngine.cpp:679-692`). NaN can no longer
+  leave the plugin (`Dsp.h:287`, reasoning `:280-286`). A reload that abandons a take, loses a
+  factory source, cannot decode an embedded recording or cannot read the pattern blob says so in the
+  same footer slot as the dropped-hit count (`PluginProcessor.cpp:97-98`, `:1061`, `:1089`,
+  `:1137-1140`; accessor `PluginProcessor.h:65`; reader `FooterBar.cpp:20-29`), and an embedded
+  recording's sample rate is sanity-checked before decode (`:1071-1073`). Playback events are a
+  reused, capacity-bounded array rather than a per-block allocation (`PluginProcessor.h:121-134`).
+  Layout assertions gained `isPlacedOnScreen` (`Theme.h:63`) and explicit `*ForTesting` seams
+  (`PadEditorPanel.h:24-26`, `VaultPanel.h:24-32`, `SequencerPanel.h:33-36`). The suite now fails
+  when an exposed parameter id has no formatting branch (`SmokeTest.cpp:1283-1289`), which pins
+  `Controls.cpp:36-43`.
+- **Web/native parity.** The browser master chain's `DynamicsCompressor` is gone: filter → tone →
+  one tanh master fold → volume → output stage, sharing native's curve (`masterChain.ts:16-28`,
+  `:73-81`), and the offline bounce folds before the master gain for the same reason
+  (`exportKit.ts:88-89`). A non-finite output becomes silence in the browser too
+  (`outputStage.ts:49`, mirroring `Dsp.h:287`). State read back from local storage or a dropped JSON
+  file is rebuilt field by field through the same ranges `createParameterLayout` declares
+  (`types.ts:426-537`, wired at `useKit.ts:341-355`). A persistence write that did not stick is
+  reported instead of assumed (`storage.ts:33-52`, `:54-74`, `sampleStore.ts:39`, `:67`,
+  `App.tsx:127`, `:276-278`, `:300-302`). The bundled worklet was regenerated, and the modal's
+  autofocus effect no longer re-fires on every keystroke (`Modal.tsx:18-25`).
+- **Packaging and docs.** `native/package-launch.ps1` stages every replacement, SHA-256-compares it
+  against the build tree, re-hashes it after landing, writes the zip last and hashes the whole bundle
+  rather than only the module DLL (115 insertions / 28 deletions); `native/CMakeLists.txt` passes
+  `-Config "$<CONFIG>"` so a Debug launch target exports Debug binaries rather than whatever Release
+  artefact was left on disk; `launch/start.ps1` grew the retire-don't-delete path, the single system
+  VST3 destination and the read-back verification (106 insertions / 29 deletions); and the docs were
+  synced (`AGENTS.md` 34/19, `README.md` 4/4 including `:245` "43 tests, 5 files",
+  `native/README.md` 11/9 including `:155` the 349 composition and `:197`/`:389` the 139 total).
+
+What proves it — the checks that exist today, not a red-then-green record (see the last bullet):
+the smoke suite refuses a pattern blob missing 1, 8 or half its bytes (`SmokeTest.cpp:736-750`);
+plants a quiet NaN in a saved velocity, proves the poison landed, and asserts it reads back as the
+0.8 default (`:762-770`); asserts the output ceiling maps NaN to silence and ±inf to full scale, and
+that a poisoned block leaves the stage finite (`:1120-1135`); and asserts every exposed parameter id
+has a formatting branch (`:1283-1289`). The web side runs 43 tests in 5 files, 13 of them in the two
+files this pass added (`masterFold` 3, `sanitise` 10). `ctest -C Release` reports 3/3 and
+`npx tsc -b` is clean.
+
+Still missing, stated rather than smoothed over:
+
+- Nothing re-validates APVTS parameter values inside `setStateInformation`; a corrupt host-state XML
+  can still place an out-of-range value in every parameter, and `Dsp.h:287` is the only backstop for
+  the ones that reach audio.
+- `npm run build`'s `vite build` leg and its `dist/` output are unexercised, and no browser-edition
+  runtime or screenshot lane was run against this pass.
+- `LayoutTest.cpp` was rebuilt around the new panels (148 insertions / 20 deletions) but its
+  snapshots were not reviewed by eye.
+- Every gate above shipped with the fix it checks, so none of the hardening items has a
+  red-then-green record. That is the honest reason this entry exists: a step number and a `Built`
+  line are a claim about process, and this pass cannot make that claim.
+
+Built 2026-11-16 (this pass), gated by: `ctest --test-dir native/build -C Release` 3/3, the smoke
+program's own `PASS - 139/139 checks passed`, `npm test` 43/5 and `npx tsc -b` clean — all run
+against the tree this entry describes.
+
+---
 
 ## 9. Not doing
 

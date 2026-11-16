@@ -56,5 +56,10 @@ namespace sliceforge::ui
     juce::String formatPercent (float value, int decimals = 0);
     juce::String formatSemitones (float value);
     juce::String formatCents (float value);
+
+    /** Whether this component is actually laid out where a user could reach it: itself and every
+        ancestor visible, with a non-empty box all the way up. Component::isShowing() cannot answer
+        that headlessly—it also demands a peer—so the layout test asks this instead. */
+    bool isPlacedOnScreen (const juce::Component&) noexcept;
 } // namespace sliceforge::ui
 

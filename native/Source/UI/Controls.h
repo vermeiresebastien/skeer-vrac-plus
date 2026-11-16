@@ -82,6 +82,10 @@ namespace sliceforge::ui
     };
 
     juce::String formatParamValue (const juce::String& id, double value);
+    /** True when formatParamValue has a branch for this id, or when the id is one of the pad
+        controls drawn as a button row. A parameter added to the layout without joining either list
+        reads as a bare number on screen, so the smoke test fails on it instead. */
+    bool isKnownParamId (const juce::String& id);
     void styleChip (juce::TextButton&, bool active = false);
     void stylePrimaryButton (juce::TextButton&);
     void styleSmallPanelButton (juce::TextButton&, juce::Colour accent);

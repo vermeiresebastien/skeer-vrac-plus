@@ -21,29 +21,23 @@
   ];
   var PAD_MIDI_NOTES = PAD_NOTES.map((_, i) => 36 + i);
   var PAD_COUNT = 16;
-  var FAMILY_LENGTH = {
-    kick: 0.42,
-    snare: 0.24,
-    hat: 0.13,
-    clap: 0.3
-  };
   var KIT_LAYOUT = [
-    { family: "kick", model: 0, drumify: 0.72, choke: 1 },
-    { family: "kick", model: 1, drumify: 0.58, choke: 1 },
-    { family: "snare", model: 0, drumify: 0.68, choke: 0 },
-    { family: "clap", model: 0, drumify: 0.62, choke: 0 },
-    { family: "snare", model: 1, drumify: 0.76, choke: 0 },
-    { family: "snare", model: 2, drumify: 0.48, choke: 0 },
-    { family: "hat", model: 0, drumify: 0.8, choke: 2 },
-    { family: "hat", model: 0, drumify: 0.64, choke: 2 },
-    { family: "hat", model: 1, drumify: 0.85, choke: 2 },
-    { family: "hat", model: 2, drumify: 0.55, choke: 2 },
-    { family: "clap", model: 3, drumify: 0.7, choke: 0 },
-    { family: "clap", model: 2, drumify: 0.52, choke: 0 },
-    { family: "hat", model: 3, drumify: 0.6, choke: 2 },
-    { family: "hat", model: 0, drumify: 0.9, choke: 2 },
-    { family: "snare", model: 3, drumify: 0.66, choke: 0 },
-    { family: "clap", model: 0, drumify: 0.74, choke: 0 }
+    { family: "kick", model: 0, drumify: 0.72, length: 0.42, choke: 1, pan: 0 },
+    { family: "kick", model: 1, drumify: 0.58, length: 0.26, choke: 1, pan: 0 },
+    { family: "snare", model: 0, drumify: 0.68, length: 0.24, choke: 0, pan: 0 },
+    { family: "clap", model: 0, drumify: 0.62, length: 0.3, choke: 0, pan: 0 },
+    { family: "snare", model: 1, drumify: 0.76, length: 0.22, choke: 0, pan: 0 },
+    { family: "snare", model: 2, drumify: 0.48, length: 0.34, choke: 0, pan: 0 },
+    { family: "hat", model: 0, drumify: 0.8, length: 0.09, choke: 2, pan: -0.12 },
+    { family: "hat", model: 0, drumify: 0.64, length: 0.08, choke: 2, pan: 0.12 },
+    { family: "hat", model: 1, drumify: 0.85, length: 0.3, choke: 2, pan: 0 },
+    { family: "hat", model: 2, drumify: 0.55, length: 0.14, choke: 2, pan: -0.2 },
+    { family: "clap", model: 3, drumify: 0.7, length: 0.15, choke: 0, pan: 0 },
+    { family: "clap", model: 2, drumify: 0.52, length: 0.38, choke: 0, pan: 0 },
+    { family: "hat", model: 3, drumify: 0.6, length: 0.2, choke: 2, pan: 0.2 },
+    { family: "hat", model: 0, drumify: 0.9, length: 0.06, choke: 2, pan: 0 },
+    { family: "snare", model: 3, drumify: 0.66, length: 0.12, choke: 0, pan: 0 },
+    { family: "clap", model: 0, drumify: 0.74, length: 0.28, choke: 0, pan: 0 }
   ];
   function makePad(id) {
     const layout = KIT_LAYOUT[id];
@@ -59,12 +53,12 @@
       originalGain: -4.4,
       drumifiedGain: -4.5,
       pitch: 0,
-      length: FAMILY_LENGTH[family],
+      length: layout.length,
       volume: 0,
-      pan: 0,
+      pan: layout.pan,
       choke: layout.choke,
       velocityAmount: 0.65,
-      warp: 0.22,
+      warp: 0.2,
       impact: 0.35,
       instability: 0.08,
       toneShift: 0,
@@ -80,7 +74,7 @@
   function createDefaultPads() {
     return Array.from({ length: PAD_COUNT }, (_, i) => makePad(i));
   }
-  var clamp = (v, lo, hi) => v < lo ? lo : v > hi ? hi : v;
+  var clamp = (v, lo, hi) => v > hi ? hi : v < lo ? lo : Number.isFinite(v) ? v : lo;
   var lerp = (a, b, t) => a + (b - a) * t;
   var dbToGain = (db) => db <= -90 ? 0 : Math.pow(10, db / 20);
   var smoothstep = (edge0, edge1, x) => {

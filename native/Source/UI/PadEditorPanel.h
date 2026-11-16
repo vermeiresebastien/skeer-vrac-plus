@@ -19,6 +19,12 @@ namespace sliceforge::ui
         int getSelectedPad() const noexcept { return selectedPad; }
         std::function<void (int)> onSelectedPadChanged;
 
+        // For the layout test: these three rows are the controls a smaller window is most likely
+        // to push out, and each only counts if it is actually on screen.
+        int visibleModelButtonsForTesting() const;
+        int visibleBusButtonsForTesting() const;
+        int visibleChokeButtonsForTesting() const;
+
     private:
         void updateParameterIds();
         void updateButtonStates();

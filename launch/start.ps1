@@ -70,10 +70,62 @@ $OtherVst3Dirs = @(
 )
 
 function Test-DirWritable([string]$Dir) {
-    if (-not (Test-Path -LiteralPath $Dir)) { return $true }  # only the parent needs writing
-    $probe = Join-Path $Dir ('.sf-probe-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
+    # A folder that does not exist yet can only be created by writing to its nearest real ancestor,
+    # which is the probe that matters: %ProgramFiles%\Common Files\VST3 is missing on a machine that
+    # has never had a machine-wide plugin installed, and answering "writable" without looking would
+    # skip the elevation prompt and fail the copy instead.
+    $cursor = $Dir
+    while ($cursor -and -not (Test-Path -LiteralPath $cursor)) {
+        $parent = Split-Path -Path $cursor -Parent
+        if (-not $parent -or $parent -eq $cursor) { return $false }
+        $cursor = $parent
+    }
+    if (-not $cursor) { return $false }
+    $probe = Join-Path $cursor ('.sf-probe-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
     try { New-Item -ItemType Directory -Path $probe | Out-Null; Remove-Item -Path $probe -Recurse -Force; return $true }
     catch { return $false }
+}
+
+# Two spellings of one folder - 8.3 short name, a trailing slash, different case, a junction - are
+# equal here. Comparing the raw strings is what would let the prune step retire the bundle that was
+# installed a moment ago, because -Vst3Dir and the default can name the same directory differently.
+function Get-CanonicalDir([string]$Dir) {
+    $tail = @()
+    $cursor = $Dir.TrimEnd('\', '/')
+    while ($cursor -and -not (Test-Path -LiteralPath $cursor)) {
+        $leaf = Split-Path -Path $cursor -Leaf
+        if (-not $leaf) { break }
+        $tail = @($leaf) + $tail
+        $parent = Split-Path -Path $cursor -Parent
+        if (-not $parent -or $parent -eq $cursor) { break }
+        $cursor = $parent
+    }
+    $base = $cursor
+    if ($base -and (Test-Path -LiteralPath $base)) {
+        try { $base = (Get-Item -LiteralPath $base -Force).FullName } catch { }
+    }
+    else { try { $base = [System.IO.Path]::GetFullPath($Dir) } catch { $base = $Dir } }
+    return (@($base) + $tail -join '\').TrimEnd('\', '/').ToLowerInvariant()
+}
+
+# Relative path -> SHA-256 for every file of a bundle. One hash of the module DLL certified a bundle
+# that arrived without its Resources, which is a plugin the host lists and cannot load.
+function Get-BundleHashMap([string]$BundlePath) {
+    $map = @{}
+    $rootFull = (Get-Item -LiteralPath $BundlePath).FullName.TrimEnd('\')
+    Get-ChildItem -LiteralPath $BundlePath -Recurse -File -Force | ForEach-Object {
+        $rel = $_.FullName.Substring($rootFull.Length).TrimStart('\').ToLowerInvariant().Replace('\', '/')
+        $map[$rel] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+    }
+    return $map
+}
+
+function Test-SameBundle([hashtable]$A, [hashtable]$B) {
+    if ($A.Count -ne $B.Count) { return $false }
+    foreach ($key in $A.Keys) {
+        if (-not $B.ContainsKey($key) -or $B[$key] -ne $A[$key]) { return $false }
+    }
+    return $true
 }
 
 # Staged copy, verified, then swapped: deleting the previous bundle before the new one is proven
@@ -81,33 +133,47 @@ function Test-DirWritable([string]$Dir) {
 function Install-Vst3Bundle([string]$SourceBundle, [string]$Destination) {
     $dest = Join-Path $Destination 'SliceForge.vst3'
     $staging = Join-Path $Destination ('SliceForge.vst3.staging-' + [guid]::NewGuid().ToString('N').Substring(0, 8))
-    $wanted = (Get-FileHash -LiteralPath (Join-Path $SourceBundle $ModuleRel) -Algorithm SHA256).Hash
+    $wanted = Get-BundleHashMap $SourceBundle
 
     Copy-Item -LiteralPath $SourceBundle -Destination $staging -Recurse -Force
-    if ((Get-FileHash -LiteralPath (Join-Path $staging $ModuleRel) -Algorithm SHA256).Hash -ne $wanted) {
+    if (-not (Test-SameBundle $wanted (Get-BundleHashMap $staging))) {
         Remove-Item -LiteralPath $staging -Recurse -Force
         throw 'the staged copy failed its hash check - nothing was replaced'
     }
     if (Test-Path -LiteralPath $dest) { Remove-Item -LiteralPath $dest -Recurse -Force }
     Move-Item -LiteralPath $staging -Destination $dest
-    if ((Get-FileHash -LiteralPath (Join-Path $dest $ModuleRel) -Algorithm SHA256).Hash -ne $wanted) {
+    if (-not (Test-SameBundle $wanted (Get-BundleHashMap $dest))) {
         throw "the bundle in $dest does not match the one that was staged"
     }
     return $wanted
 }
 
-function Remove-DuplicateBundles([string]$KeptDir, [string]$WantedHash) {
-    foreach ($other in @($OtherVst3Dirs | Where-Object { $_ -ne $KeptDir })) {
+# A stray SliceForge is retired, not destroyed: only a bundle proven byte-identical to the installed
+# one is a duplicate. Anything else is a build that exists nowhere else, and deleting it would take
+# the last copy of it with the message "superseded".
+function Remove-DuplicateBundles([string]$KeptDir, [hashtable]$Wanted) {
+    $kept = Get-CanonicalDir $KeptDir
+    $RetiredDir = Join-Path $env:LOCALAPPDATA 'SliceForge\retired'
+    foreach ($other in @($OtherVst3Dirs | Where-Object { (Get-CanonicalDir $_) -ne $kept })) {
         $stale = Join-Path $other 'SliceForge.vst3'
         if (-not (Test-Path -LiteralPath $stale)) { continue }
         try {
-            $staleHash = (Get-FileHash -LiteralPath (Join-Path $stale $ModuleRel) -Algorithm SHA256).Hash
-            $note = if ($staleHash -eq $WantedHash) { 'identical to the installed bundle' }
-                    else { "a different build, $($staleHash.Substring(0, 8)) - superseded" }
-            Remove-Item -LiteralPath $stale -Recurse -Force
-            Say "removed $stale ($note)"
+            $staleMap = Get-BundleHashMap $stale
+            if (Test-SameBundle $Wanted $staleMap) {
+                Remove-Item -LiteralPath $stale -Recurse -Force
+                Say "removed $stale (byte-identical to the installed bundle)"
+            }
+            else {
+                $moduleKey = $ModuleRel.ToLowerInvariant().Replace('\', '/')
+                $stamp = Get-Date -Format 'yyyyMMdd-HHmmss'
+                $tag = if ($staleMap.ContainsKey($moduleKey)) { $staleMap[$moduleKey].Substring(0, 8) } else { 'unknown' }
+                $park = Join-Path $RetiredDir ($stamp + '-' + $tag)
+                New-Item -ItemType Directory -Force $park | Out-Null
+                Move-Item -LiteralPath $stale -Destination (Join-Path $park 'SliceForge.vst3')
+                Say "moved $stale to $park - it is a different build, not a duplicate" 'Yellow'
+            }
         }
-        catch { Say "COULD NOT REMOVE $stale - close the DAW and re-run ($($_.Exception.Message))" 'Yellow' }
+        catch { Say "left $stale alone ($($_.Exception.Message))" 'Yellow' }
     }
 }
 
@@ -119,14 +185,15 @@ if (-not (Test-Path -LiteralPath $BundleDll)) {
 else {
     $target = if ($Vst3Dir) { $Vst3Dir } else { Join-Path $env:ProgramFiles 'Common Files\VST3' }
     $dest = Join-Path $target 'SliceForge.vst3'
-    $WantHash = (Get-FileHash -LiteralPath $BundleDll -Algorithm SHA256).Hash
+    $WantMap = Get-BundleHashMap $Bundle
+    $WantHash = $WantMap[$ModuleRel.ToLowerInvariant().Replace('\', '/')]
     $writable = Test-DirWritable $target
+    $systemVst3 = Join-Path $env:ProgramFiles 'Common Files\VST3'
 
     # -Vst3Dir is an escape hatch for a host whose scan root really is elsewhere, not a licence to
     # keep a second copy: say out loud when the system folder still holds one, because that is the
     # duplicate-browser-entry state this script exists to prevent.
-    $systemVst3 = Join-Path $env:ProgramFiles 'Common Files\VST3'
-    if ($target -ne $systemVst3) {
+    if ((Get-CanonicalDir $target) -ne (Get-CanonicalDir $systemVst3)) {
         Say "installing to a non-default folder: $target" 'Yellow'
         if (Test-Path -LiteralPath (Join-Path $systemVst3 'SliceForge.vst3')) {
             Say "a copy still sits in $systemVst3 - the host will list SliceForge twice" 'Yellow'
@@ -135,9 +202,9 @@ else {
 
     if ($DryRun) {
         Say "[dry-run] install $Bundle -> $dest$(if ($writable) { '' } else { '   (needs elevation)' })"
-        foreach ($other in @($OtherVst3Dirs | Where-Object { $_ -ne $target })) {
+        foreach ($other in @($OtherVst3Dirs | Where-Object { (Get-CanonicalDir $_) -ne (Get-CanonicalDir $target) })) {
             $stale = Join-Path $other 'SliceForge.vst3'
-            if (Test-Path -LiteralPath $stale) { Say "[dry-run] remove superseded $stale" }
+            if (Test-Path -LiteralPath $stale) { Say "[dry-run] retire $stale (delete if identical, move aside if not)" }
         }
     }
     elseif (-not $writable) {
@@ -156,18 +223,26 @@ else {
             # parameter error before it can report anything.
             $quoted = @('-NoProfile', '-ExecutionPolicy', 'Bypass', '-File', "`"$PSCommandPath`"",
                         '-InstallOnly', '-ElevatedInstall', '-Vst3Dir', "`"$target`"")
-            $child = Start-Process -FilePath $ps -Verb RunAs -Wait -WindowStyle Hidden -PassThru -ArgumentList $quoted
-            if (Test-Path -LiteralPath $LogPath) {
-                Get-Content -LiteralPath $LogPath | ForEach-Object { Write-Host "   elevated: $_" }
+            # Declining the prompt throws, and with ErrorActionPreference=Stop that used to end the
+            # script here: no standalone, no browser edition, and a raw stack trace where the honest
+            # answer is "you said no, so nothing was installed".
+            try {
+                $child = Start-Process -FilePath $ps -Verb RunAs -Wait -WindowStyle Hidden -PassThru -ArgumentList $quoted
+                if (Test-Path -LiteralPath $LogPath) {
+                    Get-Content -LiteralPath $LogPath | ForEach-Object { Write-Host "   elevated: $_" }
+                }
+                else { Write-Host "   elevated: process exit $($child.ExitCode), no log - the child never got as far as the install" -ForegroundColor Yellow }
             }
-            else { Write-Host "   elevated: process exit $($child.ExitCode), no log - the child never got as far as the install" -ForegroundColor Yellow }
+            catch {
+                Say "no elevated install ($($_.Exception.Message)) - the standalone and the browser edition still start" 'Yellow'
+            }
         }
     }
     else {
         try {
-            $hash = Install-Vst3Bundle $Bundle $target
-            Say "installed $dest ($($hash.Substring(0, 8))...)" 'Green'
-            Remove-DuplicateBundles $target $hash
+            $installed = Install-Vst3Bundle $Bundle $target
+            Say "installed $dest ($($installed[$ModuleRel.ToLowerInvariant().Replace('\', '/')].Substring(0, 8))...)" 'Green'
+            Remove-DuplicateBundles $target $installed
         }
         catch {
             # A DAW with the plugin loaded holds the module open; leaving the old install alone
@@ -179,12 +254,14 @@ else {
     if (-not $DryRun) {
         # Read the folder back instead of trusting the copy: the elevated child runs under a
         # different token in a console that has already closed, and an exit code of 0 from
-        # Start-Process says nothing about what it wrote.
+        # Start-Process says nothing about what it wrote. Every file is compared, not just the
+        # module, because a bundle missing its Resources installs green and fails to load.
         $landed = $false
-        if (Test-Path -LiteralPath $dest) {
-            $landed = (Get-FileHash -LiteralPath (Join-Path $dest $ModuleRel) -Algorithm SHA256).Hash -eq $WantHash
+        try {
+            if (Test-Path -LiteralPath $dest) { $landed = Test-SameBundle $WantMap (Get-BundleHashMap $dest) }
         }
-        if ($landed) { Say "check: $dest matches launch/ ($($WantHash.Substring(0, 8))...)" 'Green' }
+        catch { $landed = $false }
+        if ($landed) { Say "check: $dest matches launch/ file for file ($($WantHash.Substring(0, 8))...)" 'Green' }
         else { Say "check: $dest is NOT the launch/ build - nothing was installed there" 'Red' }
         if ($InstallOnly) { if ($landed) { exit 0 } else { exit 1 } }
     }

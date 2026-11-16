@@ -3,6 +3,10 @@
     and restamp the portable package. Run as the `launch` CMake target, or directly:
 
         powershell -File native/package-launch.ps1 -Version 1.0.0
+
+    Nothing in launch/ is deleted until its replacement has been staged and hash-matched, and the
+    zip is written last, so a failure leaves the previous export where it was instead of handing
+    back an empty deliverables folder in a tracked directory.
 #>
 [CmdletBinding()]
 param(
@@ -23,6 +27,8 @@ $Artefacts = Join-Path $BuildDir ('SliceForge_artefacts\' + $Config)
 $ExeSrc = Join-Path $Artefacts 'Standalone\SliceForge.exe'
 $BundleSrc = Join-Path $Artefacts 'VST3\SliceForge.vst3'
 $LaunchDir = Join-Path $RepoRoot 'launch'
+$InstallNote = Join-Path $NativeDir 'Package\INSTALL.txt'
+$ReadmeSrc = Join-Path $NativeDir 'README.md'
 
 if (-not (Test-Path -LiteralPath $ExeSrc)) {
     throw "Missing $ExeSrc - build SliceForge_Standalone first."
@@ -41,46 +47,127 @@ if ($running.Count -gt 0) {
            ') - close it, then re-run. The export does not kill it for you.')
 }
 
-# Remove the previous export so a file the build no longer produces cannot survive in launch/.
-foreach ($stale in @((Join-Path $LaunchDir 'SliceForge.exe'), (Join-Path $LaunchDir 'SliceForge.vst3'))) {
-    if (Test-Path -LiteralPath $stale) { Remove-Item -LiteralPath $stale -Recurse -Force }
+# Relative path -> SHA-256 for one candidate export: the standalone plus every file of the bundle.
+# Matching only the module DLL, as this script used to, certifies a bundle that dropped a Resources
+# file on the way - which is a plugin the host cannot load.
+function Get-ExportHashMap([string]$ExePath, [string]$BundlePath) {
+    $map = @{}
+    $map['sliceforge.exe'] = (Get-FileHash -LiteralPath $ExePath -Algorithm SHA256).Hash
+    $rootFull = (Get-Item -LiteralPath $BundlePath).FullName.TrimEnd('\')
+    Get-ChildItem -LiteralPath $BundlePath -Recurse -File -Force | ForEach-Object {
+        $rel = $_.FullName.Substring($rootFull.Length).TrimStart('\').ToLowerInvariant().Replace('\', '/')
+        $map['sliceforge.vst3/' + $rel] = (Get-FileHash -LiteralPath $_.FullName -Algorithm SHA256).Hash
+    }
+    return $map
 }
-Get-ChildItem -LiteralPath $LaunchDir -Filter 'SliceForge-*-Windows-x64.zip' -File -ErrorAction SilentlyContinue |
-    Remove-Item -Force
 
-Copy-Item -LiteralPath $ExeSrc -Destination (Join-Path $LaunchDir 'SliceForge.exe') -Force
+# Differences as messages, none when the two maps describe the same bytes. A key present on only one
+# side is a file the copy skipped or invented, so it counts as a difference too.
+function Compare-ExportHashMaps([hashtable]$Expected, [hashtable]$Actual) {
+    $problems = @()
+    foreach ($key in $Expected.Keys) {
+        if (-not $Actual.ContainsKey($key)) { $problems += "$key is missing" }
+        elseif ($Actual[$key] -ne $Expected[$key]) { $problems += "$key has a different hash" }
+    }
+    foreach ($key in $Actual.Keys) {
+        if (-not $Expected.ContainsKey($key)) { $problems += "$key is not in the build output" }
+    }
+    return $problems
+}
 
-# The whole bundle folder, not the inner DLL: a VST3 module cannot resolve its Resources.
-Copy-Item -LiteralPath $BundleSrc -Destination (Join-Path $LaunchDir 'SliceForge.vst3') -Recurse -Force
+function Assert-SameBytes([object]$Problems, [string]$What) {
+    # Compare-ExportHashMaps writes nothing when the trees match, so $null here means clean. The
+    # obvious `$list = if (...) { @() } else { ... }` is the trap: an empty array coming out of a
+    # block is no output at all, the assignment lands as $null, and .Count on it is a hard error.
+    if ($null -eq $Problems) { return }
+    $list = @($Problems) | Select-Object -First 6
+    throw ("$What :: " + (($list | ForEach-Object { "$_" }) -join '; '))
+}
 
 $Staging = Join-Path $env:TEMP ('sliceforge-launch-' + [guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Force $Staging | Out-Null
-    Copy-Item -LiteralPath (Join-Path $LaunchDir 'SliceForge.exe') -Destination $Staging -Force
-    Copy-Item -LiteralPath (Join-Path $LaunchDir 'SliceForge.vst3') -Destination $Staging -Recurse -Force
-    Copy-Item -LiteralPath (Join-Path $NativeDir 'Package\INSTALL.txt') -Destination $Staging -Force
-    Copy-Item -LiteralPath (Join-Path $NativeDir 'README.md') -Destination (Join-Path $Staging 'README.md') -Force
+    Copy-Item -LiteralPath $ExeSrc -Destination (Join-Path $Staging 'SliceForge.exe') -Force
+    # The whole bundle folder, not the inner DLL: a VST3 module cannot resolve its Resources.
+    Copy-Item -LiteralPath $BundleSrc -Destination (Join-Path $Staging 'SliceForge.vst3') -Recurse -Force
+
+    # A skipped copy leaves an old mtime on a file that exported correctly, so every comparison here
+    # is by hash and never by timestamp.
+    $wanted = Get-ExportHashMap $ExeSrc $BundleSrc
+    $staged = Get-ExportHashMap (Join-Path $Staging 'SliceForge.exe') (Join-Path $Staging 'SliceForge.vst3')
+    Assert-SameBytes (Compare-ExportHashMaps $wanted $staged) "the staged copy does not match $Artefacts"
+
+    # The previous export goes only now, with its replacement already proven in staging, so a failed
+    # copy cannot leave a tracked deliverables folder empty.
+    foreach ($stale in @((Join-Path $LaunchDir 'SliceForge.exe'), (Join-Path $LaunchDir 'SliceForge.vst3'))) {
+        if (Test-Path -LiteralPath $stale) { Remove-Item -LiteralPath $stale -Recurse -Force }
+    }
+    Get-ChildItem -LiteralPath $LaunchDir -Filter 'SliceForge-*-Windows-x64.zip' -File -ErrorAction SilentlyContinue |
+        Remove-Item -Force
+
+    Move-Item -LiteralPath (Join-Path $Staging 'SliceForge.exe') -Destination (Join-Path $LaunchDir 'SliceForge.exe')
+    Move-Item -LiteralPath (Join-Path $Staging 'SliceForge.vst3') -Destination (Join-Path $LaunchDir 'SliceForge.vst3')
+
+    # A move between volumes is a copy again, so what landed is matched against the build output
+    # rather than trusted because the staged tree was clean.
+    $landed = Get-ExportHashMap (Join-Path $LaunchDir 'SliceForge.exe') (Join-Path $LaunchDir 'SliceForge.vst3')
+    Assert-SameBytes (Compare-ExportHashMaps $wanted $landed) "launch/ does not match $Artefacts after the move"
 
     $Zip = Join-Path $LaunchDir ("SliceForge-$Version-Windows-x64.zip")
-    Compress-Archive -LiteralPath @((Join-Path $Staging 'SliceForge.exe'),
-                                   (Join-Path $Staging 'SliceForge.vst3'),
-                                   (Join-Path $Staging 'INSTALL.txt'),
-                                   (Join-Path $Staging 'README.md')) `
-                    -DestinationPath $Zip -CompressionLevel Optimal -Force
+    $ZipStaging = Join-Path $env:TEMP ('sliceforge-package-' + [guid]::NewGuid().ToString('N') + '.zip')
+    try {
+        # Packed from launch/, so the archive and the folder cannot disagree, and packed last: every
+        # byte inside it has already been verified sitting there.
+        Compress-Archive -LiteralPath @((Join-Path $LaunchDir 'SliceForge.exe'),
+                                       (Join-Path $LaunchDir 'SliceForge.vst3'),
+                                       $InstallNote,
+                                       $ReadmeSrc) `
+                        -DestinationPath $ZipStaging -CompressionLevel Optimal -Force
+
+        # An archive holds independently compressed members: nothing so far proved this one contains
+        # these bytes rather than a truncated or stale copy of them, which is what a user finds out
+        # only after installing from it.
+        $zipWanted = @{}
+        foreach ($pair in $wanted.GetEnumerator()) { $zipWanted[$pair.Key] = $pair.Value }
+        $zipWanted['install.txt'] = (Get-FileHash -LiteralPath $InstallNote -Algorithm SHA256).Hash
+        $zipWanted['readme.md'] = (Get-FileHash -LiteralPath $ReadmeSrc -Algorithm SHA256).Hash
+
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $found = @{}
+        $BundlePrefix = 'sliceforge.vst3/'
+        $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipStaging)
+        try {
+            foreach ($entry in $archive.Entries) {
+                $key = $entry.FullName.Replace('\', '/').ToLowerInvariant()
+                # Compress-Archive writes a member for every directory as well as every file, so a
+                # member is judged by the path it maps back to: the directory rows are not files,
+                # and anything that maps outside these four roots stays in the comparison and is
+                # reported as a member the export never produced.
+                $onDisk = $null
+                if ($key -eq 'sliceforge.exe') { $onDisk = Join-Path $LaunchDir 'SliceForge.exe' }
+                elseif ($key -eq 'install.txt') { $onDisk = $InstallNote }
+                elseif ($key -eq 'readme.md') { $onDisk = $ReadmeSrc }
+                elseif ($key.StartsWith($BundlePrefix)) {
+                    $onDisk = Join-Path $LaunchDir ($key.Replace('/', '\'))
+                }
+                if ($null -ne $onDisk -and (Test-Path -LiteralPath $onDisk -PathType Container)) { continue }
+                $stream = $entry.Open()
+                try { $hashed = ([System.Security.Cryptography.SHA256]::Create()).ComputeHash($stream) }
+                finally { $stream.Dispose() }
+                $found[$key] = ([System.BitConverter]::ToString($hashed) -replace '-', '').ToUpperInvariant()
+            }
+        }
+        finally { $archive.Dispose() }
+
+        Assert-SameBytes (Compare-ExportHashMaps $zipWanted $found) "$ZipStaging does not contain the exported build"
+        Move-Item -LiteralPath $ZipStaging -Destination $Zip -Force
+    }
+    finally {
+        if (Test-Path -LiteralPath $ZipStaging) { Remove-Item -LiteralPath $ZipStaging -Force }
+    }
 }
 finally {
     if (Test-Path -LiteralPath $Staging) { Remove-Item -LiteralPath $Staging -Recurse -Force }
-}
-
-# A skipped copy leaves an old mtime on a file that exported correctly, so hash-match instead of
-# trusting timestamps.
-$Dlldst = Join-Path $LaunchDir 'SliceForge.vst3\Contents\x86_64-win\SliceForge.vst3'
-$checks = @(@($ExeSrc, (Join-Path $LaunchDir 'SliceForge.exe')),
-            @((Join-Path $BundleSrc 'Contents\x86_64-win\SliceForge.vst3'), $Dlldst))
-foreach ($pair in $checks) {
-    $a = (Get-FileHash -LiteralPath $pair[0] -Algorithm SHA256).Hash
-    $b = (Get-FileHash -LiteralPath $pair[1] -Algorithm SHA256).Hash
-    if ($a -ne $b) { throw "Export hash mismatch for $($pair[1]): $a != $b" }
 }
 
 Write-Host "launch/ refreshed ($Config, v$Version)"

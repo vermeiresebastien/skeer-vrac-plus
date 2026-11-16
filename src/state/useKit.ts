@@ -1,6 +1,6 @@
 import { useCallback, useMemo, useReducer, useRef } from 'react';
 import type { GlobalParams, KitState, PadParams, SourceSample } from '../types';
-import { PAD_COUNT, PAD_NOTES, clamp, createDefaultPads, makePad } from '../types';
+import { PAD_COUNT, clamp, createDefaultPads, makePad, sanitizeGlobal, sanitizeNumber, sanitizePad } from '../types';
 import { detectSlices, remapStartsAfterReslice, type Slice } from '../audio/slicer';
 import { generateLibrarySample } from '../audio/sampleLibrary';
 import {
@@ -336,14 +336,12 @@ export function useKit() {
       sample = generateLibrarySample(kit.sourceId as never);
     }
     if (!sample) return false;
-    const sensitivity = clamp(kit.sensitivity ?? 0.55, 0, 1);
+    const sensitivity = sanitizeNumber(kit.sensitivity, 0.55, 0, 1);
     const { slices } = detectSlices(sample.left, sample.right, sample.sampleRate, sensitivity);
-    const pads = kit.pads.map((pad, index) => ({
-      ...makePad(index),
-      ...pad,
-      id: index,
-      note: PAD_NOTES[index],
-    }));
+    // Every field is rebuilt from the factory pad rather than spread over it: this object came out
+    // of localStorage or a dropped JSON file, and a spread would pass a "family": "gong" or a
+    // 1e30 gain straight into the engine, which has no range check of its own.
+    const pads = kit.pads.map((pad, index) => sanitizePad(pad, index, sample.left.length / sample.sampleRate));
     const session: SessionData = {
       kit: {
         ...kit,
@@ -351,8 +349,8 @@ export function useKit() {
         sensitivity,
         sourceName: sample.name,
         pads,
-        selectedPad: clamp(kit.selectedPad ?? 0, 0, PAD_COUNT - 1),
-        global: { ...current.kit.global, ...kit.global },
+        selectedPad: sanitizeNumber(kit.selectedPad, 0, 0, PAD_COUNT - 1),
+        global: sanitizeGlobal(kit.global, current.kit.global),
       },
       sample,
       slices,

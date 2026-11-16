@@ -58,15 +58,20 @@ int main (int argc, char** argv)
     }
 
     std::cout << "  name: " << instance->getName() << '\n';
-    std::cout << "  parameters: " << instance->getParameters().size() << '\n';
     std::cout << "  buses: " << instance->getBusCount (true) << " in / " << instance->getBusCount (false)
               << " out\n";
 
-    if (instance->getParameters().size() < 300)
+    // 347 parameters come from createParameterLayout (11 global plus 21 for each of 16 pads), and
+    // JUCE's VST3 wrapper always adds Bypass and Program on top, so a host sees 349. Asserting the
+    // exact total is the only thing that keeps the count in the READMEs from drifting: printing it
+    // and checking it against 300 let 347, 349 and 345 all look like a pass.
+    if (instance->getParameters().size() != 349)
     {
-        std::cout << "FAIL expected the full automatable parameter set\n";
+        std::cout << "FAIL expected 347 layout parameters plus the wrapper's Bypass and Program, got "
+                  << instance->getParameters().size() << '\n';
         return 1;
     }
+    std::cout << "  parameters: 349 = 347 layout + Bypass + Program\n";
 
     juce::AudioProcessor::BusesLayout layout;
     layout.inputBuses.add (juce::AudioChannelSet::disabled());

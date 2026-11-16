@@ -277,8 +277,15 @@ namespace sliceforge
             gain = db <= -96.0f ? 0.0f : std::pow (10.0f, db * 0.05f);
         }
 
+        /** The ordering tests below bound a large sample but not an undefined one: every
+            comparison fails against NaN, so a NaN walked straight out of the plugin and poisoned
+            whatever the host mixed it into. Infinities already land on the ceiling via those same
+            comparisons, so only the value that cannot be ordered needs its own branch, and it gets
+            silence because there is no level that can be meant by it. */
         static float clampToCeiling (float x) noexcept
         {
+            if (std::isnan (x))
+                return 0.0f;
             return x > kCeiling ? kCeiling : (x < -kCeiling ? -kCeiling : x);
         }
 

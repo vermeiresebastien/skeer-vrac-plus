@@ -15,6 +15,12 @@ export interface ModalProps {
 
 export function Modal({ open, onClose, eyebrow, title, children, footer, wide = false, className = '' }: ModalProps) {
   const dialogRef = useRef<HTMLDivElement | null>(null);
+  // Held in a ref so the effect below can depend on `open` alone. onClose is an inline arrow in
+  // most callers, so it is a new function on every render: as a dependency it re-ran this whole
+  // effect on each keystroke inside the modal, and the 30 ms autofocus timer re-fired with it —
+  // the caret jumped back into the dialog while the user was still typing.
+  const closeRef = useRef(onClose);
+  closeRef.current = onClose;
 
   useEffect(() => {
     if (!open) return;
@@ -24,7 +30,7 @@ export function Modal({ open, onClose, eyebrow, title, children, footer, wide = 
     const onKeyDown = (event: KeyboardEvent) => {
       if (event.key === 'Escape') {
         event.preventDefault();
-        onClose();
+        closeRef.current();
       }
       if (event.key === 'Tab' && dialogRef.current) {
         const focusables = Array.from(
@@ -55,7 +61,7 @@ export function Modal({ open, onClose, eyebrow, title, children, footer, wide = 
       window.clearTimeout(timer);
       previousFocus?.focus?.();
     };
-  }, [open, onClose]);
+  }, [open]);
 
   if (!open) return null;
 

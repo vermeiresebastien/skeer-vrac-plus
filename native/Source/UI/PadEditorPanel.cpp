@@ -326,5 +326,21 @@ namespace sliceforge::ui
                     summary.getX() + 1, summary.getY() + 15, summary.getWidth() - 2, 10,
                     juce::Justification::centredLeft, false);
     }
-} // namespace sliceforge::ui
 
+    namespace
+    {
+        template <typename Buttons>
+        int countPlaced (const Buttons& buttons)
+        {
+            int visible = 0;
+            for (const auto& button : buttons)
+                if (isPlacedOnScreen (button))
+                    ++visible;
+            return visible;
+        }
+    }
+
+    int PadEditorPanel::visibleModelButtonsForTesting() const { return countPlaced (modelButtons); }
+    int PadEditorPanel::visibleBusButtonsForTesting() const { return countPlaced (busButtons); }
+    int PadEditorPanel::visibleChokeButtonsForTesting() const { return countPlaced (chokeButtons); }
+} // namespace sliceforge::ui
