@@ -125,10 +125,20 @@ namespace sliceforge
         bool hostWasPlaying = false;
         double expectedHostPpq = 0.0;
         std::array<PadStepHistory, kNumPads> lastHostPadStep {};
+        // How many times the host path threw its step history away. A clear is audible (a step
+        // that straddles a block boundary loses its duplicate guard and can fire twice), so the
+        // resync tolerance has to be measurable without changing what the scheduler does.
+        int hostResyncs = 0;
 
         bool internalWasPlaying = false;
         double internalPpq = 0.0;
         std::array<PadStepHistory, kNumPads> lastInternalPadStep {};
+
+        // Which pass through the timeline this is. Either clock advances it when it restarts,
+        // which is also when it clears its step history, so a host that loops a bar re-rolls its
+        // probability hits instead of replaying one frozen dropout set all session.
+        // See probabilityRollFor.
+        int64_t passCount = 1;
     };
 
     struct SeqBlockOutput

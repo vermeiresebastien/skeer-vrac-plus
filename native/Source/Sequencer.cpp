@@ -119,15 +119,23 @@ namespace sliceforge
             hit play while its ratchets did not. The draw therefore has to be a pure function
             of where in the timeline the step is.
 
-            The absolute step keeps counting while the pattern loops, so every pass through
-            the bar still gets an independent draw; splitmix64 keeps that distribution flat.
+            The pass counter belongs in that key because the timeline itself repeats. Under host
+            sync the host owns the position, so a loop asks for the very same absolute steps
+            again and the step key alone would answer the very same way: the dropout set freezes
+            and every pass through the bar is note-for-note the last one. The counter moves when
+            the clock restarts - the same event that clears the step history - so a pass gets one
+            draw per step and no two passes agree, while the blocks *inside* a pass still do.
+            The internal clock does not need it to vary between bars (its position only counts up),
+            but it does need it when the transport is restarted from zero.
         */
-        double probabilityRollFor (int patternIndex, int pad, int64_t absoluteStep) noexcept
+        double probabilityRollFor (int patternIndex, int pad, int64_t absoluteStep,
+                                   int64_t passCount) noexcept
         {
             std::uint64_t h = 0x9E3779B97F4A7C15ull
                                   + (std::uint64_t) absoluteStep * 0xFF51AFD7ED558CCDull
                                   + (std::uint64_t) (pad + 1) * 0xC2B2AE3D27D4EB4Full
-                                  + (std::uint64_t) (patternIndex + 1) * 0x165667B19E3779F9ull;
+                                  + (std::uint64_t) (patternIndex + 1) * 0x165667B19E3779F9ull
+                                  + (std::uint64_t) passCount * 0x62A9D9ED799705F5ull;
             h ^= h >> 30;
             h *= 0xBF58476D1CE4E5B9ull;
             h ^= h >> 27;
@@ -191,7 +199,8 @@ namespace sliceforge
                 if (! laneIsAudible (pattern, pad) || ! step.on || step.probability <= 0.0f)
                     continue;
                 if (step.probability < 0.999f
-                    && probabilityRollFor (patternIndex, pad, absoluteStep) > step.probability)
+                    && probabilityRollFor (patternIndex, pad, absoluteStep,
+                                           state.passCount) > step.probability)
                     continue;
 
                 // Grace hits come *before* the main hit, which usually means they belong to
@@ -238,12 +247,29 @@ namespace sliceforge
             const double ppqStart = host.ppq;
             const double ppqEnd = ppqStart + (double) numSamples * (bpm / 60.0)
                                               / juce::jmax (1.0, sampleRate);
+            const double blockPpq = ppqEnd - ppqStart;
+
+            /*  How far the host may disagree with where the last block said this one would
+                start before that disagreement counts as a seek.
+
+                The comparison is against a prediction for exactly one block, so the noise it has
+                to swallow scales with the block: a host that quantises the position it reports,
+                or derives it from a rounded time, lands a little off every block. Half a block
+                is the largest such error that still means "this block starts where I said",
+                because a real rewind or edit moves the position by at least a step. 0.02 stays as
+                a floor so the widening is one-sided: at the 512-sample default the half-block is
+                0.0107 ppq, and nothing about the old behaviour gets tighter. */
+            const double resyncTolerance = juce::jmax (0.02, blockPpq * 0.5);
 
             bool reset = ! state.hostWasPlaying;
-            if (! reset && std::abs (ppqStart - state.expectedHostPpq) > 0.02)
+            if (! reset && std::abs (ppqStart - state.expectedHostPpq) > resyncTolerance)
                 reset = true;
             if (reset)
+            {
                 clearHistory (state.lastHostPadStep);
+                ++state.hostResyncs;
+                ++state.passCount; // a restart, not a repeat: the bar gets its own draws
+            }
 
             if (ppqEnd < ppqStart)
             {
@@ -280,6 +306,7 @@ namespace sliceforge
             {
                 state.internalPpq = 0.0;
                 clearHistory (state.lastInternalPadStep);
+                ++state.passCount; // same reason as the host clock: from zero again means new draws
             }
 
             const int division = sanitiseDivision (data.division);

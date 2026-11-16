@@ -7,6 +7,7 @@
 #include <array>
 #include <cmath>
 #include <iostream>
+#include <tuple>
 #include <vector>
 
 namespace
@@ -626,6 +627,236 @@ int main()
             spread << mixed << " played=" << played << " skipped=" << skipped;
             check (mixed == 0 && played > 0 && skipped > 0,
                    "probability is decided per step, not per block", spread);
+        }
+
+        {
+            // Step 23. The resync test compares the position a host reports with where the
+            // *previous block* said this one would start, so the disagreement it tolerates has to
+            // be a fraction of a block, not a constant. A host that quantises the position it
+            // reports disagrees by a little every block, and at 90 BPM a 2048-sample block is
+            // 0.064 ppq long: rounding under half of that is ordinary playback, but the fixed
+            // 0.02 ppq window called it a seek and cleared the step history on every single block.
+            // Clearing the history throws away the guard that stops the neighbouring block re-
+            // emitting a step that straddles the boundary, so this is an audible defect, and the
+            // clear count below is the direct measurement of it.
+            const auto ramp = [] (int count, double advance)
+            {
+                std::vector<double> positions;
+                for (int b = 0; b < count; ++b)
+                    positions.push_back (advance * (double) b);
+                return positions;
+            };
+
+            const auto renderPositions = [] (const sliceforge::SequencerData& data,
+                                             sliceforge::SeqHostInfo host,
+                                             const std::vector<double>& positions,
+                                             int blockSize,
+                                             sliceforge::SeqPlaybackState& state)
+            {
+                juce::Random random (5);
+                for (const double ppq : positions)
+                {
+                    host.ppq = ppq;
+                    sliceforge::SeqBlockOutput out;
+                    sliceforge::processSequencerBlock (data, host, false, 48000.0, blockSize,
+                                                       random, state, out);
+                }
+                return state.hostResyncs;
+            };
+
+            auto data = makeFeatureSequence();
+            for (int s = 0; s < 4; ++s)
+            {
+                auto& step = data->patterns[0].rows[0][(size_t) s];
+                step.on = true;
+                step.velocity = 1.0f;
+            }
+
+            auto host90 = host;
+            host90.bpm = 90.0;
+            const double block90 = 2048.0 * (90.0 / 60.0) / 48000.0; // 0.064 ppq per block
+            const auto report = [] (int clears, int expected)
+            {
+                juce::String detail = "clears=";
+                detail << clears << " expected=" << expected;
+                return detail;
+            };
+
+            {
+                // A host that reports exactly where the block says the next one starts: the only
+                // clear is the transport engage. Unchanged by the fix.
+                sliceforge::SeqPlaybackState st;
+                const auto clears = renderPositions (*data, host90, ramp (9, block90), 2048, st);
+                check (clears == 1, "a block-accurate host resyncs once", report (clears, 1));
+            }
+            {
+                // The defect. 0.025 ppq of per-block rounding: inside the block, outside the old
+                // 0.02 ppq window. Must fail before the tolerance is scaled to the block.
+                sliceforge::SeqPlaybackState st;
+                const auto clears = renderPositions (*data, host90,
+                                                     ramp (9, block90 + 0.025), 2048, st);
+                check (clears == 1, "sub-block host position rounding is not a seek",
+                       report (clears, 1));
+            }
+            {
+                // Widening must not blind the scheduler to a real bar of seeking.
+                sliceforge::SeqPlaybackState st;
+                auto positions = ramp (9, block90);
+                positions.push_back (positions.back() + block90 + 4.0); // one 90 BPM bar
+                const auto clears = renderPositions (*data, host90, positions, 2048, st);
+                check (clears == 2, "a one-bar host jump still resyncs", report (clears, 2));
+            }
+            {
+                // And it must stay under one block, so the ceiling is pinned: three quarters of
+                // a block (0.048 ppq) is a seek, while the rounding case above is not.
+                sliceforge::SeqPlaybackState st;
+                auto positions = ramp (9, block90);
+                positions.push_back (positions.back() + block90 * 1.75);
+                const auto clears = renderPositions (*data, host90, positions, 2048, st);
+                check (clears == 2, "a three-quarter-block host seek resyncs", report (clears, 2));
+            }
+            {
+                // The widening is one-sided: it may only ever widen. Half a 512-sample block at
+                // 120 BPM is 0.0107 ppq, below the original window, so 0.015 ppq of rounding must
+                // still be tolerated exactly as it was.
+                sliceforge::SeqPlaybackState st;
+                const double block512 = 512.0 * (120.0 / 60.0) / 48000.0; // 0.0213 ppq
+                const auto clears = renderPositions (*data, host,
+                                                     ramp (9, block512 + 0.015), 512, st);
+                check (clears == 1, "a small block keeps the original resync window",
+                       report (clears, 1));
+            }
+            {
+                // The audible consequence, measured rather than argued. A host that reports a
+                // little *behind* the prediction makes consecutive blocks' windows overlap, and
+                // the step history is what stops the second block re-emitting the hit the first
+                // one already scheduled. Clearing that history every block plays the hit twice.
+                // 90 BPM / 2048 samples: a step is 8000 samples, so reporting 0.039 ppq per block
+                // (1248 samples) against a 2048-sample window overlaps neighbours by 800, and the
+                // hit at absolute step 8 falls inside both block 50 and block 51.
+                sliceforge::SeqPlaybackState st;
+                data->patterns[0].rows[0][8].on = true;
+                data->patterns[0].rows[0][8].velocity = 1.0f;
+                const auto positions = ramp (60, block90 - 0.025);
+                auto overlapHost = host90;
+                juce::Random random (5);
+                std::vector<int> timeline;
+                for (size_t b = 0; b < positions.size(); ++b)
+                {
+                    overlapHost.ppq = positions[b];
+                    sliceforge::SeqBlockOutput out;
+                    sliceforge::processSequencerBlock (*data, overlapHost, false, 48000.0, 2048,
+                                                       random, st, out);
+                    for (int i = 0; i < out.triggerCount; ++i)
+                        timeline.push_back ((int) std::llround (positions[b] * 32000.0
+                                                                 + (double) out.triggers[(size_t) i].sampleOffset));
+                }
+                const int fires = countAt (timeline, 64000);
+                check (fires == 1, "overlapping host blocks do not play one hit twice",
+                       [&] { juce::String s = "fires at 64000 = ";
+                             s << fires << " expected=1 clears=" << st.hostResyncs;
+                             return s; }());
+            }
+        }
+
+        {
+            // Step 22. The draw is a pure function of (pattern, pad, absolute step), which is what
+            // stopped a step from being split across blocks. It also means a host that loops a bar
+            // asks the same steps again and gets the same answers again, so the dropout set is
+            // frozen for the whole session - the first bar of a loop is the last bar of a loop.
+            // A rewind is already detected (it is the resync above), so the fix has to carry that
+            // event into the key: same step, different pass, different draw.
+            auto data = makeFeatureSequence();
+            for (int s = 0; s < 16; ++s)
+            {
+                auto& step = data->patterns[0].rows[0][(size_t) s];
+                step.on = true;
+                step.velocity = 1.0f;
+                step.probability = 0.5f;
+                step.flam = 1;
+                step.ratchet = 2;
+            }
+
+            const auto renderPass = [&] (const sliceforge::SequencerData& seq,
+                                         sliceforge::SeqHostInfo passHost,
+                                         int numBlocks, int blockSize,
+                                         juce::Random& random,
+                                         sliceforge::SeqPlaybackState& playState,
+                                         std::vector<int>& offsets)
+            {
+                const double blockPpq = (double) blockSize * (passHost.bpm / 60.0) / 48000.0;
+                for (int b = 0; b < numBlocks; ++b)
+                {
+                    passHost.ppq = blockPpq * (double) b; // same bar, twice: the host loops
+                    sliceforge::SeqBlockOutput out;
+                    sliceforge::processSequencerBlock (seq, passHost, false, 48000.0, blockSize,
+                                                       random, playState, out);
+                    for (int i = 0; i < out.triggerCount; ++i)
+                        offsets.push_back (b * blockSize + out.triggers[(size_t) i].sampleOffset);
+                }
+            };
+
+            // P = all three events of the step (grace, main, ratchet), - = none, x = a torn step.
+            const auto classify = [&] (const std::vector<int>& offsets, juce::String& signature)
+            {
+                int mixed = 0, played = 0, skipped = 0;
+                for (int s = 1; s <= 33; ++s) // s = 0 is skipped: its grace precedes the timeline
+                {
+                    const int events = countAt (offsets, s * 6000 - 720)
+                                         + countAt (offsets, s * 6000)
+                                         + countAt (offsets, s * 6000 + 3000);
+                    if (events == 3)
+                    {
+                        ++played;
+                        signature << "P";
+                    }
+                    else if (events == 0)
+                    {
+                        ++skipped;
+                        signature << "-";
+                    }
+                    else
+                    {
+                        ++mixed;
+                        signature << "x";
+                    }
+                }
+                return std::make_tuple (mixed, played, skipped);
+            };
+
+            sliceforge::SeqPlaybackState loopState;
+            juce::Random random (11);
+            std::vector<int> first, second;
+            renderPass (*data, host, 400, 512, random, loopState, first);
+            const int clearsBeforeLoop = loopState.hostResyncs;
+            renderPass (*data, host, 400, 512, random, loopState, second);
+
+            juce::String passOne, passTwo;
+            const auto one = classify (first, passOne);
+            const auto two = classify (second, passTwo);
+            juce::String detail;
+            detail << "\n    pass 1 " << passOne << "\n    pass 2 " << passTwo;
+
+            check (clearsBeforeLoop == 1 && loopState.hostResyncs == 2,
+                   "looping back to the start is one resync, not one per block",
+                   [&] { juce::String s = "at loop=";
+                         s << loopState.hostResyncs << " expected=2 before=" << clearsBeforeLoop;
+                         return s; }());
+
+            check (passOne != passTwo, "a looped bar re-rolls its probability", detail);
+
+            const bool coherent = std::get<0> (one) == 0 && std::get<0> (two) == 0
+                                     && std::get<1> (one) > 0 && std::get<2> (one) > 0
+                                     && std::get<1> (two) > 0 && std::get<2> (two) > 0;
+            check (coherent, "a re-rolled step keeps all of its events",
+                   [&] { juce::String s;
+                         s << "pass1 torn=" << std::get<0> (one)
+                           << " played=" << std::get<1> (one)
+                           << " skipped=" << std::get<2> (one)
+                           << " | pass2 torn=" << std::get<0> (two)
+                           << " played=" << std::get<1> (two)
+                           << " skipped=" << std::get<2> (two);
+                         return s; }());
         }
 
         {
