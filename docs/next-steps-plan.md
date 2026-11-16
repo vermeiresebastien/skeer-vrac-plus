@@ -1301,10 +1301,18 @@ test their own names (2026-11-16)
   old name and adds 9 carrying the new one, because the 7 renamed pairs are joined by two net-new mentions
   - the `probabilityRollFor` comment at `native/Source/Sequencer.h:163` and this doc's own prose at `:669`.
   So: 8 live code sites on `5afa40f` (`Sequencer.h:153` and `:163`, `Sequencer.cpp:312`,
-  `SmokeTest.cpp:875` `:1013` `:1101` `:1120` `:1123`), 9 occurrences including the doc line, and zero old
-  sites in any tracked file or in the worktree (`git grep -q hostResyncs` exits 1 against `HEAD` and against
-  the working tree). The rename moved no smoke total: exactly one of the 9 added lines is a `check (` call,
-  and it is that check's own expression being renamed, not a check being added.
+  `SmokeTest.cpp:875` `:1013` `:1101` `:1120` `:1123`), and zero old sites in any source or test file, in
+  the commit or in the worktree - `git grep -q hostResyncs HEAD -- native` exits 1, and the same against the
+  working tree. The rename moved no smoke total: exactly one of the 9 added lines is a `check (` call, and
+  it is that check's own expression being renamed, not a check being added.
+- **A grep claim this section itself made false, caught on the next read.** The bullet above first said
+  "zero old sites in any tracked file", measured against the tree before it was written - and writing it
+  down names the old string, so a whole-tree grep for it now exits 0 and hits only prose in these two
+  bullets. Nothing was mis-measured; the scope was overstated. The rule that comes out of it is the one the
+  census above is now written with: a rename census counts code and test sites, so the grep is scoped to
+  `native/`, while a doc that discusses a rename is expected to contain the name it discusses. Prose
+  occurrences in this file are the record, not the residue, and their count is deliberately not stated -
+  any number written here would be one more thing this file has to re-measure just to stay true.
 
 ## 8D. What Step 28 had to correct about its own gate, and what its host test does not prove (2026-11-16)
 
