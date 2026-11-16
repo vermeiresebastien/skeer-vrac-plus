@@ -102,8 +102,10 @@ try {
     foreach ($stale in @((Join-Path $LaunchDir 'SliceForge.exe'), (Join-Path $LaunchDir 'SliceForge.vst3'))) {
         if (Test-Path -LiteralPath $stale) { Remove-Item -LiteralPath $stale -Recurse -Force }
     }
-    Get-ChildItem -LiteralPath $LaunchDir -Filter 'SliceForge-*-Windows-x64.zip' -File -ErrorAction SilentlyContinue |
-        Remove-Item -Force
+    # The previous zip is NOT deleted here. It used to be, which meant any failure in the packing or
+    # verification below handed back a tracked deliverables folder with no portable package in it at
+    # all - the exact outcome the header of this file promises cannot happen. The verified archive is
+    # moved over the old one at the end, and Move-Item -Force is the replacement.
 
     Move-Item -LiteralPath (Join-Path $Staging 'SliceForge.exe') -Destination (Join-Path $LaunchDir 'SliceForge.exe')
     Move-Item -LiteralPath (Join-Path $Staging 'SliceForge.vst3') -Destination (Join-Path $LaunchDir 'SliceForge.vst3')
@@ -118,11 +120,43 @@ try {
     try {
         # Packed from launch/, so the archive and the folder cannot disagree, and packed last: every
         # byte inside it has already been verified sitting there.
-        Compress-Archive -LiteralPath @((Join-Path $LaunchDir 'SliceForge.exe'),
-                                       (Join-Path $LaunchDir 'SliceForge.vst3'),
-                                       $InstallNote,
-                                       $ReadmeSrc) `
-                        -DestinationPath $ZipStaging -CompressionLevel Optimal -Force
+        #
+        # Written member-by-member instead of with Compress-Archive, because Compress-Archive puts a
+        # BACKSLASH in every nested member name in both the central directory and the local headers,
+        # which is not what the ZIP spec (APPNOTE 4.4.17, "the path stored ... using '/' ") and
+        # POSIX require of a portable archive. The module is a folder, so three of this archive's six
+        # members were affected, and a host or an unzipper that keys on the spec separator finds no
+        # bundle at all. CreateEntry takes the name verbatim, so the separator here is a decision
+        # rather than a side effect, and it is '/'. Directory rows are not written: an archive whose
+        # members all name real files cannot disagree with the folder it was packed from.
+        Add-Type -AssemblyName System.IO.Compression
+        Add-Type -AssemblyName System.IO.Compression.FileSystem
+        $LaunchBundle = Join-Path $LaunchDir 'SliceForge.vst3'
+        $bundleRootFull = (Get-Item -LiteralPath $LaunchBundle).FullName.TrimEnd('\')
+        $members = @()
+        $members += @{ Name = 'SliceForge.exe'; Path = (Join-Path $LaunchDir 'SliceForge.exe') }
+        $members += @{ Name = 'INSTALL.txt';    Path = $InstallNote }
+        $members += @{ Name = 'README.md';      Path = $ReadmeSrc }
+        Get-ChildItem -LiteralPath $LaunchBundle -Recurse -File -Force | ForEach-Object {
+            $rel = $_.FullName.Substring($bundleRootFull.Length).TrimStart('\').Replace('\', '/')
+            $members += @{ Name = ('SliceForge.vst3/' + $rel); Path = $_.FullName }
+        }
+        $zipFs = [System.IO.File]::Open($ZipStaging, [System.IO.FileMode]::Create)
+        try {
+            $archiveWriter = New-Object System.IO.Compression.ZipArchive(
+                $zipFs, [System.IO.Compression.ZipArchiveMode]::Create)
+            try {
+                foreach ($member in $members) {
+                    $entry = $archiveWriter.CreateEntry($member.Name,
+                        [System.IO.Compression.CompressionLevel]::Optimal)
+                    $src = [System.IO.File]::OpenRead($member.Path)
+                    try {
+                        $dst = $entry.Open()
+                        try { $src.CopyTo($dst) } finally { $dst.Dispose() }
+                    } finally { $src.Dispose() }
+                }
+            } finally { $archiveWriter.Dispose() }
+        } finally { $zipFs.Dispose() }
 
         # An archive holds independently compressed members: nothing so far proved this one contains
         # these bytes rather than a truncated or stale copy of them, which is what a user finds out
@@ -134,11 +168,18 @@ try {
 
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $found = @{}
+        $badSeparators = @()
         $BundlePrefix = 'sliceforge.vst3/'
         $archive = [System.IO.Compression.ZipFile]::OpenRead($ZipStaging)
         try {
             foreach ($entry in $archive.Entries) {
-                $key = $entry.FullName.Replace('\', '/').ToLowerInvariant()
+                # Byte-wise, and deliberately NOT Replace('\','/'): normalising the separator here is
+                # what let an archive full of backslashed member names pass this gate for as long as it
+                # took the folder offline. A member name is data the receiving system reads, so the
+                # verifier has to look at the bytes actually stored, and a backslash is a failure in
+                # its own right, reported before the hashes are compared.
+                if ($entry.FullName.Contains('\')) { $badSeparators += $entry.FullName }
+                $key = $entry.FullName.ToLowerInvariant()
                 # Compress-Archive writes a member for every directory as well as every file, so a
                 # member is judged by the path it maps back to: the directory rows are not files,
                 # and anything that maps outside these four roots stays in the comparison and is
@@ -159,6 +200,10 @@ try {
         }
         finally { $archive.Dispose() }
 
+        if ($badSeparators.Count -gt 0) {
+            throw ("$ZipStaging stores " + $badSeparators.Count + ' member name(s) with a backslash: ' +
+                   (($badSeparators | Select-Object -First 6 | ForEach-Object { "$_" }) -join '; '))
+        }
         Assert-SameBytes (Compare-ExportHashMaps $zipWanted $found) "$ZipStaging does not contain the exported build"
         Move-Item -LiteralPath $ZipStaging -Destination $Zip -Force
     }
