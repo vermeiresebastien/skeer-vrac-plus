@@ -45,7 +45,7 @@ host-synced 32-step sequencer with pattern chaining, polymeter, parameter locks 
 | Installed plugin | `%ProgramFiles%\Common Files\VST3\SliceForge.vst3` |
 | Installed standalone | `%LOCALAPPDATA%\Programs\SliceForge\SliceForge.exe` |
 | Launch folder | `..\launch\` — `SliceForge.exe`, `SliceForge.vst3`, `SliceForge-1.0.0-Windows-x64.zip`, `start.bat` |
-| Test suite | 139 engine/state checks, editor layout snapshots, VST3 host load |
+| Test suite | 169 engine/state checks, editor layout snapshots, VST3 host load |
 
 The plugin bundle is self-contained (factory audio and SKEER brand assets are embedded, no
 external resource folder). The build is about **24 MB**. The VST3 session identity is preserved
@@ -152,10 +152,13 @@ native\build\SliceForgeHostTest_artefacts\Release\SliceForgeHostTest.exe
 ```
 
 The host test asks JUCE's VST3 hosting path to scan and instantiate the built bundle, asserts the
-349 exposed parameters (347 from `createParameterLayout` — 11 global plus 21 for each of 16 pads —
-with the wrapper's own `Bypass` and `Program` on top), accepts an eight-stereo-output bus layout,
+**350** parameters a host sees once the VST3 wrapper appends its own `Bypass` and `Program` on top of
+the 348 that `createParameterLayout` builds (9 globals before the pad loop, 21 for each of 16 pads,
+the 2 output-stage controls, then `seq.pattern` appended last), pins `seq.pattern` to the last layout
+slot by index and step count, accepts an eight-stereo-output bus layout,
 processes MIDI note 36, checks the output is finite and non-silent, and round-trips the plugin
-state. The total is asserted exactly, not printed and compared against a round number.
+state. The total is asserted exactly, not printed and compared against a round number. The bare
+processor asserts the 348 half, so both numbers are gated, in two different programs.
 
 The layout test writes light and dark snapshots for the kit, sequencer, step inspector and
 Sample Vault pages, opens the step inspector through the real UI path and verifies that no child
@@ -194,10 +197,12 @@ control falls outside its parent.
   host-state XML) restores bypassed and still plays
 - randomizer, Euclidean, parseable MIDI file and CPU-headroom checks
 
-Current result: **139/139 passed**, with the engine using between **4.4% and 6.1% of one core** across
-separate runs of the same binary while continuously triggering pads at 48 kHz / 512 samples (this run,
-5.04%). The spread is real, so the figure is reported and never asserted: real-time safety rests on the
-finite-and-in-ceiling checks, not on a wall-clock bound that measured the machine rather than the engine.
+Current result: **169/169 passed** - that is what `SliceForgeSmokeTest.exe` prints on the tree this file
+describes, so re-run it rather than trusting the number here - with the engine using between **4.4% and
+6.1% of one core** across separate runs of the same binary while continuously triggering pads at
+48 kHz / 512 samples (the run that printed the 169/169 above reported 4.45%). The spread is real, so the
+figure is reported and never asserted: real-time safety rests on the finite-and-in-ceiling checks, not on
+a wall-clock bound that measured the machine rather than the engine.
 
 ---
 
@@ -254,10 +259,21 @@ Use the **KIT / SEQUENCER / VAULT** tabs in the header. The sequencer runs along
 engine and follows host transport when available.
 
 - **Patterns A–D** — four independent patterns with per-pattern lane mute/solo. Click a letter to
-  edit and play it; right-click it to copy that pattern to another slot.
+  edit and play it; right-click it to copy that pattern to another slot. Which one is live is a plugin
+  parameter (**Active Pattern**, four choices, appended after every other control), so the host can
+  automate it, learn it to a controller and recall it per position, and it travels with the saved
+  session. The chips write that same parameter and mirror it back, so the UI and the host cannot
+  disagree about what is playing.
 - **Transport** — follows the host playhead and tempo; **PLAY** can preview on the internal
   clock when the host is stopped. **HOST** toggles host sync.
-- **Length / division / swing** — 1–32 steps, 1/8, 1/8T, 1/16, 1/16T or 1/32, plus swing.
+- **Length / division / swing** — 1–32 steps, 1/8, 1/8T, 1/16, 1/16T or 1/32, plus swing. One boundary is
+  worth naming at the fine end: the plugin tells ordinary per-block jitter from a real transport jump with a
+  tolerance of half a block, while a 1/32 step is a fixed size, so past about `block samples × BPM = 720 000`
+  (4096 samples from roughly 176 BPM, 8192 from roughly 88, at 48 kHz) a jump of one whole step is read as
+  continued playback.
+  Nothing goes silent and edits still land — what does not happen is the hit-history reset, so a jump that
+  lands on a step boundary can drop or repeat a single hit. Recorded as a known defect, with the gate that
+  pins both sides of the seam, in `docs/next-steps-plan.md` section 8C.
 - **Colour-coded steps** — active steps use their drum-family colour: kick coral orange, snare
   electric blue, hats mint teal and clap violet. The playhead and transport state use the green
   playback colour.
@@ -386,7 +402,7 @@ Source/
     SourcePanel / PadEditorPanel / HeaderBar / FooterBar / SequencerGrid / SequencerPanel /
     VaultPanel
 Tests/
-  SmokeTest.cpp         139 audio/state checks
+  SmokeTest.cpp         169 audio/state checks
   LayoutTest.cpp        editor bounds + PNG snapshots
   HostTest.cpp          scans and loads the built VST3 through JUCE's host path
 ```

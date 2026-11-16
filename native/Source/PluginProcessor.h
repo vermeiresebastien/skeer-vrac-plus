@@ -107,6 +107,12 @@ public:
 
     std::shared_ptr<const sliceforge::SequencerData> getSequencerData() const;
     void setSequencerData (std::shared_ptr<const sliceforge::SequencerData> data);
+    /** The live pattern choice. `seq.pattern` owns it: the render thread reads the cached atomic,
+        so this answers "what is playing" rather than "what the document copy last carried".
+        SequencerData::activePattern is the mirror the grid, the exporter and the saved blob read,
+        and it is stamped from here. */
+    int getPatternParameter() const noexcept { return parameterCache.readActivePattern(); }
+    void setPatternParameter (int index);
     void setSequencerInternalPlaying (bool shouldPlay);
     bool isSequencerInternalPlaying() const noexcept { return seqInternalPlaying.load (std::memory_order_relaxed); }
     bool isSequencerHostPlaying() const noexcept { return seqHostPlaying.load (std::memory_order_relaxed); }

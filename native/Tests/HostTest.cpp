@@ -61,17 +61,50 @@ int main (int argc, char** argv)
     std::cout << "  buses: " << instance->getBusCount (true) << " in / " << instance->getBusCount (false)
               << " out\n";
 
-    // 347 parameters come from createParameterLayout (11 global plus 21 for each of 16 pads), and
-    // JUCE's VST3 wrapper always adds Bypass and Program on top, so a host sees 349. Asserting the
-    // exact total is the only thing that keeps the count in the READMEs from drifting: printing it
-    // and checking it against 300 let 347, 349 and 345 all look like a pass.
-    if (instance->getParameters().size() != 349)
+    // 348 parameters come from createParameterLayout (nine globals before the pad loop, 21 for each of
+    // 16 pads, the two output-stage parameters after it and seq.pattern appended last), and JUCE's VST3
+    // wrapper always adds Bypass and Program on top, so a host sees 350. Asserting the exact total is the
+    // only thing that keeps the count in the READMEs from drifting: printing it and checking it against
+    // 300 let 347, 349 and 345 all look like a pass.
+    if (instance->getParameters().size() != 350)
     {
-        std::cout << "FAIL expected 347 layout parameters plus the wrapper's Bypass and Program, got "
+        std::cout << "FAIL expected 348 layout parameters plus the wrapper's Bypass and Program, got "
                   << instance->getParameters().size() << '\n';
         return 1;
     }
-    std::cout << "  parameters: 349 = 347 layout + Bypass + Program\n";
+    // The total can be right while the parameter that changed it is absent, so the host's own view of
+    // the pattern control is looked up by id. Measured here rather than assumed: a VST3 id is NOT the
+    // APVTS string. The export hashes it (`juce_audio_plugin_client_VST3.cpp:659-674`,
+    // `generateVSTParamIDForParam` -> `juceParamID.hashCode()`, because `JUCE_FORCE_USE_LEGACY_PARAM_IDS`
+    // is off) and the host reads the number back (`juce_VST3PluginFormat.cpp:2579-2582`,
+    // `String (cachedInfo.id)`), so "seq.pattern" surfaces as 825878785. The literal is pinned from what
+    // this run printed instead of recomputed from the hash function, and the mapping is why P4 freezes
+    // ids: renaming the parameter would point every host's saved automation at a different number.
+    {
+        const auto& parameters = instance->getParameters();
+        int patternIndex = -1;
+        for (int i = 0; i < parameters.size(); ++i)
+            if (auto* hosted = dynamic_cast<juce::HostedAudioProcessorParameter*> (parameters[i]))
+                if (hosted->getParameterID() == "825878785")
+                    patternIndex = i;
+        auto* patternParam = patternIndex >= 0 ? parameters[patternIndex] : nullptr;
+        if (patternParam == nullptr || patternIndex != parameters.size() - 3
+            || ! patternParam->isDiscrete() || patternParam->getNumSteps() != 4
+            || patternParam->getDefaultValue() != 0.0f
+            || ! patternParam->getName (128).containsIgnoreCase ("pattern"))
+        {
+            std::cout << "FAIL seq.pattern is not the appended four-step control a host must see: index "
+                      << patternIndex << " of " << parameters.size() << ", steps "
+                      << (patternParam != nullptr ? patternParam->getNumSteps() : -1) << ", default "
+                      << (patternParam != nullptr ? patternParam->getDefaultValue() : -1.0f) << '\n';
+            return 1;
+        }
+        std::cout << "  seq.pattern: host id 825878785, index " << patternIndex << ", "
+                  << patternParam->getNumSteps() << " steps, default "
+                  << patternParam->getDefaultValue() << ", named "
+                  << patternParam->getName (128) << '\n';
+    }
+    std::cout << "  parameters: 350 = 348 layout + Bypass + Program\n";
 
     juce::AudioProcessor::BusesLayout layout;
     layout.inputBuses.add (juce::AudioChannelSet::disabled());

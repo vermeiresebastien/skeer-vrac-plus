@@ -364,6 +364,22 @@ namespace sliceforge::ui
         data = processorRef.getSequencerData();
         if (data == nullptr)
             return;
+        /*  The parameter owns the live choice, so a host that automates seq.pattern, or a session
+            restored before this panel ever painted, can leave the document's mirror pointing at a
+            different pattern from the one the selector is on. Catch it up here rather than let the
+            grid, the clipboard and the exporter work from the disagreeing copy. The mirror means "the
+            pattern standalone mode plays and the next save records"; while song mode is on the chain
+            picks what you hear, so neither copy is the audible pattern and this restamp buys no
+            "the panel finally shows the truth" beyond keeping the two in step. Not an undo step:
+            nobody edited anything. */
+        if (const auto live = processorRef.getPatternParameter(); live != data->activePattern)
+        {
+            auto stamped = sliceforge::cloneSequencerData (*data);
+            stamped->activePattern = live;
+            data = std::move (stamped);
+            processorRef.setSequencerData (data);
+        }
+        patternAtLastRefresh = processorRef.getPatternParameter();
         selectedLane = juce::jlimit (0, sliceforge::kNumPads - 1, selectedLane);
         grid.setData (data);
         grid.setSelectedLane (selectedLane);
@@ -382,6 +398,11 @@ namespace sliceforge::ui
     void SequencerPanel::timerCallback()
     {
         refreshPlayhead();
+        /*  One atomic load and a compare, 30 times a second. Nothing tells a panel that a host
+            moved seq.pattern on its own - no UI change is broadcast - and a chip that keeps
+            lit the pattern nobody is hearing is the visible half of this feature. */
+        if (patternAtLastRefresh != processorRef.getPatternParameter())
+            refreshFromProcessor();
     }
 
     void SequencerPanel::updateTransportButton()
@@ -424,6 +445,9 @@ namespace sliceforge::ui
 
     void SequencerPanel::pushUndo()
     {
+        // Public on the processor: a chip click writes two places - the parameter and the
+        // document's mirror - and one user gesture is one undo step, so the pair is bracketed
+        // here instead of relying on edit()'s internal push.
         processorRef.pushUndoSnapshot();
     }
 
@@ -454,7 +478,7 @@ namespace sliceforge::ui
             return;
         updatingControls = true;
 
-        const int activePattern = juce::jlimit (0, sliceforge::kSeqPatterns - 1, data->activePattern);
+        const int activePattern = processorRef.getPatternParameter();
         for (int i = 0; i < sliceforge::kSeqPatterns; ++i)
             styleChip (patternButtons[(size_t) i], i == activePattern);
 
@@ -502,9 +526,16 @@ namespace sliceforge::ui
     void SequencerPanel::setActivePattern (int pattern)
     {
         pattern = juce::jlimit (0, sliceforge::kSeqPatterns - 1, pattern);
-        if (data == nullptr || pattern == data->activePattern)
+        if (data == nullptr || pattern == processorRef.getPatternParameter())
             return;
-        edit ([pattern] (sliceforge::SequencerData& d) { d.activePattern = pattern; }, true);
+        /*  Two writes, one undo step. The parameter is the authority the render path reads every
+            block; the document's field is the mirror that the grid target, the MIDI export and the
+            saved blob read. Moving only one of them is how a chip and a session end up describing
+            different patterns. */
+        pushUndo();
+        processorRef.setPatternParameter (pattern);
+        edit ([pattern] (sliceforge::SequencerData& d) { d.activePattern = pattern; }, false);
+        patternAtLastRefresh = pattern;
     }
 
     void SequencerPanel::setEditMode (SequencerGrid::EditMode mode)
@@ -936,6 +967,8 @@ namespace sliceforge::ui
             return;
         auto target = file.hasFileExtension ("mid") ? file : file.withFileExtension ("mid");
         auto exportData = *data;
+        // The parameter is what the render path plays, so it is what the file has to describe.
+        exportData.activePattern = processorRef.getPatternParameter();
         if (exportData.hostSync)
             exportData.bpm = processorRef.getSequencerHostBpm();
         const auto block = sliceforge::makePatternMidiFile (exportData);
@@ -1005,7 +1038,9 @@ namespace sliceforge::ui
                             + (data->songMode ? "  /  SONG" : ""),
                         948, 34, 274, 12, juce::Justification::centredRight, false);
 
-            const auto active = juce::jlimit (0, sliceforge::kSeqPatterns - 1, data->activePattern);
+            // The readout names the pattern the scheduler is playing, not the one the document
+            // copy happens to carry: a host automating seq.pattern moves this line.
+            const auto active = processorRef.getPatternParameter();
             g.setColour (c.muted);
             g.setFont (font (6.8f, true));
             g.drawText ("PATTERN " + juce::String::charToString ((juce::juce_wchar) ('A' + active))

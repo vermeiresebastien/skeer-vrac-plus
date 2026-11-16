@@ -313,7 +313,10 @@ void SliceForgeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     sliceforge::SeqBlockOutput sequenceOutput;
     if (sequence != nullptr)
         sliceforge::processSequencerBlock (*sequence, hostInfo, seqInternalPlaying.load (std::memory_order_relaxed),
-                                     currentSampleRate, numSamples, seqRandom, seqPlaybackState, sequenceOutput);
+                                     currentSampleRate, numSamples, seqRandom, seqPlaybackState, sequenceOutput,
+                                     // Read once per block, so a host that automates the pattern
+                                     // mid-block cannot hand one block two different answers.
+                                     parameterCache.readActivePattern());
 
     if (sequenceOutput.droppedTriggers > 0)
         droppedHits.fetch_add (sequenceOutput.droppedTriggers, std::memory_order_relaxed);
@@ -545,6 +548,13 @@ void SliceForgeAudioProcessor::setSequencerData (std::shared_ptr<const sliceforg
         && (previous->division != next->division || previous->hostSync != next->hostSync))
         seqResetRequested.store (true, std::memory_order_relaxed);
     markHostStateDirty();
+}
+
+void SliceForgeAudioProcessor::setPatternParameter (int index)
+{
+    // setValueNotifyingHost, not the parameter's operator=: a chip click has to reach the host as
+    // well, or Live keeps showing - and automating - the pattern the plugin stopped playing.
+    setParameterValue ("seq.pattern", (float) juce::jlimit (0, sliceforge::kSeqPatterns - 1, index));
 }
 
 void SliceForgeAudioProcessor::setSequencerInternalPlaying (bool shouldPlay)
@@ -1018,7 +1028,18 @@ void SliceForgeAudioProcessor::getStateInformation (juce::MemoryBlock& destData)
     extra.addChild (mappings, -1, nullptr);
 
     if (const auto sequence = sequencerData.load (std::memory_order_acquire))
-        extra.setProperty ("sequencer", sliceforge::serialiseSequencer (*sequence), nullptr);
+    {
+        // The saved field is a copy of the live selector, not of whatever the document happens to
+        // carry, so a session round-trips the pattern the panel is showing. That is the field's
+        // meaning: the pattern standalone mode plays and the next session resumes on. In song mode the
+        // chain owns what you hear, and neither this field nor the parameter is what was audible, so
+        // this stamp buys no "the host automated it and the save followed" benefit here - it just keeps
+        // the standby selector honest. Same slot in the blob, same field, same version: the serialiser
+        // is untouched.
+        auto forSave = sliceforge::cloneSequencerData (*sequence);
+        forSave->activePattern = getPatternParameter();
+        extra.setProperty ("sequencer", sliceforge::serialiseSequencer (*forSave), nullptr);
+    }
 
     state.addChild (extra, -1, nullptr);
 
@@ -1039,6 +1060,10 @@ void SliceForgeAudioProcessor::setStateInformation (const void* data, int sizeIn
         parameterState.removeChild (extra, nullptr);
     else
         extra = juce::ValueTree ("VRAC_EXTRA");
+    // Presence, not value: a session written before seq.pattern existed carries no child for it,
+    // and then the pattern stored inside the document blob is the only record of what was playing.
+    const bool stateCarriesPattern
+        = parameterState.getChildWithProperty ("id", "seq.pattern").isValid();
     apvts.replaceState (parameterState);
 
     sourceId = extra.getProperty ("sourceId", "foley").toString();
@@ -1141,6 +1166,17 @@ void SliceForgeAudioProcessor::setStateInformation (const void* data, int sizeIn
     }
     if (loadedSequence == nullptr)
         loadedSequence = sliceforge::cloneSequencerData (*sliceforge::makeDefaultSequencerData());
+    /*  Two records of one choice, and they can disagree. seq.pattern is the automation lane; the
+        field inside the pattern blob is what a document stored before the parameter existed.
+        A state that carries the parameter wins, because that is the value the host will drive from
+        here on, and the document's copy is restamped so the grid, the exporter and the next save
+        describe the pattern that is actually playing. A state that does not carry it is an older
+        session - the blob is the only witness, so it initialises the parameter instead. Either way
+        the serialised field keeps its slot and its meaning: nothing here renumbers the format. */
+    if (stateCarriesPattern)
+        loadedSequence->activePattern = getPatternParameter();
+    else
+        setPatternParameter (loadedSequence->activePattern);
     sequencerData.store (loadedSequence, std::memory_order_release);
     seqInternalPlaying.store (false, std::memory_order_relaxed);
     seqResetRequested.store (true, std::memory_order_relaxed);

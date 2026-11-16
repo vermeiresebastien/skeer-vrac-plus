@@ -119,6 +119,8 @@ were stale inside a day, because every step that lands edits the very files it c
 (`VRAC_EXTRA`, `PLUGIN_CODE`, `getChildFile ("SliceForge")`) are the durable half. Round 2's claim that
 the README should read 347 is retracted above. What the README *was* wrong about is its check counts
 (109 against a 117-check suite) and "about 5% of one core"; both were fixed with Step 29 on 2026-11-15.
+  (Same exemption: that 117 and the 347 above are dated reads. The live pair is 169 checks and 350 host-visible,
+  re-measured 2026-11-16 after the Step 26 host-path gate was reworked into four per-arm checks.)
 Everything else in `AGENTS.md`'s frozen list checked out, including `Sequencer.cpp:12`,
 `storage.ts:5-7`, `sampleStore.ts:7`, `UI/Theme.cpp:75` and `VaultLibrary.cpp:143` — the last is
 `native/Source/VaultLibrary.cpp`, not under `Source/UI/`, and round 1's Step 11 cited it without the
@@ -236,9 +238,11 @@ two are refuted, and the refutations are why this entry now carries evidence in 
   paragraph is *not* a line reference: `AGENTS.md:99` names `PLUGIN_CODE` before
   `PLUGIN_MANUFACTURER_CODE`, while `native/CMakeLists.txt` puts the manufacturer at `:106` and the
   plugin code at `:107`. That is a wording fix and belongs to the stage that already edits `AGENTS.md`.
-- **Machine-hold the exact parameter count — built, and not by this step.** `native/Tests/HostTest.cpp:68`
-  reads `if (instance->getParameters().size() != 349)` — a literal, so it reddens when the layout
-  changes — and `:74` prints the composition (`349 = 347 layout + Bypass + Program`).
+- **Machine-hold the exact parameter count - built, and not by this step.** `native/Tests/HostTest.cpp:69`
+  reads `if (instance->getParameters().size() != 350)` - a literal, so it reddens when the layout
+  changes - and `:107` prints the composition (`parameters: 350 = 348 layout + Bypass + Program`), with
+  `:102` printing the pattern control's host index. The bare-processor view is 348; the two differ by the
+  wrapper's pair, and both numbers are current.
 - **Retire or scope the "no audio-thread allocation" sentence — refuted, so the sentence stays.**
   `native/README.md:394` ("32 fixed voices; no audio-thread allocation or locking") is accurate, and
   adding the caveat asked for here would have injected a false claim into a correct document. The cited
@@ -255,7 +259,7 @@ two are refuted, and the refutations are why this entry now carries evidence in 
   `:99`; `allocateChannels` (`:1231-1244`) carries the comment "try to avoid doing a malloc here, as
   that'll blow up things like Pro-Tools" at `:1235` and points `channels` at the member array
   `preallocatedChannelSpace[32]` (`:1290`) whenever `numChannels < 32`, reaching `allocatedData.malloc`
-  only in the `else` at `:1242`. That bound is ours, not the host's: `isBusesLayoutSupported`
+  only in the `else` branch at `:1240-1242` (`:1240` is the `else`, `:1242` is the `allocatedData.malloc`). That bound is ours, not the host's:
   (`PluginProcessor.cpp:48-70`) requires exactly `kNumBuses` output buses (`Params.h:9` — 8) and
   rejects any enabled bus that is not stereo (`:52-59`), with at most one input bus of mono or stereo
   (`:60-68`), so `busNumChannels` is ≤ 2 and the malloc branch is off this path by construction rather
@@ -274,6 +278,11 @@ two are refuted, and the refutations are why this entry now carries evidence in 
   audio thread. A counted gate — an allocator shim, or a counted `operator new` over a rendered block,
   red before and green after — is what would turn this into a proof, and nobody has built one. No
   "hold a reusable member" change is to be written: there is nothing to hold.
+  One runner fact worth recording here: a standalone `SliceForgeHostTest.exe` prints its `parameters:` line and
+  exits 0 only when started from the repo root; from `native/` it prints `FAIL bundle not found` and exits 1.
+  It links no shared code and loads the built VST3 at runtime, and it is the ctest `WORKING_DIRECTORY`
+  (`native/CMakeLists.txt:180-181`) that supplies the root for the suite. As of this commit that line prints
+  `parameters: 350 = 348 layout + Bypass + Program`; the count is stated as of the commit, not as a literal.
 
 Round 2's headline for this step — "347 not 349" — is **retracted on measurement**: `SliceForgeHostTest.exe`
 on the current build prints `parameters: 349`, so `native/README.md:155` was right and my own plan was
@@ -288,6 +297,10 @@ assertion, and the allocation sentence.
 
 *That last sentence is superseded as of 2026-11-16: of the three, one was already built and two fell to
 measurement. Read the entry above rather than this 2026-11-15 account of what remained.*
+
+*Forward note, not a correction of the record above: as of Step 26 the layout carries 348 ids and a host
+sees 350, because `seq.pattern` was appended. The 347/349 pair in the paragraph above is what those runs
+printed, and it stays.*
 
 Gate: `ctest --test-dir native/build -C Release --output-on-failure` green with the exact-count
 assertion in place. Build the test targets first — bare ctest runs stale binaries. What is left of this
@@ -416,8 +429,13 @@ a master recording and say so in the bounce's README.
 Measured drift: **23 verified divergences** between the two implementations, and exactly one
 cross-edition test — `src/audio/__tests__/outputStage.test.ts:13-14,30,61`, which merely restates two
 constants (`0.349`, `0.844`) that are also hardcoded in `SmokeTest.cpp:835`. The parameter *surface*
-is clean (347 ids, ranges and units match `src/types.ts:73-140`); it is the math and the defaults that
-have split. The three that matter: native runs the master chain once **per bus** — 8 chains,
+is clean on the shared surface (the ids, ranges and units both editions carry match `src/types.ts:73-140`);
+it is the math and the defaults that have split.
+  NOTE, as of Step 26: the native layout now carries 348 ids and the web layout 347, because `seq.pattern`
+  exists only in native. So the sentence above is about the surface the two editions still share, not about
+  the two files holding the same count - the web side is behind, not the native side wrong, and sweeping
+  `src/types.ts` is its own task.
+The three that matter: native runs the master chain once **per bus** — 8 chains,
 `VoiceEngine.cpp:677-688` — while web sums all eight outputs into **one** chain
 (`src/audio/audioEngine.ts:114-119` connects every bus's gain to the same `chain.input`), and web has a
 `DynamicsCompressor` at −7 dB 5:1 (`src/audio/masterChain.ts:57-62`) that native does not have at all;
@@ -598,6 +616,18 @@ probability 0.5 on all sixteen lanes and asserts (a) the two passes are not the 
 arrives or leaves together. Must fail on today's code, and it must fail on the *first* assertion only,
 not because (b) broke.
 
+Built 2026-11-16 in `4abe4b0`, gate red first: `FAIL  a looped bar re-rolls its probability` with pass 1
+and pass 2 printing the identical 40-character signature `-PPPPP--P--PPPPPPP----P-PP-PPPPPP`, then green.
+The check cannot pass for the wrong reason, and the reason is stronger than "same seed, same result":
+`probabilityRollFor` is pure splitmix64 over `patternIndex`, `pad`, `absoluteStep` and `passCount` with no
+RNG in it, and every `random.nextFloat()` in `Sequencer.cpp` belongs to the pattern generator and the
+randomiser, not to the playback path (`:159` carries `juce::ignoreUnused (random); // see
+probabilityRollFor`). So the `juce::Random` carried across the two render passes cannot be what makes them
+differ, and the only input that changes between them is the pass counter. Two gaps in this gate were
+closed later, both by Step 26: it asserted a bare inequality where a counted one is honest (21 of 33 steps
+move between the passes, now pinned as a literal), and it covered one lane where the spec asked for
+sixteen, which left the `(pad + 1)` term of the roll unexercised at any pad but 0.
+
 **Step 23 — Scale the host resync tolerance to the block (0.25 d).**
 
 Verified state: `if (! reset && std::abs (ppqStart - state.expectedHostPpq) > 0.02) reset = true;`
@@ -630,9 +660,18 @@ look like the same concern and are not.
 
 Gate: a smoke check in two directions, because a widened tolerance can always be widened enough to
 pass vacuously. Feed 8 consecutive 2048-sample blocks at 90 BPM with exactly the ppq the scheduler
-predicts and assert zero resets; then jump one whole bar and assert **one** reset. Instrument it by
-counting history clears through a test-only seam, since "a reset happened" is otherwise invisible from
-outside. Must fail today on the first half.
+predicts and assert **one** clear; then jump one whole bar and assert **two**. "One", not the zero this
+entry originally asked for: engaging the transport clears the step history once, so a correct run counts
+the engage plus the seek, and zero would demand that the engage not clear. Counted as history clears
+through a test-only seam - the field is `SeqPlaybackState::historyClears`, one counter for both causes
+(transport engage and tolerance trip) after the Step 26 rename, and "a reset happened" is otherwise
+invisible from outside. Must fail today on the first half.
+
+Built 2026-11-16 in `4abe4b0`, with the gate red first: `FAIL  sub-block host position rounding is not a
+seek  [clears=9 expected=1]`, and the audible symptom red alongside it, `FAIL  overlapping host blocks do
+not play one hit twice  [fires at 64000 = 2 expected=1 clears=60]`, then both green. Common tail for the
+pair: `PASS - 148/148 checks passed`, `ctest -C Release` 100% out of 3, `npm test` 43 passed / 5 files,
+`npx tsc -b` exit 0.
 
 **Step 24 — Give every slice an end (1.5-2 d).** The single most audible step in this document.
 
@@ -712,6 +751,67 @@ parameter append is how two format changes land in one commit and one of them br
 Gate: `HostTest` asserts the id exists with the right range and step, and that moving the parameter
 between two values makes `processSequencerBlock` schedule a different pattern at the same host ppq —
 compared, not absolute, so the check does not depend on what pattern 0 happens to contain.
+
+Built 2026-11-16, red first and then green, and re-measured on the final tree after the host-path gate was
+reworked. Deleting the layout append printed
+`FAIL  the parameter surface is the documented 348 controls  [347]` and
+`FAIL  seq.pattern is a four-choice parameter appended after every existing id  [param=null range=0.000..1.000 step=0.000 last=global.out]`
+at 160/169, alongside `selecting a pattern moves the parameter and tells the host`, both restore checks,
+the parameter-over-blob disagreement check and three arms reading `fixture invalid param=0 want 1 mirror=2`
+- and note what is *not* in that list: not one arm's render assertion fired, because the null guard answers
+0 and the pre-check answers first (section 8C attributes each mutation to the component that catches it);
+the dated first read of the same mutation was 149/151. Underneath it the host test printed
+`FAIL expected 348 layout parameters plus the wrapper's Bypass and Program, got 349`.
+That second line is the whole story about the count-only gate, so the falsification was repeated with the
+total held at 350 by moving the append in front of the output-stage pair: smoke reddened on
+`last=global.out` at 168/169 (first read 164/165) and the host test reddened on index position alone -
+`FAIL seq.pattern is not the appended four-step control a host must see: index 345 of 350, steps 4,
+default 0` - steps, default, name and discreteness all still correct, so the identity conjunct is what
+fired. Both of those probe runs sit in logs named `…-m1final-…` and `…-m2final-…`; they are red
+falsifiers wearing a `final` token, and since `.gitignore:10` excludes `native/build/pm/` and a log must
+never be renamed after the fact, the strings quoted above are the record and the filenames are not.
+Restored, the tree is `PASS - 169/169 checks passed` at CPU 4.45% of one core and
+`PASS VST3 host test` printing
+`seq.pattern: host id 825878785, index 347, 4 steps, default 0, named Active Pattern` and
+`parameters: 350 = 348 layout + Bypass + Program`, with layout at 28 checks and ctest 100% out of 3, all at
+exit 0, with `Sequencer.cpp` verified at `6c69b8d8…` in the same command as the green run.
+
+Three things the entry above got wrong or did not know, and they are the record, not the plan:
+- **The control is an `AudioParameterChoice` of four names, not the `AudioParameterFloat` 0…3 stepped by
+  1 specified here.** `AudioParameterFloat` does not override `isDiscrete()`, so a stepped float keeps the
+  `AudioProcessorParameter` default and the host draws a fader with continuous interpolation
+  (`juce_AudioProcessorParameter.h:191-196` says so in its own doc comment); `AudioParameterChoice`
+  overrides it (`juce_AudioParameterChoice.h:149`) and gives `getNumSteps() == 4` plus value texts. The
+  Gate's "right range and step" survives the substitution; the widget does not.
+- **"HostTest asserts the id exists" is not achievable**, because a hosted parameter reports the hashed
+  numeric `Vst::ParamID`, never the APVTS string: `juce_VST3PluginFormat.cpp` builds `getParameterID()`
+  as `String (cachedInfo.id)` and the export hashes the string in `generateVSTParamIDForParam`. `seq.pattern`
+  surfaces as `825878785`, and `HostTest.cpp` pins that decimal with both library sites named in the comment
+  above it. The string id is gated in `SmokeTest`, where it is the real thing - which is also why the
+  frozen-identifier rule in `AGENTS.md` now has a second reason to hold: the hash is derived from the string.
+- **`kSeqPatterns` and `kSeqPatternFromDocument` moved to `Params.h:20` and `:26`.** The layout declares the
+  bank and the cache clamps the host into it, so the constants belong beside the layout; `Sequencer.h`
+  includes `Params.h` and keeps its own copy of `kSeqSteps` and `kSeqChainLength`. The `Sequencer.h:12`
+  cite above is where the constant sat when this entry was written.
+
+Authority, and how far it reaches: the parameter is the render path's answer, the document's `activePattern`
+is the mirror the offline callers read (export, preset blobs, standalone playback) and the field the next
+save records. Four arms drive `patternIndexForStep` with the mirror set to the *next* pattern each time, so
+no arm agrees by construction; the clamp case (`firedPads (99)`) and song mode (the chain wins and asserts
+the exact set of heard pads, not the last one) sit beside it. `selecting a pattern moves the parameter and
+tells the host` now carries an `AudioProcessorValueTreeState::Listener` spy, because the value alone was
+green while nothing notified. Two serialisation falsifiers cover a pre-`seq.pattern` blob and a blob that
+disagrees with the parameter. The last hole this entry can name is the wiring between the cache and the
+scheduler, gated by the four per-arm host-path checks - see section 8C, which also corrects what this step
+first wrote about whether that was possible at all, and records the two transport checks whose expectation
+turns out to be pattern-coupled. The tolerance regime above one step per block stays open, with its own
+defect entry in 8C.
+
+Side effects, all swept in this commit: the layout is 348 parameters and a host sees 350, so `AGENTS.md:136-142`,
+`native/README.md:48`, `:154-159`, `:199` and `:399` moved off 347/349 - and 348 (bare) and 350 (host) are
+both current, not a typo for each other, because the wrapper appends `Bypass` and `Program` after the
+layout. `SmokeTest.cpp:171` asserts 348 and `HostTest.cpp:69` asserts 350, each anchored to the previously
+measured value in its own view rather than re-derived.
 
 **Step 27 — Make the exported MIDI file the pattern you heard (0.5 d).**
 
@@ -871,6 +971,9 @@ What the pass changed, re-verified in the current tree:
   VST3 destination and the read-back verification (106 insertions / 29 deletions); and the docs were
   synced (`AGENTS.md` 34/19, `README.md` 4/4 including `:245` "43 tests, 5 files",
   `native/README.md` 11/9 including `:155` the 349 composition and `:197`/`:389` the 139 total).
+  *Both of those figures are superseded, and this bullet records what that commit changed, not what is
+  true now: as of Step 26 the composition is 350 host-visible = 348 layout + Bypass + Program, and the
+  total is whatever the newest green smoke run prints (`native/README.md` carries it, stamped there).*
 
 What proves it — the checks that exist today, not a red-then-green record (see the last bullet):
 the smoke suite refuses a pattern blob missing 1, 8 or half its bytes (`SmokeTest.cpp:736-750`);
@@ -899,6 +1002,144 @@ program's own `PASS - 139/139 checks passed`, `npm test` 43/5 and `npx tsc -b` c
 against the tree this entry describes.
 
 ---
+
+## 8C. The defect Step 26 left open, the gate its first pass called impossible, and two checks that do not
+test their own names (2026-11-16)
+
+- **No host resync tolerance separates a seek from noise once half a block is as wide as a step.** The
+  committed predicate is `jmax (0.02, blockPpq * 0.5)` (`Sequencer.cpp:291`), and legitimate sub-block
+  disagreement is bounded by half a block while the smallest deliberate move is one step (`1 / division`).
+  Those are separable only while `0.5 * blockPpq < 1 / division`, i.e. `numSamples * bpm < 720000` at 1/32
+  on 48 kHz. Past the seam a one-step edit reads as playback and is swallowed (`SmokeTest.cpp` keeps the
+  case green as the named `KNOWN DEFECT:` characterisation), which is reachable from the UI because
+  `UI/SequencerPanel.cpp:270` offers `1/32`. Capping the tolerance at half a step was measured, not argued.
+  (Probe logs live under `native/build/pm/`, which `.gitignore` excludes at `:10` - so the strings quoted
+  below are the record, not the files.) The run printed three reds, and only one of them is the cap doing
+  its job:
+  `KNOWN DEFECT: a one-step 1/32 edit inside a 0.28 ppq block is not a seek` moves from `clears=1` to
+  `clears=2`, which is exactly the falsifier that check's own comment names (`SmokeTest.cpp:790-792`).
+  The other two are collateral, and both sit at settings the committed formula already separates.
+  `sub-block rounding on a 1/32 grid is not a seek` (`SmokeTest.cpp:805-820`) is 4096 samples at 120 BPM
+  with 0.08 ppq of per-block rounding, and it reddens at `clears=9`; `blockPpq` there is 0.1707, so the
+  honest window is `(0.0853, 0.125)` - above half a block or every block trips, below one 1/32 step or a
+  seek is swallowed - a cap at half a step lands it at 0.0625, and 4096 x 120 is well *below* the 720000
+  seam. `a small block keeps the original tolerance window` (`SmokeTest.cpp:771-781`) is 512 at 120 with
+  0.015 ppq of rounding and also reddens at `clears=9`, and that third red is the one nobody predicted -
+  it is what identifies the expression that ran. The probe used the dispatch brief's own clamp,
+  `jmin (blockPpq * 0.5, 0.5 / division)`, which has **no floor in it**: at 512/120 that is
+  `min (0.0107, 0.125) = 0.0107`, under the 0.015 ppq the check calls ordinary playback, so every block
+  trips. The floored variant `jmin (jmax (0.02, blockPpq * 0.5), 0.5 / division)` predicts that check
+  green, so it is not what ran, and 0.0107 / 0.0625 / 0.0625 reproduce all three printed numbers. The
+  brief's aside that "the 0.02 floor can never beat the cap" holds for the floored form only. So the cap
+  is not the neutral "policy choice above the seam" this
+  entry first called it - it spends the loud symptom (per-block double hits and torn flam/ratchet, since
+  the same `reset` clears the step history and bumps the pass counter) to buy seek detection, and it
+  breaks two cases where nothing was being bought. That trade is the owner's call, not a bug fix.
+  The discriminating idea, if it is ever funded, is grid alignment: `std::abs (ppqStart * division
+  - std::round (ppqStart * division))` near zero points at a deliberate edit, and `division` is already in
+  scope. It needs its own control, because a host that always quantises to the grid would read as
+  always-seeking.
+- **The wire from the cache into the render path was ungated - and this entry's first pass called that
+  unfixable, which was wrong.** Step 26 moved the pattern choice into `seq.pattern`, and `processBlock`
+  passes `parameterCache.readActivePattern()` into `processSequencerBlock` as one int per block
+  (`PluginProcessor.cpp:315`, with the argument itself at `:319`). The gates covered both ends - the
+  callee, by a four-pattern differential driven through the new argument, and the cache, by
+  `getPatternParameter()` - but nothing covered the wiring between them. Measured, at the time: stubbing
+  `readActivePattern()` to `return 0` reddened four checks - `selecting a pattern moves the parameter and
+  tells the host`, `a session saved with the parameter on pattern C comes back on pattern C`, `a session
+  written before seq.pattern existed keeps its stored pattern` and `when the parameter and the blob
+  disagree, the parameter plays and the mirror follows` (161/165, that run's own total) - and replacing the
+  call-site argument with a constant reddened **nothing**. What this entry then asserted - that a headless
+  test has no `AudioPlayHead`, so the host path cannot be driven, and that the only pad observable is a
+  millisecond stamp too coarse to use - was a skipped search. `SmokeTest.cpp:15` already defines
+  `MockHostPlayHead` and two fixtures already run a real `processBlock` through it (`:454`, `:481`);
+  `getPadHitStamp` is
+  public (`PluginProcessor.h:70`) and `updatePadHit` fires for every event the scheduler emits
+  (`PluginProcessor.cpp:398`); and the differential needs no sub-millisecond resolution because it asks
+  *which pad*, not *when*. The shipped gate is four checks, not one: `the host path plays the pattern the
+  parameter names (pattern A)` through `(pattern D)`. Each arm builds its own processor and playhead,
+  drives `seq.pattern` to `p`, sets that arm's document mirror to `(p + 1) mod kSeqPatterns` so no arm can
+  agree by construction, and asserts the exact pair of pads that arm stamped - `wirePads { 3, 10, 9, 4,
+  1, 12, 6, 7 }`, two per pattern, over 16 blocks of 512 at 120 BPM advancing by the engine's own
+  `blockPpq`. Per-arm processors are load-bearing and were learned the hard way: the first cut was a single
+  check with one shared processor and a *cumulative* expectation, and under the rotation probe it printed
+  `arm 2 saw [9 4 1 12 6 7 ] expected [3 10 9 4 1 12 ]` at 165/166 while the fourth arm, whose cumulative
+  set is the complete set, went green on "everything fired eventually". Four per-arm checks cannot saturate.
+  Bracketed in both directions, and the asymmetry matters. Rotating the call-site argument reddens all four
+  arms - `saw [9 4 ] expected [3 10 ] mirror holds pattern 1` through `saw [3 10 ] expected [6 7 ] mirror
+  holds pattern 0` at 165/169 - and *that* is the falsifier that qualifies the gate. It was re-run on the
+  bytes this commit ships, after the two playhead checks below were tightened, because the first n/n run
+  predated them: same four strings, same four peaks to six decimals, `165/169`, exit 1. Pinning the argument to
+  `0` reddens only arms B, C and D, because pattern A is what arm A is supposed to hear, and prints
+  `saw [3 10 ] expected [9 4 ] mirror holds pattern 2` at 166/169 (dated read: that probe ran before the
+  byte-tightening above, and is quoted as corroboration only, so it was not re-run): a constant mutation can never redden all
+  n arms, since each constant is some arm's expected value, so that run is corroboration and is labelled as
+  such, not the gate seen to fail. Attribution per mutation, because they are not interchangeable: the
+  delete-the-append mutation reddens **no arm's render assertion at all**. `readActivePattern()` null-guards
+  to `0` (`Params.cpp:305-306`), which is pattern A and therefore arm A's own expected value, so arm A
+  printed `ok`, and arms B, C and D were caught one level earlier by their fixture pre-check -
+  `fixture invalid param=0 want 1 mirror=2` - before a single block was rendered. What that proves is that
+  the pre-check is the component detecting a missing parameter and the four-arm comparison is not; the
+  comparison is qualified by the rotation, which is a mutation the cache cannot absorb. The pre-check earns
+  its keep a different way: a parameter read that ever becomes asynchronous reports a broken arm rather than
+  a broken wire. Two further findings came out of that work. First,
+  `host-synced sequencer produces audio` and `parameter-locked sequencer step is audible` are not
+  pattern-independent: they render the factory document's pattern 0 content, so pinning the pattern to 2
+  silences them (`[0.0000]`) - they are gates on transport, accidentally coupled to what pattern 0 holds.
+  Second, `render`'s `startBlock` defaults to 0, and at 0 the helper fires a manual `triggerPad`; a
+  sequencer-only check has to pass the out-of-range 999 like the existing host checks do, or the audio it
+  measures is not the sequencer's. A deterministic per-pad hit counter on the block output would still be
+  the cleaner observable, and is the piece a future harness wants.
+  What the gate does *not* buy: the four arms discharge the cache-to-render wire, and the shipped comment
+  at `SmokeTest.cpp:1391-1394` promises section 8C says so in both places, so here is the other half -
+  stamps give pad identity, not iteration, so nothing here can see a step that repeated or a step that
+  dropped, and the mid-block half of the once-per-block parameter read (`PluginProcessor.cpp:315-316`) is
+  still untested. A host that automates `seq.pattern` inside one render quantum can still hand that block
+  two different answers, and no check in the suite would notice.
+- **Two checks in the suite had names containing a verb their expressions never observed, and both are
+  fixed on this tree.** `host-synced playhead advances` (`SmokeTest.cpp:496`) asserted
+  `getSequencerPlayheadStep() >= 0` under a playhead that was frozen for the whole fixture, and
+  `step sequencer advances the playhead` (`SmokeTest.cpp:361`) asserted the same `>= 0` on the internal
+  clock. The observable is
+  not worthless - `-1` is what `Sequencer.cpp:923` reports when there is no usable transport, so `>= 0`
+  does separate "the host path answered" from "it did not" - but a wire that latched on step 0 prints 0
+  forever and reads as a pass, which is precisely what a check called *advances* must not be able to do.
+  Both now pin the arithmetic: the host fixture advances the head by the engine's own block step for 16
+  blocks and expects step 1 (`floor (0.3413 x 4)`, `Sequencer.cpp:321`), the internal one renders 40 blocks
+  and expects step 3 (`Sequencer.cpp:357` reports the step at the *end* of the block), and each fixture
+  pins `division = 4` and `swing = 0` so the expectation is arithmetic on the clock rather than on a
+  default. Falsified by replacing both `playheadStep` expressions with the constant `0`:
+  `FAIL  step sequencer advances the playhead  [0]` and `FAIL  host-synced playhead advances  [0]` at
+  167/169, exactly two reds, both these checks, nothing else touched - and both expectations were then
+  re-measured green against the restored `Sequencer.cpp` in the same command that printed its hash.
+- **Six `SmokeTest.cpp` line cites in this document point somewhere else, and none of them broke today.**
+  Two edits landed in `SmokeTest.cpp` on the last pass of Step 26, and their effect on line numbers was
+  measured rather than computed - the internal-clock fixture grew by 8 lines and everything below it
+  shifted by 8, then the host fixture grew so that everything below *it* shifted by 27 in total
+  (`parameter-locked sequencer step is audible` read at `:498` before and `:525` after): the four
+  tolerance cites and the wiring-comment cite in 8C were re-pointed by
+  reading the target line, not by arithmetic. The other six were already wrong at
+  `e0b246d` - each one was checked against `git show HEAD:native/Tests/SmokeTest.cpp`, so this is
+  transcription, not drift - and
+  `AGENTS.md` means exactly this when it says a cite is a snapshot and not an address: `:38` points at a
+  7000-sample block call that no longer exists (the oversized block is gone, and the `720`-sample calls it
+  means are now `:1497` and `:1499`); `:135` and `:557` both ask to "tighten `SmokeTest.cpp:948` from
+  `< 8.0 s`", and there is no such bound anywhere in the file - CPU is printed and deliberately not
+  asserted, with the reason in the comment at `:2227-2229`; `:431` cites `:835` for the `0.349`/`0.844`
+  pair, which is at `:1917` and `:1921`; `:870` names a check, `a Sample Vault track loads into SliceForge`,
+  that is not in the suite (the vault block runs `:1657` to `:1760`, and the gate that loads a file this
+  test owns is `a real wav loads through the user-sample path` at `:1719`); `:954` cites `:1283-1289` for
+  the formatting-branch gate, which is at `:2120-2141`; `:979` cites `:736-750` for the truncated-blob
+  refusal, which is at `:1588-1602`. Correcting the six is a prose edit in somebody else's historical
+  entry and is deliberately not done here; what is done is naming where each one actually lives.
+- **One review finding on this tree was checked and withdrawn.** `song mode follows the pattern chain`
+  (`SmokeTest.cpp:1530`) reads `out.triggerCount > 0 && out.triggers[0].pad == 1`, and that was flagged as
+  asserting one element where the claim is about the set. It is not: `length = 4` and `ppq = 1.0` put
+  absolute step 4 in chain slot 1 (`Sequencer.cpp:46`), `makeFeatureSequence` gives that slot pattern 1,
+  and pattern 1 has exactly one lit step - so the first trigger *is* the complete set for this fixture.
+  What is left is positional fragility, not a false green: a later edit that lights a second step in that
+  pattern keeps the check green while no longer proving which slot ran. LOW, and the real song-mode
+  discriminator is the exact-list differential at `SmokeTest.cpp:1226` that Step 26 shipped.
 
 ## 9. Not doing
 
@@ -968,6 +1209,11 @@ Three forks worth naming explicitly:
   not better synthesis. Note the tension with Step 24: real recordings are also the first material
   where the no-slice-end defect becomes obvious, so the content fix and Step 24 should land in the
   same week or the demo will show the wrong thing.
+
+Built 2026-11-16 as a boundary rule, not as code: the owner resolved it (SliceForge owns one
+continuous recording becoming a playable 16-pad kit; redrum owns a folder of already-made kit pieces;
+the discriminator is the material type at the door), and the rule now lives in `AGENTS.md:143-148` under
+"Which repo owns which material". Nothing was built for it, which is the point - the step was a decision.
 
 ---
 

@@ -127,6 +127,9 @@ namespace sliceforge::ui
         std::array<std::unique_ptr<ChipPopupMenu>, sliceforge::kSeqPatterns> chipPopups;
         std::unique_ptr<juce::FileChooser> fileChooser;
         int selectedLane = 0;
+        // The pattern the chips and the grid were last built for, so the timer can tell that a
+        // host moved seq.pattern by itself. Nothing else in the panel is told.
+        int patternAtLastRefresh = 0;
         SequencerGrid::EditMode editMode = SequencerGrid::EditMode::Draw;
         bool updatingControls = false;
     };

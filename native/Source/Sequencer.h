@@ -9,7 +9,8 @@
 
 namespace sliceforge
 {
-    constexpr int kSeqPatterns = 4;
+    // kSeqPatterns and kSeqPatternFromDocument live in Params.h, beside the parameter layout and the
+    // cache that clamps a host into the bank. This header gets them through its include at :4.
     constexpr int kSeqSteps = 32;
     constexpr int kSeqChainLength = 8;
 
@@ -127,17 +128,20 @@ namespace sliceforge
         std::array<PadStepHistory, kNumPads> lastHostPadStep {};
         // How many times the host path threw its step history away. A clear is audible (a step
         // that straddles a block boundary loses its duplicate guard and can fire twice), so the
-        // resync tolerance has to be measurable without changing what the scheduler does.
-        int hostResyncs = 0;
+        // tolerance has to be measurable without changing what the scheduler does. One counter,
+        // because the two causes - a transport engage and a tolerance trip - have the same effect,
+        // and every check asks "how many times did the history go away", not "why".
+        int historyClears = 0;
 
         bool internalWasPlaying = false;
         double internalPpq = 0.0;
         std::array<PadStepHistory, kNumPads> lastInternalPadStep {};
 
-        // Which pass through the timeline this is. Either clock advances it when it restarts,
-        // which is also when it clears its step history, so a host that loops a bar re-rolls its
-        // probability hits instead of replaying one frozen dropout set all session.
-        // See probabilityRollFor.
+        // How many times either clock has restarted. "Pass" here means a restart, not a bar:
+        // a real loop is one, and so is a tolerance trip while the 0.02 floor is narrower than
+        // the block. Either way it clears its step history and gets its own probability draws, so
+        // a host that loops a bar re-rolls instead of replaying one frozen dropout set all
+        // session. Advanced on the same reset as historyClears, above. See probabilityRollFor.
         int64_t passCount = 1;
     };
 
@@ -152,6 +156,9 @@ namespace sliceforge
         double hostBpm = 128.0;
     };
 
+    /** Schedules one block. `liveActivePattern` is the `seq.pattern` parameter value, already
+        clamped, or kSeqPatternFromDocument to let the document's own copy decide - which is what
+        every caller without a running processor (the tests here, the exporter) passes. */
     void processSequencerBlock (const SequencerData& data,
                                 const SeqHostInfo& host,
                                 bool internalPlaying,
@@ -159,5 +166,6 @@ namespace sliceforge
                                 int numSamples,
                                 juce::Random& random,
                                 SeqPlaybackState& state,
-                                SeqBlockOutput& output);
+                                SeqBlockOutput& output,
+                                int liveActivePattern = kSeqPatternFromDocument);
 } // namespace sliceforge

@@ -133,11 +133,20 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
   The same goes for the numbers in it, but only for some of them: the smoke total and the CPU figure
   are claims to re-measure, not facts — `native/Tests/SmokeTest.cpp` prints both and asserts neither,
   because a wall-clock bound fails on a loaded machine rather than on an engine that got slower. The
-  exposed-parameter count is the exception, and the one that used to drift: `native/Tests/HostTest.cpp:68`
-  asserts exactly 349 host-visible parameters — 347 from `createParameterLayout` (11 global + 21 for
-  each of 16 pads) plus the VST3 wrapper's own `Bypass` and `Program` — so a README that says 347 is
-  now a failing test, not a stale document. Quote the total as 349 and name the composition; a bare
-  number is how the two got confused in the first place.
+  exposed-parameter count is the exception, and the one that used to drift: `native/Tests/HostTest.cpp:69`
+  asserts exactly 350 host-visible parameters — 348 from `createParameterLayout` (9 globals before the pad
+  loop, 21 for each of 16 pads, the 2 output-stage controls, then `seq.pattern` appended last) plus the
+  VST3 wrapper's own
+  `Bypass` and `Program` — so a README that says 349 is now a failing test, not a stale document. Quote the
+  total as 350 and name the composition; a bare number is how the two got confused in the first place.
+  `native/Tests/SmokeTest.cpp` asserts the bare-processor view, 348, and the two differ by exactly the
+  wrapper's pair: 348 and 350 are both current, and neither is a typo for the other.
+- **Which repo owns which material.** SKEER SliceForge owns *one continuous recording becomes a playable
+  16-pad kit* — the single-file auto-slice-into-pads path. SKEER redrum owns *already-made kit pieces* —
+  ingest of pre-existing one-shots from a folder. The discriminator is the material type at the door: one
+  continuous recording versus a folder of pre-cut hits. The two are complementary, not competing, so a
+  feature that starts from a folder of hits belongs to redrum whatever this UI looks like, and a feature
+  that starts from one take belongs here.
 - `ctest --test-dir native/build -C Release` runs whatever binaries are already in the tree; it does
   not build. After editing UI layout, a bare ctest can pass against a stale `SliceForgeLayoutTest.exe`
   and rewrite `native/shots/*.png` without your change in them — which reads as "the control did not

@@ -163,11 +163,33 @@ int main()
                "the engine is the 8-bus, 16-pad, 16-model instrument the checks assume",
                juce::String (sliceforge::kNumBuses) + "/" + juce::String (sliceforge::kNumPads)
                    + "/" + juce::String (sliceforge::kNumFamilies) + "/" + juce::String (sliceforge::kNumModels));
-    // 21 controls per pad, nine globals before the loop and the two output-stage parameters after
-    // it. A host that numbers parameters counts them, so this surface is part of the file format.
-    check (processor.getParameters().size() == 16 * 21 + 9 + 2,
-           "the parameter surface is the documented 347 controls",
+    // 21 controls per pad, nine globals before the pad loop, the two output-stage parameters after
+    // it and `seq.pattern` appended last. A host that numbers parameters counts them, so this surface
+    // is part of the file format. The expected value is a literal on purpose: `16 * 21 + 9 + 2 + 1`
+    // re-derives the count from the same arithmetic the layout is built from, so it goes green when
+    // the parameter it is supposed to prove does not exist.
+    check (processor.getParameters().size() == 348,
+           "the parameter surface is the documented 348 controls",
            juce::String ((int) processor.getParameters().size()));
+    {
+        // The member that earns the 348th, checked by identity rather than by arithmetic: range,
+        // step, default and the fact that it is appended last, because every index below it has to
+        // keep pointing at the control a saved session already numbered.
+        auto* patternParam = processor.getValueTreeState().getParameter ("seq.pattern");
+        const auto range = processor.getValueTreeState().getParameterRange ("seq.pattern");
+        auto* lastParam = dynamic_cast<juce::HostedAudioProcessorParameter*> (
+            processor.getParameters().getLast());
+        const juce::String detail = "param="
+            + (patternParam == nullptr ? juce::String ("null") : patternParam->getName (128))
+            + " range=" + juce::String (range.start, 3) + ".." + juce::String (range.end, 3)
+            + " step=" + juce::String (range.interval, 3)
+            + " last=" + (lastParam == nullptr ? juce::String ("none") : lastParam->getParameterID());
+        check (patternParam != nullptr && range.start == 0.0f && range.end == 3.0f
+                   && range.interval == 1.0f && patternParam->getDefaultValue() == 0.0f
+                   && patternParam->isDiscrete() && lastParam != nullptr
+                   && lastParam->getParameterID() == "seq.pattern",
+               "seq.pattern is a four-choice parameter appended after every existing id", detail);
+    }
 
     auto silent = render (processor, 4, 1.0f, 0, -1, 1000);
     check (silent.total == 0.0f, "engine is silent before a trigger");
@@ -323,12 +345,21 @@ int main()
         auto sequence = sliceforge::cloneSequencerData (*processor.getSequencerData());
         sequence->hostSync = false;
         sequence->bpm = 120.0;
+        // Pinned for the same reason as the host fixture below: this assertion is arithmetic on the
+        // clock, so it must not be arithmetic on a default.
+        sequence->division = 4;
+        sequence->swing = 0.0f;
         processor.setSequencerData (sequence);
         processor.setSequencerInternalPlaying (true);
         const auto sequenceHit = render (processor, 40, 1.0f, 0, -1, 999);
         check (sequenceHit.total > 0.001f, "step sequencer produces audio",
                juce::String (sequenceHit.total, 4));
-        check (processor.getSequencerPlayheadStep() >= 0, "step sequencer advances the playhead");
+        /*  40 blocks of 512 at 120 BPM on the internal clock is 40 x 0.0213333 ppq, and the internal
+            path reports the step at the *end* of the block (`Sequencer.cpp:357`), so this is
+            floor (0.853 x 4) = 3 - not merely "some step". `>= 0` here accepted a clock that never
+            moved, which is the one thing the name promised. */
+        check (processor.getSequencerPlayheadStep() == 3, "step sequencer advances the playhead",
+               juce::String (processor.getSequencerPlayheadStep()));
         processor.setSequencerInternalPlaying (false);
         check (! processor.isSequencerTransportPlaying(), "step sequencer stops cleanly");
 
@@ -437,6 +468,10 @@ int main()
         sequence->hostSync = true;
         sequence->bpm = 120.0;
         sequence->length = 16;
+        // Pinned, not inherited: the expectation below is `floor (ppq * division)` and a default that
+        // one day moves would turn this into a check on the factory rather than on the transport.
+        sequence->division = 4;
+        sequence->swing = 0.0f;
         hostProcessor.setSequencerData (sequence);
 
         playHead.playing = true;
@@ -445,7 +480,21 @@ int main()
         check (hostHit.total > 0.001f, "host-synced sequencer produces audio",
                juce::String (hostHit.total, 4));
         check (hostProcessor.isSequencerHostPlaying(), "host playhead is detected");
-        check (hostProcessor.getSequencerPlayheadStep() >= 0, "host-synced playhead advances");
+        /*  This head was frozen for the eight blocks above, so the step it reports is still 0 and the
+            honest assertion here is not `>= 0` - that only proves the host path answered rather than
+            returning the -1 "no usable transport" value, and a wire that latched on step 0 would print
+            0 forever and read as a pass. Drive the head and name the step. Sixteen 512-sample blocks at
+            120 BPM are 0.3413 ppq, floor (0.3413 * 4) + 1e-6 is 1 (`Sequencer.cpp:321`), one past where
+            the engage above left it. The advance is exactly the engine's own block step, so each block's
+            ppqStart meets the previous ppqEnd and the resync tolerance at `Sequencer.cpp:291` is never
+            tripped - a bigger per-block jump would test the seek path and the render path at once. */
+        for (int block = 0; block < 16; ++block)
+        {
+            playHead.ppq += 512.0 * 120.0 / 60.0 / 48000.0;
+            render (hostProcessor, 1, 1.0f, 0, -1, 999);
+        }
+        check (hostProcessor.getSequencerPlayheadStep() == 1, "host-synced playhead advances",
+               juce::String (hostProcessor.getSequencerPlayheadStep()));
 
         playHead.ppq += 8.0 * 512.0 * 120.0 / 60.0 / 48000.0;
         playHead.playing = false;
@@ -630,7 +679,7 @@ int main()
         }
 
         {
-            // Step 23. The resync test compares the position a host reports with where the
+            // Step 23. The tolerance test compares the position a host reports with where the
             // *previous block* said this one would start, so the disagreement it tolerates has to
             // be a fraction of a block, not a constant. A host that quantises the position it
             // reports disagrees by a little every block, and at 90 BPM a 2048-sample block is
@@ -661,7 +710,7 @@ int main()
                     sliceforge::processSequencerBlock (data, host, false, 48000.0, blockSize,
                                                        random, state, out);
                 }
-                return state.hostResyncs;
+                return state.historyClears;
             };
 
             auto data = makeFeatureSequence();
@@ -687,7 +736,7 @@ int main()
                 // clear is the transport engage. Unchanged by the fix.
                 sliceforge::SeqPlaybackState st;
                 const auto clears = renderPositions (*data, host90, ramp (9, block90), 2048, st);
-                check (clears == 1, "a block-accurate host resyncs once", report (clears, 1));
+                check (clears == 1, "a block-accurate host clears its history once", report (clears, 1));
             }
             {
                 // The defect. 0.025 ppq of per-block rounding: inside the block, outside the old
@@ -704,16 +753,20 @@ int main()
                 auto positions = ramp (9, block90);
                 positions.push_back (positions.back() + block90 + 4.0); // one 90 BPM bar
                 const auto clears = renderPositions (*data, host90, positions, 2048, st);
-                check (clears == 2, "a one-bar host jump still resyncs", report (clears, 2));
+                check (clears == 2, "a one-bar host jump still clears the history", report (clears, 2));
             }
             {
-                // And it must stay under one block, so the ceiling is pinned: three quarters of
-                // a block (0.048 ppq) is a seek, while the rounding case above is not.
+                // How far the ceiling actually sits from the cases here: at 90 BPM on a
+                // 2048-sample block half a block is 0.032 ppq, the tolerated rounding above is
+                // 0.025 (0.39 of a block) and this seek is 0.048 (0.75 of one). So the pair
+                // brackets the ceiling somewhere in (0.39, 0.75] of a block - it does not pin it
+                // at a half, and nothing here would notice a formula that put it at 0.6.
+                // Three quarters of a block has to be a seek; the rounding case above has not.
                 sliceforge::SeqPlaybackState st;
                 auto positions = ramp (9, block90);
                 positions.push_back (positions.back() + block90 * 1.75);
                 const auto clears = renderPositions (*data, host90, positions, 2048, st);
-                check (clears == 2, "a three-quarter-block host seek resyncs", report (clears, 2));
+                check (clears == 2, "a three-quarter-block host seek clears the history", report (clears, 2));
             }
             {
                 // The widening is one-sided: it may only ever widen. Half a 512-sample block at
@@ -723,7 +776,48 @@ int main()
                 const double block512 = 512.0 * (120.0 / 60.0) / 48000.0; // 0.0213 ppq
                 const auto clears = renderPositions (*data, host,
                                                      ramp (9, block512 + 0.015), 512, st);
-                check (clears == 1, "a small block keeps the original resync window",
+                check (clears == 1, "a small block keeps the original tolerance window",
+                       report (clears, 1));
+            }
+            {
+                // The two directions of Step 23's own rule, measured on the fine grid, because that is
+                // where they stop being compatible. At 4096 samples and 200 BPM a block is 0.2844 ppq,
+                // so half a block - the tolerance - is 0.1422, WIDER than a whole 1/32 step (0.125 ppq).
+                // This case therefore documents what the committed predicate actually does: a deliberate
+                // one-step edit is swallowed - it adds no clear of its own, the single counted clear being
+                // the transport engage - and leaves the pass counter alone, so a looped bar keeps its old
+                // dropout set. It is a KNOWN DEFECT, recorded and
+                // not fixed: the seam where the two directions separate is `numSamples x bpm = 720000`
+                // at 1/32 on 48 kHz, and past it no tolerance can do both jobs. If anybody changes the
+                // tolerance rule, flipping the expected value below to 2 is the falsifier - and the
+                // control immediately after it is what such a change has to keep passing.
+                sliceforge::SeqPlaybackState st;
+                auto fineGrid = *data;
+                fineGrid.division = 8; // 1/32: the finest grid the UI exposes
+                const double block200 = 4096.0 * (200.0 / 60.0) / 48000.0; // 0.2844 ppq
+                auto seekHost = host;
+                seekHost.bpm = 200.0;
+                auto positions = ramp (4, block200);
+                positions[3] = positions[2] + block200 + 0.125; // one 1/32 step of real seeking
+                const auto clears = renderPositions (fineGrid, seekHost, positions, 4096, st);
+                check (clears == 1, "KNOWN DEFECT: a one-step 1/32 edit inside a 0.28 ppq block is not a seek",
+                       report (clears, 1));
+            }
+            {
+                // The other direction, and the reason capping the tolerance at half a step is not free.
+                // At 4096 samples and 120 BPM a block is 0.1707 ppq, so 0.08 ppq of per-block rounding
+                // is ordinary playback. A tolerance anywhere in (0.0853, 0.125) separates this pair from
+                // the case above; `jmin (blockPpq * 0.5, 0.5 / division)` would put it at 0.0625, below
+                // this 0.08, and this check would go red with clears = 9.
+                sliceforge::SeqPlaybackState st;
+                auto fineGrid = *data;
+                fineGrid.division = 8;
+                const double block120 = 4096.0 * (120.0 / 60.0) / 48000.0; // 0.1707 ppq
+                auto noisyHost = host;
+                noisyHost.bpm = 120.0;
+                const auto clears = renderPositions (fineGrid, noisyHost,
+                                                     ramp (9, block120 + 0.08), 4096, st);
+                check (clears == 1, "sub-block rounding on a 1/32 grid is not a seek",
                        report (clears, 1));
             }
             {
@@ -754,7 +848,7 @@ int main()
                 const int fires = countAt (timeline, 64000);
                 check (fires == 1, "overlapping host blocks do not play one hit twice",
                        [&] { juce::String s = "fires at 64000 = ";
-                             s << fires << " expected=1 clears=" << st.hostResyncs;
+                             s << fires << " expected=1 clears=" << st.historyClears;
                              return s; }());
             }
         }
@@ -764,8 +858,16 @@ int main()
             // stopped a step from being split across blocks. It also means a host that loops a bar
             // asks the same steps again and gets the same answers again, so the dropout set is
             // frozen for the whole session - the first bar of a loop is the last bar of a loop.
-            // A rewind is already detected (it is the resync above), so the fix has to carry that
+            // A rewind is already detected (it is the clear above), so the fix has to carry that
             // event into the key: same step, different pass, different draw.
+            //
+            // Why this cannot pass for the wrong reason: probabilityRollFor is pure splitmix64
+            // over (pattern, pad, absolute step, pass). There is no RNG on the playback path at
+            // all - every random.nextFloat() in Sequencer.cpp belongs to the pattern generator and
+            // the randomiser - so the juce::Random carried across both renderPass calls below
+            // cannot be what makes the two passes differ. The only thing that changes between them
+            // is the pass counter, which is what the plan's invariant asks for: same seed, same
+            // bar, second time through, a different set of steps sounds.
             auto data = makeFeatureSequence();
             for (int s = 0; s < 16; ++s)
             {
@@ -797,7 +899,10 @@ int main()
             };
 
             // P = all three events of the step (grace, main, ratchet), - = none, x = a torn step.
-            const auto classify = [&] (const std::vector<int>& offsets, juce::String& signature)
+            // `codes` keeps the same verdict per step as a vector, so two passes can be compared
+            // by counting the steps that moved rather than by eyeballing one signature.
+            const auto classify = [&] (const std::vector<int>& offsets, juce::String& signature,
+                                       std::vector<char>& codes)
             {
                 int mixed = 0, played = 0, skipped = 0;
                 for (int s = 1; s <= 33; ++s) // s = 0 is skipped: its grace precedes the timeline
@@ -809,16 +914,19 @@ int main()
                     {
                         ++played;
                         signature << "P";
+                        codes.push_back ('P');
                     }
                     else if (events == 0)
                     {
                         ++skipped;
                         signature << "-";
+                        codes.push_back ('-');
                     }
                     else
                     {
                         ++mixed;
                         signature << "x";
+                        codes.push_back ('x');
                     }
                 }
                 return std::make_tuple (mixed, played, skipped);
@@ -828,22 +936,38 @@ int main()
             juce::Random random (11);
             std::vector<int> first, second;
             renderPass (*data, host, 400, 512, random, loopState, first);
-            const int clearsBeforeLoop = loopState.hostResyncs;
+            const int clearsBeforeLoop = loopState.historyClears;
             renderPass (*data, host, 400, 512, random, loopState, second);
 
             juce::String passOne, passTwo;
-            const auto one = classify (first, passOne);
-            const auto two = classify (second, passTwo);
+            std::vector<char> codesOne, codesTwo;
+            const auto one = classify (first, passOne, codesOne);
+            const auto two = classify (second, passTwo, codesTwo);
             juce::String detail;
             detail << "\n    pass 1 " << passOne << "\n    pass 2 " << passTwo;
 
-            check (clearsBeforeLoop == 1 && loopState.hostResyncs == 2,
-                   "looping back to the start is one resync, not one per block",
+            // Counted on top of the inequality above, not instead of it: `passOne != passTwo` is
+            // satisfied if one character out of thirty-three flips, which is not the property the
+            // plan asked for. The number is measured, not derived - the seed, the geometry and the
+            // roll are all deterministic, so it is a literal.
+            int reRolled = 0;
+            for (size_t s = 0; s < codesOne.size (); ++s)
+                if (codesOne[s] != codesTwo[s])
+                    ++reRolled;
+
+            check (clearsBeforeLoop == 1 && loopState.historyClears == 2,
+                   "looping back to the start is one clear, not one per block",
                    [&] { juce::String s = "at loop=";
-                         s << loopState.hostResyncs << " expected=2 before=" << clearsBeforeLoop;
+                         s << loopState.historyClears << " expected=2 before=" << clearsBeforeLoop;
                          return s; }());
 
             check (passOne != passTwo, "a looped bar re-rolls its probability", detail);
+
+            check (reRolled == 21, "the re-roll moves whole steps, not one stray event",
+                   [&] { juce::String s;
+                         s << "re-rolled=" << reRolled << " of " << (int) codesOne.size()
+                           << " steps  expected=21" << detail;
+                         return s; }());
 
             const bool coherent = std::get<0> (one) == 0 && std::get<0> (two) == 0
                                      && std::get<1> (one) > 0 && std::get<2> (one) > 0
@@ -856,7 +980,504 @@ int main()
                            << " | pass2 torn=" << std::get<0> (two)
                            << " played=" << std::get<1> (two)
                            << " skipped=" << std::get<2> (two);
-                         return s; }());
+                         return s; } ());
+        }
+
+        {
+            /*  Step 22's spec asks for "probability 0.5 on all sixteen lanes" and what `4abe4b0` shipped
+                was rows[0] - one pad, sixteen steps - so the `(pad + 1)` term of probabilityRollFor was
+                only ever exercised at pad 0: delete the term and that gate stays green. This is the
+                widening, added beside the single-lane check instead of in place of it, so the shipped
+                record still describes what landed there.
+
+                The naive version would have cost the other half of the gate. classify counts events at
+                three offsets in one flat list, so with sixteen pads firing on the same step "this step's
+                three sub-hits arrived or left together" becomes "forty-eight arrived" and the torn-step
+                assertion stops meaning anything. Everything below is therefore filtered by
+                SeqTrigger::pad and classified one lane at a time. */
+            auto data = makeFeatureSequence();
+            data->length = 16;
+            data->swing = 0.0f;
+            for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
+                for (int s = 0; s < 16; ++s)
+                {
+                    auto& step = data->patterns[0].rows[(size_t) pad][(size_t) s];
+                    step.on = true;
+                    step.velocity = 1.0f;
+                    step.probability = 0.5f;
+                    step.flam = 1;
+                    step.ratchet = 2;
+                }
+
+            constexpr int laneBlock = 512;
+            const double laneBlockPpq = (double) laneBlock * (host.bpm / 60.0) / 48000.0;
+
+            const auto renderLanePass = [&] (sliceforge::SeqPlaybackState& playState,
+                                             juce::Random& random,
+                                             std::vector<std::pair<int, int>>& hits)
+            {
+                for (int b = 0; b < 400; ++b)
+                {
+                    auto passHost = host;
+                    passHost.ppq = laneBlockPpq * (double) b; // same bar, twice: the host loops
+                    sliceforge::SeqBlockOutput out;
+                    sliceforge::processSequencerBlock (*data, passHost, false, 48000.0, laneBlock,
+                                                       random, playState, out);
+                    for (int i = 0; i < out.triggerCount; ++i)
+                        hits.push_back ({ b * laneBlock + out.triggers[(size_t) i].sampleOffset,
+                                          out.triggers[(size_t) i].pad });
+                }
+            };
+
+            // The same three offsets the single-lane classify uses, restricted to one pad's triggers.
+            // P = all three events of the step, - = none, x = a torn step.
+            const auto laneCode = [&] (const std::vector<std::pair<int, int>>& hits, int pad, int step)
+            {
+                int events = 0;
+                for (const int position : { step * 6000 - 720, step * 6000, step * 6000 + 3000 })
+                    for (const auto& hit : hits)
+                        if (hit.second == pad && hit.first == position)
+                            ++events;
+                return events == 3 ? 'P' : (events == 0 ? '-' : 'x');
+            };
+
+            sliceforge::SeqPlaybackState laneState;
+            juce::Random laneRandom (11);
+            std::vector<std::pair<int, int>> laneFirst, laneSecond;
+            renderLanePass (laneState, laneRandom, laneFirst);
+            renderLanePass (laneState, laneRandom, laneSecond);
+
+            int reRolledLanes = 0, tornLanes = 0;
+            juce::String laneZero, laneDetails;
+            std::vector<juce::String> signatures;
+            for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
+            {
+                juce::String one, two;
+                bool moved = false, torn = false;
+                for (int s = 1; s <= 33; ++s) // s = 0 is skipped: its grace precedes the timeline
+                {
+                    const auto before = laneCode (laneFirst, pad, s);
+                    const auto after = laneCode (laneSecond, pad, s);
+                    one << juce::String::charToString (before);
+                    two << juce::String::charToString (after);
+                    moved = moved || before != after;
+                    torn = torn || before == 'x' || after == 'x';
+                }
+                if (moved)
+                    ++reRolledLanes;
+                else
+                    laneDetails << "\n    lane " << pad << " held its draws: " << one;
+                if (torn)
+                {
+                    ++tornLanes;
+                    laneDetails << "\n    lane " << pad << " tore a step: " << one << " / " << two;
+                }
+                if (pad == 0)
+                    laneZero = one;
+                else if (one == laneZero)
+                    laneDetails << "\n    lane " << pad << " repeats lane 0";
+                signatures.push_back (one);
+            }
+
+            int distinctLanes = 0;
+            for (size_t pad = 0; pad < signatures.size(); ++pad)
+            {
+                bool unique = true;
+                for (size_t other = 0; other < signatures.size(); ++other)
+                    if (other != pad && signatures[other] == signatures[pad])
+                        unique = false;
+                if (unique)
+                    ++distinctLanes;
+            }
+
+            check (reRolledLanes == sliceforge::kNumPads,
+                   "every lane re-rolls on the second pass through the bar",
+                   [&] { juce::String s = "lanes moved=";
+                         s << reRolledLanes << " of " << sliceforge::kNumPads
+                           << " expected=16" << laneDetails;
+                         return s; } ());
+
+            check (tornLanes == 0, "no lane loses a sub-hit while its neighbours keep theirs",
+                   [&] { juce::String s = "torn lanes=";
+                         s << tornLanes << " expected=0" << laneDetails;
+                         return s; } ());
+
+            /*  The falsifier for the term this whole block is about. probabilityRollFor hashes the pad
+                in, so each lane gets its own dropout set; delete that term and all sixteen lanes draw
+                from the same number, every signature collapses onto one, and this is the check that
+                says so. The single-lane gate cannot see it at pad 0 no matter how wide it is. */
+            check (distinctLanes == sliceforge::kNumPads,
+                   "the sixteen lanes do not share one dropout set",
+                   [&] { juce::String s = "unique lane signatures=";
+                         s << distinctLanes << " of " << sliceforge::kNumPads
+                           << " expected=16" << laneDetails << "\n    lane 0 " << laneZero;
+                         return s; } ());
+        }
+
+        {
+            /*  Step 26. `seq.pattern` is the choice the render path makes, and the document's own
+                field is the mirror the offline callers read. Every case above proves nothing about
+                that split: they all leave `liveActivePattern` defaulted, so the document is the
+                only candidate. Here each pattern lights exactly one step, on a pad numbered after
+                itself, so "which pattern did the scheduler play" is answered by which pad fired. */
+            auto data = makeFeatureSequence();
+            data->songMode = false;
+            data->length = 16;
+            data->swing = 0.0f;
+            data->hostSync = true;
+            for (auto& pattern : data->patterns)
+                sliceforge::clearPattern (pattern);
+            for (int pattern = 0; pattern < sliceforge::kSeqPatterns; ++pattern)
+            {
+                auto& step = data->patterns[(size_t) pattern].rows[(size_t) pattern][4];
+                step.on = true;
+                step.velocity = 1.0f;
+            }
+
+            const auto firedPads = [&] (int livePattern)
+            {
+                std::array<bool, sliceforge::kNumPads> heard {};
+                sliceforge::SeqPlaybackState state;
+                juce::Random random (7);
+                constexpr int blockSize = 512;
+                const double blockPpq = (double) blockSize * (host.bpm / 60.0) / 48000.0;
+                for (int block = 0; block < 60; ++block)
+                {
+                    auto stepHost = host;
+                    stepHost.ppq = blockPpq * (double) block;
+                    sliceforge::SeqBlockOutput out;
+                    sliceforge::processSequencerBlock (*data, stepHost, false, 48000.0, blockSize,
+                                                       random, state, out, livePattern);
+                    for (int i = 0; i < out.triggerCount; ++i)
+                        heard[(size_t) out.triggers[(size_t) i].pad] = true;
+                }
+                juce::String list;
+                for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
+                    if (heard[(size_t) pad])
+                        list << pad << " ";
+                return list;
+            };
+
+            bool everyPatternItsOwn = true;
+            juce::String wrong;
+            for (int pattern = 0; pattern < sliceforge::kSeqPatterns; ++pattern)
+            {
+                // The mirror never gets to agree with the argument by construction: the callee falls
+                // back to `data.activePattern` on the sentinel, so a document left on pattern 0 would
+                // hand arm 0 a free pass and only three of the four arms would be load-bearing. Each
+                // arm therefore stores the *next* pattern, so ignoring the parameter mispredicts every
+                // one of them and the printed list says which value did land.
+                data->activePattern = (pattern + 1) % sliceforge::kSeqPatterns;
+                const auto heard = firedPads (pattern);
+                // Exact list, not "contains": silence would satisfy a containsOnly check, and a
+                // gate that a broken scheduler passes by playing nothing is no gate at all.
+                if (heard != juce::String (pattern) + " ")
+                {
+                    everyPatternItsOwn = false;
+                    wrong << "param " << pattern << " played [" << heard << "] expected ["
+                          << pattern << "] ";
+                }
+            }
+            check (everyPatternItsOwn,
+                   "the scheduler plays the pattern the parameter names, not the document's", wrong);
+
+            // Out of range is a host doing something legal-but-stupid, so it has to land inside the
+            // bank rather than index past it.
+            check (firedPads (99) == "3 ", "a pattern above the bank is clamped, not walked off",
+                   firedPads (99));
+
+            // Song mode is the one case where the parameter is deliberately silent: the chain owns
+            // the choice, and a live selector that overrode it would fight the timeline.
+            {
+                auto songData = *data;
+                songData.songMode = true;
+                songData.chainPatterns = { 1, 1, 1, 1, 1, 1, 1, 1 };
+                songData.chainLength = 8;
+                songData.activePattern = 0;
+                sliceforge::SeqPlaybackState songState;
+                juce::Random random (7);
+                std::array<bool, sliceforge::kNumPads> heard {};
+                int fires = 0;
+                constexpr int blockSize = 512;
+                const double blockPpq = (double) blockSize * (host.bpm / 60.0) / 48000.0;
+                for (int block = 0; block < 60; ++block)
+                {
+                    auto stepHost = host;
+                    stepHost.ppq = blockPpq * (double) block;
+                    sliceforge::SeqBlockOutput out;
+                    // The parameter says pattern 3; the chain says 1, and the chain wins.
+                    sliceforge::processSequencerBlock (songData, stepHost, false, 48000.0, blockSize,
+                                                       random, songState, out, 3);
+                    for (int i = 0; i < out.triggerCount; ++i)
+                    {
+                        heard[(size_t) out.triggers[(size_t) i].pad] = true;
+                        ++fires;
+                    }
+                }
+                // The set, not the last entry: overwriting one int inside the loop passes as long as the
+                // final trigger of the final block happens to be pad 1, which is just how a leaky live
+                // selector would still look clean. The literal is the fixture, not a measurement: every
+                // one of the eight chain slots holds pattern 1, and the loop above gives pattern p its
+                // only step on row p, so whichever slot the chain is on the fired pad is 1.
+                juce::String list;
+                for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
+                    if (heard[(size_t) pad])
+                        list << pad << " ";
+                check (fires > 0 && list == "1 ",
+                       "song mode lets the chain pick the pattern and the parameter stay silent",
+                   [&] { juce::String s = "fires=";
+                         s << fires << " heard=[" << list << "] expected=[1 ]";
+                         return s; } ());
+            }
+
+            // The sentinel is what every caller without a running processor passes - and after this
+            // step that includes the MIDI exporter, which now shares patternIndexForStep with the
+            // render path instead of re-deriving the choice.
+            {
+                data->activePattern = 2;
+                const auto heard = firedPads (sliceforge::kSeqPatternFromDocument);
+                check (heard == "2 ", "with no parameter in sight the document still decides",
+                       heard);
+                data->activePattern = 0;
+            }
+        }
+
+        {
+            // Step 26, through the processor: the parameter is live state, the field inside the
+            // pattern blob is what a session stores. These are the two directions a host can put
+            // them in disagreement, and which one wins.
+            SliceForgeAudioProcessor live;
+            live.prepareToPlay (48000.0, 512);
+            check (live.getPatternParameter() == 0, "a fresh plugin starts on pattern A",
+                   juce::String (live.getPatternParameter()));
+
+            /*  "Tells the host" has to be observed, not read back off the same object. Three conjuncts,
+                three different proofs: `valueLanded` reads the parameter object, so it is true of a bare
+                `setValue` and proves only that the value arrived; `getPatternParameter()` loads the APVTS
+                adapter's denormalised atomic, which JUCE writes only inside its `parameterValueChanged`
+                override (`juce_AudioProcessorValueTreeState.cpp:146-158`) - the listener dispatch that
+                `setValueNotifyingHost` performs - so that is the conjunct that dies when the notify is
+                dropped; and the spy watches the same dispatch from outside and pins the value *reported*
+                to a listener, which the atomic by itself does not. */
+            struct NotifySpy : juce::AudioProcessorValueTreeState::Listener
+            {
+                void parameterChanged (const juce::String& id, float value) override
+                {
+                    if (id == "seq.pattern")
+                    {
+                        ++calls;
+                        last = value;
+                    }
+                }
+                int calls = 0;
+                float last = -1000.0f;
+            };
+            NotifySpy spy;
+            live.getValueTreeState().addParameterListener ("seq.pattern", &spy);
+            live.setPatternParameter (2);
+            live.getValueTreeState().removeParameterListener ("seq.pattern", &spy);
+            auto* parameter = live.getValueTreeState().getParameter ("seq.pattern");
+            const bool valueLanded = parameter != nullptr
+                && juce::roundToInt (parameter->convertFrom0to1 (parameter->getValue())) == 2;
+            check (live.getPatternParameter() == 2 && valueLanded && spy.calls == 1
+                       && juce::roundToInt (spy.last) == 2,
+                   "selecting a pattern moves the parameter and tells the host",
+                   [&] { juce::String s = "value=";
+                         s << live.getPatternParameter() << " landed=" << (valueLanded ? "yes" : "no")
+                           << " notifications=" << spy.calls << " notified=" << spy.last
+                           << " expected=2 at 1 notification of 2";
+                         return s; } ());
+
+            juce::MemoryBlock saved;
+            live.getStateInformation (saved);
+            SliceForgeAudioProcessor restored;
+            restored.prepareToPlay (48000.0, 512);
+            restored.setStateInformation (saved.getData(), (int) saved.getSize());
+            const auto restoredDoc = restored.getSequencerData();
+            check (restored.getPatternParameter() == 2 && restoredDoc != nullptr
+                       && restoredDoc->activePattern == 2,
+                   "a session saved with the parameter on pattern C comes back on pattern C",
+                   [&] { juce::String s = "param=";
+                         s << restored.getPatternParameter()
+                           << " doc=" << (restoredDoc == nullptr ? -99 : restoredDoc->activePattern);
+                         return s; } ());
+            restored.releaseResources();
+            live.releaseResources();
+        }
+
+        {
+            /*  The migration, from the shape an older session actually has: no seq.pattern child at
+                all, and the pattern choice only inside the blob. The state is built by hand rather
+                than by saving, because a current save always carries the child. */
+            const auto legacyState = [] (int storedPattern, int parameterPattern, bool withParameter)
+            {
+                SliceForgeAudioProcessor source;
+                source.prepareToPlay (48000.0, 512);
+                source.setPatternParameter (parameterPattern);
+                auto document = sliceforge::cloneSequencerData (*sliceforge::makeDefaultSequencerData());
+                document->activePattern = storedPattern;
+                auto state = source.getValueTreeState().copyState();
+                // Only the legacy shape has the child removed. Taking it out unconditionally made
+                // the third case a second copy of the first, and the disagreement gate would have
+                // passed by falling into the migration branch.
+                if (! withParameter)
+                    if (const auto child = state.getChildWithProperty ("id", "seq.pattern"); child.isValid())
+                        state.removeChild (child, nullptr);
+                juce::ValueTree extra ("VRAC_EXTRA");
+                extra.setProperty ("sequencer", sliceforge::serialiseSequencer (*document), nullptr);
+                state.addChild (extra, -1, nullptr);
+                juce::MemoryBlock blob;
+                juce::MemoryOutputStream stream (blob, false);
+                state.writeToStream (stream);
+                source.releaseResources();
+                return blob;
+            };
+
+            SliceForgeAudioProcessor fromOld;
+            fromOld.prepareToPlay (48000.0, 512);
+            const auto old = legacyState (3, 1, false);
+            fromOld.setStateInformation (old.getData(), (int) old.getSize());
+            const auto oldDoc = fromOld.getSequencerData();
+            check (fromOld.getPatternParameter() == 3 && oldDoc != nullptr
+                       && oldDoc->activePattern == 3,
+                   "a session written before seq.pattern existed keeps its stored pattern",
+                   [&] { juce::String s = "param=";
+                         s << fromOld.getPatternParameter()
+                           << " doc=" << (oldDoc == nullptr ? -99 : oldDoc->activePattern);
+                         return s; } ());
+            check (fromOld.getStateNotice().isEmpty(), "the legacy state reloads without a complaint",
+                   fromOld.getStateNotice());
+            fromOld.releaseResources();
+
+            SliceForgeAudioProcessor split;
+            split.prepareToPlay (48000.0, 512);
+            const auto disagreeing = legacyState (3, 1, true);
+            split.setStateInformation (disagreeing.getData(), (int) disagreeing.getSize());
+            const auto splitDoc = split.getSequencerData();
+            check (split.getPatternParameter() == 1 && splitDoc != nullptr
+                       && splitDoc->activePattern == 1,
+                   "when the parameter and the blob disagree, the parameter plays and the mirror follows",
+                   [&] { juce::String s = "param=";
+                         s << split.getPatternParameter()
+                           << " doc=" << (splitDoc == nullptr ? -99 : splitDoc->activePattern);
+                         return s; } ());
+            split.releaseResources();
+        }
+
+        {
+            /*  The wire between the parameter cache and the render path, gated end to end. Every other
+                sequencer check calls processSequencerBlock and hands it the pattern index, so a
+                processBlock passing a literal there would keep them green: the two ends were gated and
+                the middle was not. This is the only route where the host decides - mock playhead, real
+                processBlock - and the observable is which pads got stamped, because updatePadHit runs
+                for every event the scheduler emits (PluginProcessor.cpp:398) and getPadHitStamp is
+                public. The renders pass 999 as startBlock on purpose: the helper's default is 0, which
+                fires a manual triggerPad and would make "nothing but the sequencer can be heard" false
+                of this fixture.
+
+                Each arm gets its own processor and its own fresh document and asserts only its own two
+                pads, not a running total. That is deliberate: with one shared processor the stamps
+                accumulate, so the last arm's expectation is the complete set and it goes green on
+                "everything fired eventually" - measured, not theorised, on the first cut of this gate,
+                where the document-fallback mutation reddened three arms and silently satisfied the
+                fourth.
+
+                The playhead advances by exactly one block per render call, and each pattern carries a
+                second lit step so that advance is load-bearing: this fixture runs division 4, four steps
+                to the quarter note, so step 1 sits at 0.25 ppq while a 512-sample block at 120 BPM is
+                0.021333 ppq - step 1 lands in the twelfth block of sixteen, which the transport engage
+                cannot produce. With the head frozen instead, the observable would be what the engage
+                path plays and the hit count would be a function of the resync tolerance rule
+                (Sequencer.cpp:291) rather than of a host that is moving. Stamps give pad identity, not
+                iteration, so nothing here measures how often a step repeated, and the mid-block half of
+                the once-per-block parameter read (PluginProcessor.cpp:315-316) is still untested -
+                section 8C of docs/next-steps-plan.md says so in both places. */
+            // Two pads per pattern - one on step 0, one on step 1 - in the order the scan below reads
+            // them, and no pad equal to its own pattern number, so neither the bank order nor a document
+            // left on its default can be mistaken for the parameter working.
+            constexpr std::array<int, 2 * sliceforge::kSeqPatterns> wirePads
+                { { 3, 10, 9, 4, 1, 12, 6, 7 } };
+            constexpr double blockPpq = 512.0 * 120.0 / 60.0 / 48000.0;
+
+            for (int p = 0; p < sliceforge::kSeqPatterns; ++p)
+            {
+                MockHostPlayHead playHead;
+                SliceForgeAudioProcessor wire;
+                wire.setPlayHead (&playHead);
+                wire.prepareToPlay (48000.0, 512);
+                auto document = sliceforge::cloneSequencerData (*wire.getSequencerData());
+                document->hostSync = true;
+                document->songMode = false;
+                document->bpm = 120.0;
+                document->length = 16;
+                document->division = 4;
+                document->swing = 0.0f;
+                for (auto& pattern : document->patterns)
+                {
+                    sliceforge::clearPattern (pattern);
+                    pattern.laneMute.fill (false);
+                    pattern.laneSolo.fill (false);
+                    pattern.laneLength.fill (0);
+                }
+                for (int q = 0; q < sliceforge::kSeqPatterns; ++q)
+                {
+                    document->patterns[(size_t) q].rows[(size_t) wirePads[(size_t) (2 * q)]][0].on = true;
+                    document->patterns[(size_t) q].rows[(size_t) wirePads[(size_t) (2 * q + 1)]][1].on = true;
+                }
+                /*  The mirror deliberately disagrees with the parameter on every arm - the next
+                    pattern, wrapping - because the callee falls back to `data.activePattern` on the
+                    sentinel. Left at its default, the arm whose parameter equals the document would
+                    pass by construction and the differential would be three arms wide, not four. */
+                document->activePattern = (p + 1) % sliceforge::kSeqPatterns;
+                wire.setSequencerData (document);
+                wire.setPatternParameter (p);
+
+                juce::String detail;
+                // Both records read back before the first render. setPatternParameter writes the cache
+                // through setValueNotifyingHost today; if that ever hops to the message thread this arm
+                // stops being evidence, and this line says so instead of blaming the wire.
+                if (wire.getPatternParameter() != p
+                    || document->activePattern != (p + 1) % sliceforge::kSeqPatterns)
+                {
+                    detail << "fixture invalid param=" << wire.getPatternParameter()
+                           << " want " << p << " mirror=" << document->activePattern;
+                }
+                else
+                {
+                    playHead.ppq = 0.0;
+                    playHead.playing = false;
+                    render (wire, 1, 1.0f, 0, -1, 999); // stop, so the arm re-engages on step 0
+                    playHead.playing = true;
+                    float peak = 0.0f;
+                    for (int block = 0; block < 16; ++block)
+                    {
+                        peak = juce::jmax (peak, render (wire, 1, 1.0f, 0, -1, 999).total);
+                        playHead.ppq += blockPpq; // after the block, so step 0 stays inside this run
+                    }
+
+                    juce::String heard, expected;
+                    for (const auto pad : wirePads)
+                        if (wire.getPadHitStamp (pad) != 0)
+                            heard << pad << " ";
+                    expected << wirePads[(size_t) (2 * p)] << " "
+                             << wirePads[(size_t) (2 * p + 1)] << " ";
+                    if (heard != expected)
+                    {
+                        // Naming the mirror's pattern in the failure says which record the render read:
+                        // the pads listed are that pattern's two, so "fell back to the document" and
+                        // "emitted nothing at all" cannot be mistaken for each other.
+                        detail << "saw [" << heard << "] expected [" << expected
+                               << "] mirror holds pattern " << (p + 1) % sliceforge::kSeqPatterns
+                               << " peak " << peak;
+                    }
+                }
+
+                juce::String name = "the host path plays the pattern the parameter names (pattern ";
+                name << static_cast<char> ('A' + p) << ")";
+                check (detail.isEmpty(), name, detail);
+                wire.setPlayHead (nullptr);
+                wire.releaseResources();
+            }
         }
 
         {

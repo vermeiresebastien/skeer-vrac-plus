@@ -28,10 +28,18 @@ namespace sliceforge
             return (int) (wrapped < 0 ? wrapped + length : wrapped);
         }
 
-        int patternIndexForStep (const SequencerData& data, int64_t absoluteStep)
+        /*  The one place that answers "which pattern is step N of this timeline?". The render path
+            passes the live `seq.pattern` parameter down from processSequencerBlock, and every other
+            caller - the offline MIDI export, a preset blob - passes kSeqPatternFromDocument and gets
+            the document's own mirror. Keeping it a single function is what stops the export from
+            describing a choice the plugin no longer plays. */
+        int patternIndexForStep (const SequencerData& data, int64_t absoluteStep,
+                                 int liveActivePattern)
         {
             if (! data.songMode)
-                return juce::jlimit (0, kSeqPatterns - 1, data.activePattern);
+                return juce::jlimit (0, kSeqPatterns - 1,
+                                     liveActivePattern == kSeqPatternFromDocument
+                                         ? data.activePattern : liveActivePattern);
 
             const int length = juce::jlimit (1, kSeqSteps, data.length);
             const int chainLength = juce::jlimit (1, kSeqChainLength, data.chainLength);
@@ -127,6 +135,11 @@ namespace sliceforge
             draw per step and no two passes agree, while the blocks *inside* a pass still do.
             The internal clock does not need it to vary between bars (its position only counts up),
             but it does need it when the transport is restarted from zero.
+
+            The pattern, the pad and the step all feed the hash, so a lane's dropout set belongs to
+            that lane: two pads at the same step of the same pattern disagree about which hits a
+            probability of 0.5 keeps, which is what stops one loud lane from switching a quiet one
+            off with it.
         */
         double probabilityRollFor (int patternIndex, int pad, int64_t absoluteStep,
                                    int64_t passCount) noexcept
@@ -154,12 +167,13 @@ namespace sliceforge
                                    juce::Random& random,
                                    bool hostMode,
                                    SeqPlaybackState& state,
-                                   SeqBlockOutput& output)
+                                   SeqBlockOutput& output,
+                                   int liveActivePattern)
         {
             juce::ignoreUnused (random); // see probabilityRollFor: the draw is positional now
             const int globalLength = juce::jlimit (1, kSeqSteps, data.length);
             const int division = sanitiseDivision (data.division);
-            const auto patternIndex = patternIndexForStep (data, absoluteStep);
+            const auto patternIndex = patternIndexForStep (data, absoluteStep, liveActivePattern);
             const auto& pattern = data.patterns[(size_t) patternIndex];
             auto& histories = hostMode ? state.lastHostPadStep : state.lastInternalPadStep;
             const double basePpq = (double) absoluteStep / (double) division;
@@ -240,7 +254,8 @@ namespace sliceforge
                                 int numSamples,
                                 juce::Random& random,
                                 SeqPlaybackState& state,
-                                SeqBlockOutput& output)
+                                SeqBlockOutput& output,
+                                int liveActivePattern)
         {
             const int division = sanitiseDivision (data.division);
             const double bpm = host.bpm > 0.0 ? host.bpm : juce::jmax (20.0, data.bpm);
@@ -255,10 +270,24 @@ namespace sliceforge
                 The comparison is against a prediction for exactly one block, so the noise it has
                 to swallow scales with the block: a host that quantises the position it reports,
                 or derives it from a rounded time, lands a little off every block. Half a block
-                is the largest such error that still means "this block starts where I said",
-                because a real rewind or edit moves the position by at least a step. 0.02 stays as
-                a floor so the widening is one-sided: at the 512-sample default the half-block is
-                0.0107 ppq, and nothing about the old behaviour gets tighter. */
+                is the largest such error that still means "this block starts where I said".
+                0.02 stays as a floor so the widening is one-sided: at the 512-sample default the
+                half-block is 0.0107 ppq, and nothing about the old behaviour gets tighter.
+
+                What that trade buys is bounded, and the bound is arithmetic, not taste. Legitimate
+                sub-block disagreement is at most half a block, 0.5 * blockPpq, which grows with the
+                block; the smallest deliberate move is one step, 1 / division, which does not. So a
+                seek of a step or more is detected only while
+
+                    0.5 * blockPpq < 1 / division   i.e.   numSamples * bpm < 720000
+
+                at 1/32 (division 8) on 48 kHz. Past that line - above roughly 176 BPM on 4096 samples,
+                or 88 BPM on 8192, while 2048 would need 352 - half a block is already wider than a
+                whole step, so no fixed tolerance separates the two, and a one-step edit inside such a
+                block reads as playback. The cases in SmokeTest.cpp pin both sides of that seam;
+                clamping the tolerance to half a step instead would trade the swallowed edit for
+                per-block history clears, which is the louder defect. See the defect entry in
+                docs/next-steps-plan.md. */
             const double resyncTolerance = juce::jmax (0.02, blockPpq * 0.5);
 
             bool reset = ! state.hostWasPlaying;
@@ -267,7 +296,7 @@ namespace sliceforge
             if (reset)
             {
                 clearHistory (state.lastHostPadStep);
-                ++state.hostResyncs;
+                ++state.historyClears;
                 ++state.passCount; // a restart, not a repeat: the bar gets its own draws
             }
 
@@ -284,7 +313,7 @@ namespace sliceforge
             const auto last = (int64_t) std::ceil (ppqEnd * division) + 2;
             for (auto absolute = first; absolute <= last; ++absolute)
                 scheduleAbsoluteStep (data, absolute, ppqStart, ppqEnd, bpm, sampleRate,
-                                      numSamples, random, true, state, output);
+                                      numSamples, random, true, state, output, liveActivePattern);
 
             output.hostBpm = bpm;
             output.hostPlaying = true;
@@ -300,7 +329,8 @@ namespace sliceforge
                                     int numSamples,
                                     juce::Random& random,
                                     SeqPlaybackState& state,
-                                    SeqBlockOutput& output)
+                                    SeqBlockOutput& output,
+                                    int liveActivePattern)
         {
             if (! state.internalWasPlaying)
             {
@@ -319,7 +349,7 @@ namespace sliceforge
             const auto last = (int64_t) std::ceil (ppqEnd * division) + 2;
             for (auto absolute = first; absolute <= last; ++absolute)
                 scheduleAbsoluteStep (data, absolute, ppqStart, ppqEnd, bpm, sampleRate,
-                                      numSamples, random, false, state, output);
+                                      numSamples, random, false, state, output, liveActivePattern);
 
             output.hostPlaying = false;
             output.transportPlaying = true;
@@ -829,10 +859,10 @@ namespace sliceforge
 
         for (int absolute = 0; absolute < totalSteps; ++absolute)
         {
-            const int patternIndex = data.songMode
-                ? juce::jlimit (0, kSeqPatterns - 1,
-                                data.chainPatterns[(size_t) ((absolute / barLength) % chainLength)])
-                : juce::jlimit (0, kSeqPatterns - 1, data.activePattern);
+            // The same seam the render path uses, so an export cannot describe a choice the
+            // sequencer no longer makes. The document's mirror is the caller's job to stamp with
+            // the live parameter before it gets here.
+            const auto patternIndex = patternIndexForStep (data, absolute, kSeqPatternFromDocument);
             const auto& pattern = data.patterns[(size_t) patternIndex];
 
             for (int pad = 0; pad < kNumPads; ++pad)
@@ -885,7 +915,8 @@ namespace sliceforge
                                 int numSamples,
                                 juce::Random& random,
                                 SeqPlaybackState& state,
-                                SeqBlockOutput& output)
+                                SeqBlockOutput& output,
+                                int liveActivePattern)
     {
         output.triggerCount = 0;
         output.droppedTriggers = 0;
@@ -903,7 +934,8 @@ namespace sliceforge
             state.internalWasPlaying = false;
             state.internalPpq = 0.0;
             clearHistory (state.lastInternalPadStep);
-            scheduleHostBlock (data, host, sampleRate, numSamples, random, state, output);
+            scheduleHostBlock (data, host, sampleRate, numSamples, random, state, output,
+                               liveActivePattern);
             return;
         }
 
@@ -912,7 +944,8 @@ namespace sliceforge
 
         if (internalMode)
         {
-            scheduleInternalBlock (data, sampleRate, numSamples, random, state, output);
+            scheduleInternalBlock (data, sampleRate, numSamples, random, state, output,
+                                   liveActivePattern);
             return;
         }
 

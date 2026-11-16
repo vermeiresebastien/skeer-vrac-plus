@@ -13,6 +13,18 @@ namespace sliceforge
     constexpr int kMaxSlices = 64;
     constexpr int kPadMidiBase = 36; // C1
 
+    /*  The pattern bank lives here rather than in Sequencer.h because both sides need it: the
+        parameter layout declares four choices, and ParameterCache::readActivePattern clamps the host
+        into that bank. Sequencer.h includes this header, so moving them the other way would leave the
+        cache guessing its own ceiling. */
+    constexpr int kSeqPatterns = 4;
+
+    /** Value for the live pattern selector that means "nobody is driving it from the parameter
+        surface, use the document's own copy". The scheduler's authority is the `seq.pattern`
+        parameter; `SequencerData::activePattern` is the mirror that offline callers - the MIDI
+        exporter, a preset blob - read when they have no access to a running processor. */
+    constexpr int kSeqPatternFromDocument = -1;
+
     enum Family
     {
         kick = 0,
@@ -120,6 +132,8 @@ namespace sliceforge
         std::atomic<float>* sensitivity = nullptr;
         std::atomic<float>* clip = nullptr;
         std::atomic<float>* outGain = nullptr;
+        // Appended after them all, because seq.pattern is the newest parameter on the surface.
+        std::atomic<float>* pattern = nullptr;
     };
 
     struct ParameterCache
@@ -132,6 +146,10 @@ namespace sliceforge
         PadSettings readPad (int index) const;
         GlobalSettings readGlobal() const;
         float readSensitivity() const;
+        /** The live pattern choice as the audio path should use it: the raw (denormalised, so
+            already an index) value of `seq.pattern`, rounded and clamped into 0..3. Safe to call
+            from the render thread - one atomic load, no allocation. */
+        int readActivePattern() const;
         void writePad (int index, const PadSettings& settings);
         void writeGlobal (const GlobalSettings& settings);
     };

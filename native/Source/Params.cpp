@@ -185,10 +185,20 @@ namespace sliceforge
             layout.add (std::make_unique<AudioParameterBool> (padParamId (pad, "solo"), prefix + "Solo", false));
         }
 
-        // The output stage is added last, after every pad parameter, so a host session that
-        // indexes parameters by number keeps pointing at the same control it always did.
+        // The output stage sits after every pad parameter and the pattern selector after that, because
+        // a host session that indexes parameters by number must keep pointing at the same control it
+        // always did. The invariant is therefore about *existing* indices, not about which section is
+        // last: anything new is appended here, at the end, and never inserted before this point.
         layout.add (std::make_unique<AudioParameterFloat> ("global.clip", "Soft Clip", 0.0f, 1.0f, 0.0f));
         layout.add (std::make_unique<AudioParameterFloat> ("global.out", "Out Gain", -24.0f, 12.0f, 0.0f));
+        // The live pattern selector, appended last for the same reason. A Choice, not a Float with a
+        // step of 1, because the wrapper only exports a step count for a discrete parameter: a float
+        // would reach a host as a continuous 0.00-3.00 fader instead of Pattern A-D. It selects the
+        // pattern in step mode; in song mode the timeline's song chain owns the choice and this
+        // parameter is not audible, which is why it does not fight the chain.
+        layout.add (std::make_unique<AudioParameterChoice> ("seq.pattern", "Active Pattern",
+                                                            StringArray { "Pattern A", "Pattern B",
+                                                                          "Pattern C", "Pattern D" }, 0));
         return layout;
     }
 
@@ -232,6 +242,7 @@ namespace sliceforge
         global.sensitivity = raw ("source.sensitivity");
         global.clip = raw ("global.clip");
         global.outGain = raw ("global.out");
+        global.pattern = raw ("seq.pattern");
     }
 
     PadSettings ParameterCache::readPad (int index) const
@@ -279,6 +290,22 @@ namespace sliceforge
     }
 
     float ParameterCache::readSensitivity() const { return global.sensitivity->load(); }
+
+    int ParameterCache::readActivePattern() const
+    {
+        /*  A choice's raw value is its index, so there is nothing to denormalise here beyond
+            rounding away a host that lands on 1.9999. A null pointer here would mean the cache was
+            never connected, and it cannot be: connect (apvts) runs from the processor constructor
+            (PluginProcessor.cpp:25), before anything can reach this. The clamp, rather than a
+            fall-through to kSeqPatternFromDocument, is deliberate - every consumer outside the render
+            path indexes patterns[] with the result, SequencerPanel's chip styling among them and
+            unclamped - so an out-of-range answer here is an out-of-bounds read, not a deferred choice.
+            Serialisation clamps the same field again on the way in and out, so nothing can persist a
+            value the bank does not have. */
+        if (global.pattern == nullptr)
+            return 0;
+        return juce::jlimit (0, kSeqPatterns - 1, juce::roundToInt (global.pattern->load()));
+    }
 
     void ParameterCache::writePad (int index, const PadSettings& s)
     {

@@ -38,6 +38,7 @@ namespace sliceforge::ui
         return isGainParam (id) || isPitchParam (id) || isPercentParam (id) || isButtonParam (id)
             || id == "global.fine" || id == "global.drumify" || id == "global.length"
             || id == "global.filter" || id == "global.tone"
+            || id == "seq.pattern"
             || id.endsWith ("_length") || id.endsWith ("_pan")
             || id.endsWith ("_eqLow") || id.endsWith ("_eqMid") || id.endsWith ("_eqHigh");
     }
@@ -87,6 +88,14 @@ namespace sliceforge::ui
             const auto cutoff = 20.0f * std::pow (8200.0f / 20.0f, v);
             return "HP " + juce::String (cutoff >= 1000.0f ? cutoff / 1000.0f : cutoff, 1)
                  + (cutoff >= 1000.0f ? "k" : "");
+        }
+        // SEQ PATTERN is a choice: the readout a host or a MIDI mapping shows has to name the
+        // pattern the way the chips do, not print the index as "2.00".
+        if (id == "seq.pattern")
+        {
+            const auto index = juce::jlimit (0, sliceforge::kSeqPatterns - 1,
+                                             (int) std::llround (value));
+            return "Pattern " + juce::String::charToString ((juce::juce_wchar) ('A' + index));
         }
         return juce::String (v, 2);
     }
