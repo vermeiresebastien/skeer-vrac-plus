@@ -221,12 +221,59 @@ closed, REC enabled once it is open) so the check cannot pass on a dead button, 
 unavailable while the host input bus is closed" fails when `setEnabled (inputActive)` is reverted to
 `setEnabled (true)`.
 
-**Step 5 — Fix the claims (0.5 d).** Correct the four `AGENTS.md` line references. Add a
-`HostTest` assertion for the *exact* parameter count so the number is machine-held from now on. Retire
-the "no audio-thread allocation" sentence or scope it honestly — `PluginProcessor.cpp:223-227` copy-assigns
-a `juce::AudioBuffer` every block whenever the sidechain bus is enabled, which is an allocation
-(`getBusBuffer` → `operator=` → `setSize` + memcpy). Either hold a reusable member or document the
-exception.
+**Step 5 — Fix the claims (0.5 d).** Three sub-deliverables were written here. One was already built,
+two are refuted, and the refutations are why this entry now carries evidence in place of a task.
+
+- **Correct the four `AGENTS.md` line references — measured, there are none.** Every `file:line`
+  citation in `AGENTS.md` (lines 61, 67, 99, 101, 102, 104, 108, 109, 112, 113 and 136 — seventeen:
+  `native/CMakeLists.txt:106-107`, `:116`, `:49`, `:127`, `PluginProcessor.cpp:23`, `:974`, `:978`,
+  `:1036`, `:1041`, `Sequencer.cpp:12`, `Source/UI/Theme.cpp:75`, `Source/PluginEditor.cpp:461`, `:491`,
+  `Source/VaultLibrary.cpp:143`, `src/state/storage.ts:5-7`, `src/state/sampleStore.ts:7`,
+  `Tests/HostTest.cpp:68`) was opened and read at HEAD `4abe4b0` on 2026-11-16, and each line says what
+  the prose around it claims. The instruction is the stale item, not the references. Two traps, recorded
+  so nobody re-derives this: the web paths are **root-relative** — `web/src/state/storage.ts` does not
+  exist, so resolving them against `web/` invents staleness — and the one real defect in the same
+  paragraph is *not* a line reference: `AGENTS.md:99` names `PLUGIN_CODE` before
+  `PLUGIN_MANUFACTURER_CODE`, while `native/CMakeLists.txt` puts the manufacturer at `:106` and the
+  plugin code at `:107`. That is a wording fix and belongs to the stage that already edits `AGENTS.md`.
+- **Machine-hold the exact parameter count — built, and not by this step.** `native/Tests/HostTest.cpp:68`
+  reads `if (instance->getParameters().size() != 349)` — a literal, so it reddens when the layout
+  changes — and `:74` prints the composition (`349 = 347 layout + Bypass + Program`).
+- **Retire or scope the "no audio-thread allocation" sentence — refuted, so the sentence stays.**
+  `native/README.md:394` ("32 fixed voices; no audio-thread allocation or locking") is accurate, and
+  adding the caveat asked for here would have injected a false claim into a correct document. The cited
+  site was wrong twice over: `PluginProcessor.cpp:223-227` is the tail of `buildRuntime`
+  (`runtime.padStarts[…]` at `:223`, `engine.setRuntime (runtime)` at `:226`, `}` at `:227`, and
+  `processBlock` opens at `:229`), while the code meant is `:244`
+  (`juce::AudioBuffer<float> inputBuffer;`) with the assignment at `:248`
+  (`inputBuffer = getBusBuffer (buffer, true, 0);`) — stale by ~21 lines *and* naming a mechanism that
+  does not exist, which is the combination that makes a plan entry unsafe to execute. In the vendored
+  library: `getBusBuffer` returns a pointer-referencing buffer
+  (`processBlockBuffer.getArrayOfWritePointers() + channelOffset, busNumChannels, …`,
+  `juce_AudioProcessor.h:669-675`), which binds the non-owning constructor at
+  `juce_AudioSampleBuffer.h:91-100` whose only storage call is `allocateChannels (dataToReferTo, 0)` at
+  `:99`; `allocateChannels` (`:1231-1244`) carries the comment "try to avoid doing a malloc here, as
+  that'll blow up things like Pro-Tools" at `:1235` and points `channels` at the member array
+  `preallocatedChannelSpace[32]` (`:1290`) whenever `numChannels < 32`, reaching `allocatedData.malloc`
+  only in the `else` at `:1242`. That bound is ours, not the host's: `isBusesLayoutSupported`
+  (`PluginProcessor.cpp:48-70`) requires exactly `kNumBuses` output buses (`Params.h:9` — 8) and
+  rejects any enabled bus that is not stereo (`:52-59`), with at most one input bus of mono or stereo
+  (`:60-68`), so `busNumChannels` is ≤ 2 and the malloc branch is off this path by construction rather
+  than by luck. And the chain named here — `operator=` → `setSize` + memcpy — does not bind: `:248`
+  assigns a prvalue, so overload resolution picks the move assignment
+  `operator= (AudioBuffer&&) noexcept` at `juce_AudioSampleBuffer.h:219`, while the deep copy that
+  would call `setSize (…, false, false, false)` is `operator= (const AudioBuffer&)` at `:165` and never
+  runs. `prepareToPlay` is also where JUCE tells you to size buffers (`juce_AudioProcessor.h:128-137`),
+  so a write there is ordinary practice, not the realtime callback.
+  **Limit of the evidence, stated rather than smoothed:** the scan for allocation tokens
+  (`juce::String`, `std::vector`, `new`, `malloc`, `reserve(`, `HeapBlock`, `push_back`, `Array<`,
+  `operator+`) covered `PluginProcessor.cpp:230-400` and `:470-520` and returned nothing. That is a
+  range scan, not a call-graph proof — `buildRuntime` (`:210`) and whatever `serviceRecording` reaches
+  outside those lines was not inspected. What is met here is "no contradicting evidence", which is
+  enough to leave a correct document alone and not enough to claim the plugin allocates nowhere on the
+  audio thread. A counted gate — an allocator shim, or a counted `operator new` over a rendered block,
+  red before and green after — is what would turn this into a proof, and nobody has built one. No
+  "hold a reusable member" change is to be written: there is nothing to hold.
 
 Round 2's headline for this step — "347 not 349" — is **retracted on measurement**: `SliceForgeHostTest.exe`
 on the current build prints `parameters: 349`, so `native/README.md:155` was right and my own plan was
@@ -239,8 +286,44 @@ does. Verified against the run, not against the text: `ctest` 3/3 and `PASS - 11
 `README.md` needed no change. What is left in Step 5 is the `AGENTS.md` line references, the exact-count
 assertion, and the allocation sentence.
 
+*That last sentence is superseded as of 2026-11-16: of the three, one was already built and two fell to
+measurement. Read the entry above rather than this 2026-11-15 account of what remained.*
+
 Gate: `ctest --test-dir native/build -C Release --output-on-failure` green with the exact-count
-assertion in place. Build the test targets first — bare ctest runs stale binaries.
+assertion in place. Build the test targets first — bare ctest runs stale binaries. What is left of this
+step is documentation, so the second half of the gate is that every citation in this entry was read out
+of the tree it describes rather than copied out of this text: the seventeen `AGENTS.md` references, the
+four library ranges above, and the write and read sites of `stateNotice`.
+
+Built 2026-11-16 as a doc-only retraction. Gated by `ctest --test-dir native/build -C Release` →
+"100% tests passed out of 3", exit 0, with the three test targets built first (exit 0, nothing
+recompiled — the tree carries no source change), the smoke program's own `PASS - 148/148 checks passed`
+at exit 0, and `SliceForgeHostTest.exe` printing `parameters: 349 = 347 layout + Bypass + Program`. The
+148 is Stage A's total; this entry moved no check.
+
+**`stateNotice` — the open half of the same audit, closed as a finding rather than as code
+(2026-11-16).** Real defect, LOW severity, and **no falsifiable gate for the race itself**: there is no
+Windows TSan in this toolchain, and a single-threaded console harness cannot induce the interleaving.
+Under the rule that a gate which cannot go red forbids the work, nothing here is a lock, an atomic or a
+POD rewrite. What makes it a defect rather than a non-issue is that there are five write sites, not one —
+`PluginProcessor.cpp:97-99` inside `prepareToPlay` (which opens at `:72`) and `:1055`, `:1061`, `:1089`,
+`:1137-1139` inside `setStateInformation` — against exactly one reader, `Source/UI/FooterBar.cpp:20`,
+which takes a **copy** of the `juce::String` that `PluginProcessor.h:65` hands back; a copy-construct
+racing a reassignment is the whole exposure. The `setStateInformation` writes are same-thread as the
+paint and benign. The `prepareToPlay` one is not *proven* same-thread, because in the vendored wrapper
+`setState` asserts the host message thread (`juce_audio_plugin_client_VST3.cpp:2908` calling `:2912`)
+while `setActive` (`:2668`) neither asserts nor marshals and reaches
+`preparePlugin (…, CallPrepareToPlay::yes)` at `:2692` — the path that calls `prepareToPlay`. A host that
+activates on a device-change thread while the editor is painting puts both halves on different threads.
+Recorded as a reading of the wrapper, not an observation: no run here reproduced a wrong-thread
+activation, and the guard this argument turns on is `JUCE_ASSERT_MESSAGE_THREAD`, a `jassert`
+(`juce_MessageManager.h:496-497`), which compiles out of Release — so the difference between `setState`
+and `setActive` is diagnostic, not protective, in the shipping binary.
+
+Two neighbours of the same finding *are* gateable and are left as owner decisions, not built here:
+`droppedHits` is `fetch_add`-only (`PluginProcessor.cpp:269`, `:319`), never reset and asserted by no
+test, so the footer count only ever grows for the life of the instance; and the notice is never cleared
+outside `setStateInformation` (`:1055`), so a warning outlives the state that caused it.
 
 ---
 
