@@ -1325,13 +1325,13 @@ test their own names (2026-11-16)
   host derives its expected index from a count, which the bare view deliberately refuses to do for its
   total. Deriving the index is falsifiable, because an unregistered `seq.pattern` leaves `patternIndex`
   at -1 and reddens that same arm; deriving the total is not, because `16 * 21 + 9 + 2 + 1` is the
-  layout's own arithmetic and goes green whether or not the parameter was ever added. So `:178` keeps its
+  layout's own arithmetic and goes green whether or not the parameter was ever added. So `:177` keeps its
   literal, and the comment at `:172-176` now says that in those words. That comment was then rewritten
   once more for a reason worth keeping: the first version of it was six lines where it replaced five, and
   one inserted line above the check shifted every live `SmokeTest.cpp` cite in this section by one -
   about twenty pointers, all correct the morning before. The fix is not to re-point twenty cites; it is
   that an edit inside a file this section cites by line number has to be line-neutral, so the comment is
-  now three lines replacing three, and the pointers survived.
+  now five lines again - the sixth was the fault - and the two commits together are net-zero, so the pointers survived.
 - **A re-link, and what it proves about the delivered module.** The rebuild this comment needed stamped a
   new `native/build/…/SliceForge.vst3`, so the build tree and `launch/` print different SHA-256s while
   nothing that compiles into the module changed. They differ in 4 bytes of 24,530,432: the low half of the
