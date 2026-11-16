@@ -1605,6 +1605,109 @@ one the brief predicted - and the reason it is not is more useful than the predi
   the owner's copy and the zip is still the 04:56 build, both behind this HEAD. 14e's item-13 list was
   delivered last pass (`e6e2c44`, `780ec07`, `1bfe8e8`) and the `0.08` literal is untouched, as ruled.
 
+## 8G. Item 15: the notify-drop mutation reddened seven checks, and 15c's open list had already shipped
+
+- **What 15 asked, and what the landed commit already was.** 15a(2), 15a(3) and 15b describe a working-tree
+  snapshot, not a shipped one. The two locals they are built on - `notified` and the singular `firedPad` -
+  have never existed in any commit on this branch: `git log --all -S "bool notified"` and
+  `git log --all -S "firedPad = "` over `native/Tests/SmokeTest.cpp` both return nothing. What `c57f277`,
+  the very commit under review, actually landed already carried `valueLanded`, the `NotifySpy` and the
+  set-based song-mode assert, and all three are still there: `valueLanded` at
+  `native/Tests/SmokeTest.cpp:1442-1443`, the four-conjunct host check at `:1444-1451`, the listener at
+  `:1424-1440` (`spy.calls == 1` and `roundToInt (spy.last) == 2`), the comment naming which conjunct
+  carries the host claim at `:1416-1423`, and the song-mode set at `:1361-1392` - `heard` plus `fires` over
+  all 60 blocks, `list == "1 "` at `:1388`, the chain-slot justification at `:1379-1383`: all eight slots
+  hold pattern 1, and pattern p lights row p. The five `firedPads` hits are the shared lambda at `:1299` and
+  its four uses. Nothing was owed here, and the brief's `:1041` and `:1069-1072` cannot be re-pointed,
+  because no blob holds the bytes they were read from.
+- **The mutation, applied and reverted byte-exactly (`item15-mut1-*`).** One line, line-neutral, in
+  `setParameterValue` at `native/Source/PluginProcessor.cpp:252` - the brief's `:195-201` was exact for the
+  committed file at 06:21 (`git show e0b246d:native/Source/PluginProcessor.cpp` puts the function there and
+  the call at `:199`), and it has since moved:
+  `parameter->setValueNotifyingHost (range.convertTo0to1 (value));` became
+  `parameter->setValue (range.convertTo0to1 (value));`. Pre-mutation worktree `e8a4c882…`,
+  `git hash-object` `584537fc…`, commit blob `a73bf191…`; mutated worktree `43d3d200…`; after the restore the
+  worktree hash is `e8a4c882…` again, `cmp` against the copy taken before the edit is clean, `git diff`
+  prints nothing and `git status --porcelain` is empty. No stash and no checkout were used, per 13f: this is
+  the tree's only `i/lf w/crlf` source, so a smudge-filter write would have moved the worktree hash while
+  `git status` still read clean. Red window 12:37:40 to 12:39:22.
+- **Red, quoted verbatim from `item15-mut1-verify.log`.** Build `BUILD_EXIT=0`, census closes the TU:
+  `PluginProcessor.cpp` 12:37:40 < `SliceForgeSmokeTest.dir/Release/PluginProcessor.obj` 12:38:09 < the smoke
+  exe 12:38:10, VST3 12:38:00. Smoke: `FAIL - 183/190 checks passed`, `SMOKE_EXIT=1`, CPU 4.65%. The seven
+  failing lines, with their printed values:
+
+      FAIL  selecting a pattern moves the parameter and tells the host  [value=0 landed=yes notifications=0 notified=-1000 expected=2 at 1 notification of 2]
+      FAIL  a session saved with the parameter on pattern C comes back on pattern C  [param=0 doc=0]
+      FAIL  a session written before seq.pattern existed keeps its stored pattern  [param=0 doc=3]
+      FAIL  when the parameter and the blob disagree, the parameter plays and the mirror follows  [param=0 doc=0]
+      FAIL  the host path plays the pattern the parameter names (pattern B)  [fixture invalid param=0 want 1 mirror=2 saw [3 10 ] expected [9 4 ] mirror holds pattern 2 peak 0.526246]
+      FAIL  the host path plays the pattern the parameter names (pattern C)  [fixture invalid param=0 want 2 mirror=3 saw [3 10 ] expected [1 12 ] mirror holds pattern 3 peak 0.526246]
+      FAIL  the host path plays the pattern the parameter names (pattern D)  [fixture invalid param=0 want 3 mirror=0 saw [3 10 ] expected [6 7 ] mirror holds pattern 0 peak 0.526246]
+
+  Host `PASS VST3 host test` `HOST_EXIT=0` with `index 347` and `parameters: 350 = 348 layout + Bypass +
+  Program` unmoved, layout `LAYOUT_EXIT=0`, ctest `67% tests passed, 1 tests failed out of 3` `CTEST_EXIT=8`
+  naming only `1 - SliceForgeSmoke (Failed)`.
+- **The library derivation held, the count of reds did not.** `readActivePattern` really does load the atomic
+  JUCE writes only inside `parameterValueChanged`, so `live.getPatternParameter()` came back 0 after a
+  `setPatternParameter (2)` that stored 2 into the parameter object - which is also the literal proof for
+  15a(2): the FAIL line prints `landed=yes` on a run that reddens, so the value conjunct survives a notify
+  drop and never could have carried the word "notified". The prediction was three checks; seven reddened,
+  and one of the three predicted ("the two restore checks") is not a restore at all - `a session written
+  before seq.pattern existed keeps its stored pattern` is the migration case. The two beyond that are the
+  disagreement check and the three-arm host-path differential, and the differential saw it through its
+  `fixture invalid` pre-check, not through a render expectation: arms B/C/D each refuse to run because the
+  live index never left 0, while arm A and `pattern A against a document on D` stay green by construction
+  because 0 is exactly what arm A expects. That is the sentinel degeneracy 8C and 8F keep running into.
+- **The optional listener of 15a(3) is not redundant, and the run shows it.** The same FAIL line prints
+  `notifications=0 notified=-1000`, so the `NotifySpy` dies with the atomic rather than duplicating its
+  evidence. It was already in `b8e4523`; nothing had to be added, and the branch in the dispatch ("if nothing
+  reddens, add the listener and say so") did not fire.
+- **Three checks stay green under this mutation and should.** `song mode lets the chain pick the pattern and
+  the parameter stay silent`, `with no parameter in sight the document still decides` and `a pattern above the
+  bank is clamped, not walked off` all call `processSequencerBlock` with an explicit live index and never
+  touch APVTS, so they gate engine precedence rather than the notify path. No coverage was lost; the notify
+  path is guarded by seven checks and the song-mode arms guard a different invariant.
+- **13a and 13b, which 15c still listed as open, shipped last pass.** 13a is in `780ec07`: the
+  total-preserving reorder that moves the output-stage pair below `seq.pattern`, reddening smoke on
+  `last=global.out` at `185/186` and the host on `index 345 of 350` with the count unchanged, the assert that
+  fired being `patternIndex != parameters.size() - 3` at `native/Tests/HostTest.cpp:132` and its print at
+  `:137`, then green at 186/186 with `N = 347`. 13b is in `c57f277` plus `e6e2c44`: `AGENTS.md:143` cites
+  `native/Tests/HostTest.cpp:110` asserting exactly 350 and `:144` gives the 9 + 21 x 16 + 2 + 1 composition,
+  so the brief's "AGENTS.md 136-139 still instructs 349" is false of the file as shipped.
+- **The other two 15c premises were stale too.** "There is no green smoke or host log yet" was written
+  against the failed 06:11 build: `item13a-final-smoke.log` prints `PASS - 186/186 checks passed` at 11:17
+  and `item14-final-gate2.log` prints `PASS - 190/190 checks passed` at 12:03, with this pass's
+  `item15-final-gate.log` the third. "11 files, all code, zero docs" described a tree caught mid-mutation;
+  this pass started from a clean `eca3a79`. All of those logs are gitignored (`.gitignore:10`), which is why
+  the numbers are repeated here instead of left as pointers.
+- **Green pair on the restored tree (`item15-final-gate.log`).** `BUILD_EXIT=0` with `PluginProcessor.cpp`
+  compiled in all three of the module, smoke and layout targets (log lines 33, 45, 53). Census at seconds:
+  `PluginProcessor.cpp` 12:39:22 < `SliceForgeSmokeTest.dir/Release/PluginProcessor.obj` 12:40:02 < exe
+  12:40:03; VST3 12:39:48; `SmokeTest.obj` 12:02:35 > `SmokeTest.cpp` 12:01:54 and `HostTest.obj` 08:46:10 >
+  `HostTest.cpp` 08:45:03 and `LayoutTest.obj` 09:32:58 > `LayoutTest.cpp` 00:29:24, those three TUs
+  correctly not recompiled because their sources did not move this pass. Then, quoted from this log:
+
+      PASS - 190/190 checks passed                          SMOKE_EXIT=0   CPU: 4.51% of one core
+      seq.pattern: host id 825878785, index 347, 4 steps, default 0, named Active Pattern
+      parameters: 350 = 348 layout + Bypass + Program       PASS VST3 host test   HOST_EXIT=0
+      LAYOUT_EXIT=0     100% tests passed out of 3          CTEST_EXIT=0
+
+  The total is 190, so `native/README.md:218` needed no restamp; what did move is the CPU sentence at
+  `:221-223`, which claimed one run behind the 190 and now describes two, 6.91% and 4.51%, both inside the
+  advertised 4.4-6.9 band. The red leg's 4.65% is not in that list because it printed 183/190.
+- **Delta accounting for this pass.** 190 to 190: 0 checks added, 0 removed, 0 renamed. Item 15 changed no
+  source and no test; the only files in this commit are `docs/next-steps-plan.md` and `native/README.md`.
+  Inserting this section shifts every plan line below its own start, which breaks nothing: a grep for
+  `next-steps-plan.md:` followed by a number, over `AGENTS.md`, `native/README.md`, `docs/` and both the
+  source and test trees, returns zero cites to plan line numbers.
+- **Not verified, and not claimed.** Two other sites carry the same call and were not mutated:
+  `setParameterNormalised` at `PluginProcessor.cpp:259`, which is the MIDI-CC route, and the local `set`
+  lambdas inside `ParameterCache::writePad`/`writeGlobal` at `Params.cpp:317` and `:350`. So "the notify path
+  is guarded" is proven for the pattern route only; the CC and batch-write routes have no per-site
+  falsifier, and adding one is a Step-26-sized job, not a doc fix. Nothing ran in a real DAW; the host test
+  is JUCE's own wrapper. Nothing installed, nothing re-exported to `launch/`, nothing pushed, and the `0.08`
+  literal is untouched per 13g.
+
 ## 9. Not doing
 
 Learned/ML onset detection and in-plugin stem separation — the runtime is absent (nothing of torch,
