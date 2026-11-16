@@ -37,7 +37,7 @@ host-synced 32-step sequencer with pattern chaining, polymeter, parameter locks 
 | Formats | VST3 instrument and standalone, x64 Windows |
 | Framework | JUCE 8.0.4, C++20 |
 | Vendor / bundle | SKEER / `com.skeer.sliceforge` |
-| Host requirements | VST3 host with MIDI input and multi-output support |
+| Host requirements | VST3 host with MIDI input and multi-output support. The sequencer also plays out over a MIDI event bus, which a host that has already scanned the plugin will only see after a reload. |
 | Sample Vault link | Optional read-only SKEER Sample Vault index with click-to-audition playback (auto-detected) |
 | Branding | SKEER logo, IBM Plex Sans / IBM Plex Mono, Barlow Condensed, SKEER palette |
 | Theme | Light and dark SKEER skins, switched from the header and remembered per user |
@@ -45,7 +45,7 @@ host-synced 32-step sequencer with pattern chaining, polymeter, parameter locks 
 | Installed plugin | `%ProgramFiles%\Common Files\VST3\SliceForge.vst3` |
 | Installed standalone | `%LOCALAPPDATA%\Programs\SliceForge\SliceForge.exe` |
 | Launch folder | `..\launch\` — `SliceForge.exe`, `SliceForge.vst3`, `SliceForge-1.0.0-Windows-x64.zip`, `start.bat` |
-| Test suite | 169 engine/state checks, editor layout snapshots, VST3 host load |
+| Test suite | 175 engine/state checks, editor layout snapshots, VST3 host load |
 
 The plugin bundle is self-contained (factory audio and SKEER brand assets are embedded, no
 external resource folder). The build is about **24 MB**. The VST3 session identity is preserved
@@ -160,6 +160,15 @@ processes MIDI note 36, checks the output is finite and non-silent, and round-tr
 state. The total is asserted exactly, not printed and compared against a round number. The bare
 processor asserts the 348 half, so both numbers are gated, in two different programs.
 
+The same hosted instance carries the MIDI output bus. `producesMidi()` is asserted there because on a
+hosted plugin JUCE derives it from the event output buses in the binary, so the check reads what a
+host would actually route to rather than what this source claims about itself; the audio layout is
+still `1 in / 8 out`. It then runs 48 host-synced blocks and requires what comes back out to be a
+clean stream - equal note-ons and note-offs, nothing but notes, every one on channel 10 within
+C1–D#2, every one inside the block that produced it, with the audio still non-silent. What it
+deliberately does not assert is *how many* notes: a hosted instance exposes no trigger oracle, so the
+exact event list, down to the sample offset and the velocity byte, is gated in `SliceForgeSmokeTest`.
+
 The layout test writes light and dark snapshots for the kit, sequencer, step inspector and
 Sample Vault pages, opens the step inspector through the real UI path and verifies that no child
 control falls outside its parent.
@@ -171,6 +180,10 @@ control falls outside its parent.
 - all eight stereo output buses
 - pan, velocity response, mute and solo gating
 - sample-accurate MIDI note triggering
+- sequencer MIDI output: the exact event list on the host's output bus - one note-on/note-off pair per
+  trigger at the sample offset the scheduler reported, `36 + pad` on channel 10, the exporter's
+  `round (velocity x 127)` byte, a 32-sample gate, nothing else in the buffer, nothing when the host
+  transport is stopped, and no pass-through of the notes played at the plugin
 - factory presets and full state round-trip
 - undo/redo and randomisation
 - MIDI CC learn and learned-parameter movement
@@ -197,10 +210,11 @@ control falls outside its parent.
   host-state XML) restores bypassed and still plays
 - randomizer, Euclidean, parseable MIDI file and CPU-headroom checks
 
-Current result: **169/169 passed** - that is what `SliceForgeSmokeTest.exe` prints on the tree this file
+Current result: **175/175 passed** - that is what `SliceForgeSmokeTest.exe` prints on the tree this file
 describes, so re-run it rather than trusting the number here - with the engine using between **4.4% and
 6.1% of one core** across separate runs of the same binary while continuously triggering pads at
-48 kHz / 512 samples (the run that printed the 169/169 above reported 4.45%). The spread is real, so the
+48 kHz / 512 samples (the runs behind that 175/175 reported 4.53%, 4.57% and 5.11% on three invocations of
+the same bytes). The spread is real, so the
 figure is reported and never asserted: real-time safety rests on the finite-and-in-ceiling checks, not on
 a wall-clock bound that measured the machine rather than the engine.
 
@@ -307,6 +321,10 @@ engine and follows host transport when available.
   chain slot pointing at the destination plays the copy from then on.
 - **MIDI** — export a Standard MIDI File of the current pattern or song chain, or start a MIDI
   file drag into a host that accepts external file drops.
+- **Live MIDI out** — while the sequencer plays, every hit it schedules is also written to the
+  plugin's own MIDI output bus as `36 + pad` on channel 10, at the sample offset the engine hears, so a
+  drum rack or a second instrument can play along with the kit. There is no switch for it: the notes
+  are the sequencer's own, and the grid's lane M/S is what takes them off the wire.
 - **Keyboard** — `SPACE` starts/stops internal preview; `G` generates a random groove.
 
 The sequence, chain, nudge/flams and parameter locks are saved with the host state and
@@ -388,7 +406,8 @@ Source/
   VaultLibrary.*        read-only SKEER Sample Vault SQLite index discovery and queries
   PluginProcessor.*     APVTS, sample/slice state, 32-voice engine, 8-bus host output,
                         sequencer scheduling, recording, MIDI learn, undo/redo, state,
-                        vault audition mix on bus 1, per-bus output stage
+                        vault audition mix on bus 1, per-bus output stage,
+                        sequencer MIDI out on the host's event bus
   PluginEditor.*        resizable editor at base 1260×840, scaled via transform,
                         light/dark theme switching
   Engine/
@@ -402,7 +421,7 @@ Source/
     SourcePanel / PadEditorPanel / HeaderBar / FooterBar / SequencerGrid / SequencerPanel /
     VaultPanel
 Tests/
-  SmokeTest.cpp         169 audio/state checks
+  SmokeTest.cpp         175 audio/state checks
   LayoutTest.cpp        editor bounds + PNG snapshots
   HostTest.cpp          scans and loads the built VST3 through JUCE's host path
 ```
@@ -413,6 +432,11 @@ Tests/
 - MIDI note events split the block at their sample position, so timing is sample-accurate.
 - The sequencer uses per-pad step history, so micro-timed events can cross audio block boundaries
   without being lost or doubled.
+- The sequencer's triggers reach the host twice over: as audio from the engine, and as one
+  note-on/note-off pair on the MIDI event bus at the same sample offset, `36 + pad` on channel 10. The
+  pair opens and closes inside the block that scheduled it, so no note can be stranded by a stopped
+  transport or a pattern change, and the only memory involved is the host's own buffer growing to fit
+  an event-heavy block.
 - UI triggers use a lock-free FIFO; MIDI CC learn uses a lock-free FIFO and an AsyncUpdater.
 - Audio is folded to the main output only when the host does not expose the aux buses.
 - The project builds with the static MSVC runtime.
@@ -425,6 +449,13 @@ Tests/
 - Recording uses the optional sidechain input bus. If a host does not expose it, load a file
   instead.
 - Multi-output routing requires the host to enable the additional output buses.
+- The MIDI output bus is part of what a host reads when it scans the plugin, so a host that already
+  loaded SliceForge has to reload it (or rescan the folder) before the bus appears. Sessions saved
+  against an earlier build still load; they just will not see the new bus until the plugin is
+  re-instantiated.
+- The MIDI output follows the sequencer, not the mixer: a pad muted with its **Mute** button still
+  plays its notes out over MIDI, because the mute is an engine state and the step was genuinely
+  scheduled. Only the pattern's own lane M/S and the step switch take a note off the wire.
 - Native preset files include custom-sample PCM; they can be several MB for long recordings.
 - The native build does not include the browser edition's WAV/ZIP export; render or bounce from
   the DAW instead.

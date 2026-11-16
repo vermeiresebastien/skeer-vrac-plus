@@ -1,6 +1,30 @@
 #include <JuceHeader.h>
 
+#include <cstdint>
 #include <iostream>
+
+namespace
+{
+    /** Enough of a DAW transport for the plugin to sync to: sample clock, ppq, tempo, playing. */
+    class MockHostPlayHead final : public juce::AudioPlayHead
+    {
+    public:
+        bool playing = false;
+        double ppq = 0.0;
+        double bpm = 120.0;
+        std::int64_t timeInSamples = 0;
+
+        juce::Optional<juce::AudioPlayHead::PositionInfo> getPosition() const override
+        {
+            juce::AudioPlayHead::PositionInfo position;
+            position.setIsPlaying (playing);
+            position.setPpqPosition (ppq);
+            position.setBpm (bpm);
+            position.setTimeInSamples (timeInSamples);
+            return position;
+        }
+    };
+}
 
 int main (int argc, char** argv)
 {
@@ -60,6 +84,23 @@ int main (int argc, char** argv)
     std::cout << "  name: " << instance->getName() << '\n';
     std::cout << "  buses: " << instance->getBusCount (true) << " in / " << instance->getBusCount (false)
               << " out\n";
+
+    /*  Step 28: a host only routes an event bus it can see. `producesMidi()` on a hosted instance is
+        NOT our own flag read back - it is derived from the VST3 bus enumeration of the binary on disk
+        (juce_VST3PluginFormat.cpp:3508-3509 counts event-direction output buses, :3186 reports that
+        count), so this line is the advertisement itself rather than a second copy of the CMake option.
+        It is also why an existing session has to reload the plugin to get the MIDI bus: the bus list is
+        read when the host scans the module, not when it restores the session. */
+    if (! instance->producesMidi())
+    {
+        std::cout << "FAIL hosted plugin advertises no MIDI output bus (producesMidi() is false)\n";
+        return 1;
+    }
+    if (! instance->acceptsMidi())
+    {
+        std::cout << "FAIL hosted plugin no longer accepts MIDI input\n";
+        return 1;
+    }
 
     // 348 parameters come from createParameterLayout (nine globals before the pad loop, 21 for each of
     // 16 pads, the two output-stage parameters after it and seq.pattern appended last), and JUCE's VST3
@@ -142,6 +183,75 @@ int main (int argc, char** argv)
     {
         std::cout << "FAIL host instance produced silence\n";
         return 1;
+    }
+
+    /*  Step 28, end to end. The smoke program proves the event list; only a hosted run can prove that
+        the events survive the real VST3 event marshalling, because it goes through
+        juce_audio_plugin_client_VST3.cpp:3621-3624 (leftover events out to data.outputEvents) and
+        juce_VST3PluginFormat.cpp:2984-2985 (that list back into the host's MidiBuffer). Which steps
+        the factory pattern happens to light is not this test's business, so the claims are the
+        structural ones a hosted bus makes possible: events arrive, they pair, they are pad notes on
+        the drum channel, they sit inside the block, and opening an event output bus did not cost the
+        audio anything. */
+    {
+        MockHostPlayHead playHead;
+        instance->setPlayHead (&playHead);
+        playHead.playing = true;
+
+        int noteOns = 0, noteOffs = 0, otherEvents = 0, offMap = 0, outsideBlock = 0;
+        float midiRunPeak = 0.0f;
+        for (int block = 0; block < 48; ++block)
+        {
+            playHead.ppq = (double) block * (512.0 * 120.0 / 60.0 / 48000.0);
+            playHead.timeInSamples = static_cast<std::int64_t> (block) * 512;
+            buffer.clear();
+            juce::MidiBuffer hostedMidi;   // in: nothing; out: whatever the plugin leaves behind
+            instance->processBlock (buffer, hostedMidi);
+
+            for (const auto metadata : hostedMidi)
+            {
+                const auto message = metadata.getMessage();
+                if (message.isNoteOn())
+                    ++noteOns;
+                else if (message.isNoteOff())
+                    ++noteOffs;
+                else
+                    ++otherEvents;
+                if (message.isNoteOn() || message.isNoteOff())
+                {
+                    if (message.getChannel() != 10
+                        || message.getNoteNumber() < 36 || message.getNoteNumber() > 51)
+                        ++offMap;
+                    if (metadata.samplePosition < 0 || metadata.samplePosition >= 512)
+                        ++outsideBlock;
+                }
+            }
+
+            for (int channel = 0; channel < buffer.getNumChannels(); ++channel)
+                for (int i = 0; i < buffer.getNumSamples(); ++i)
+                {
+                    const auto sample = buffer.getSample (channel, i);
+                    if (! std::isfinite (sample))
+                    {
+                        std::cout << "FAIL non-finite output during the MIDI-out run\n";
+                        return 1;
+                    }
+                    midiRunPeak = juce::jmax (midiRunPeak, std::abs (sample));
+                }
+        }
+        instance->setPlayHead (nullptr);
+
+        std::cout << "  midi out: " << noteOns << " note-ons / " << noteOffs << " note-offs over 48 blocks, "
+                  << "peak " << midiRunPeak << "\n";
+        if (noteOns < 1 || noteOns != noteOffs || otherEvents != 0 || offMap != 0 || outsideBlock != 0
+            || midiRunPeak <= 0.0001f)
+        {
+            std::cout << "FAIL sequencer MIDI out is not a clean pad-note stream: "
+                      << noteOns << " on / " << noteOffs << " off, " << otherEvents << " non-note events, "
+                      << offMap << " off channel 10 or outside 36..51, " << outsideBlock
+                      << " outside the block, audio peak " << midiRunPeak << "\n";
+            return 1;
+        }
     }
 
     juce::MemoryBlock state;

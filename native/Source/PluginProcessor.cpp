@@ -7,6 +7,58 @@
 namespace
 {
     constexpr int kMaxRecordBytes = 48 * 1024 * 1024;
+
+    /*  How long a live MIDI-out gate stays down, in samples.
+
+        The exporter has the other seam for this: a gate in *ticks* (Sequencer.cpp's addNote), because
+        a clip is measured in musical time and has to keep its shape when the host changes tempo. The
+        two numbers cannot be made to agree at every BPM, so the live bus states its own instead of
+        borrowing one: 32 samples is 0.67 ms at 48 kHz - long enough for any sampler to resolve the
+        pair, short enough that it cannot overrun the next hit even at a 16th at 240 BPM. */
+    constexpr int kPadMidiGateSamples = 32;
+
+    /** Writes this block's sequencer hits into the caller's MIDI buffer as channel-10 pad notes.
+
+        Deliberately not gated on producesMidi(). That flag answers a question about the *export* -
+        does this binary advertise an event output bus - while the buffer handed to processBlock
+        belongs to the caller: the VST3 wrapper only drains what it created, so emitting where there
+        is no bus is free. Gating the emission on the flag would also make it untestable from the
+        console programs, which compile this source through juce_add_console_app and therefore get no
+        JucePlugin_ defines at all.
+
+        Pitch, channel, velocity byte and onset are exact; only the gate is this function's choice.
+        The offset is clamped inside the block, which is what keeps the whole thing allocation-free
+        and stateless: no pending note-off can be carried across blocks and get stuck when the
+        transport stops or the pattern flips mid-gate. */
+    void emitSequencerMidi (const sliceforge::SeqBlockOutput& output,
+                            juce::MidiBuffer& midi,
+                            int numSamples)
+    {
+        if (numSamples <= 0)
+            return;
+
+        const int lastSample = numSamples - 1;
+
+        for (int i = 0; i < output.triggerCount; ++i)
+        {
+            const auto& trigger = output.triggers[(size_t) i];
+
+            if (trigger.pad < 0 || trigger.pad >= sliceforge::kNumPads)
+                continue;
+
+            const int note = sliceforge::kPadMidiBase + trigger.pad;
+            const int startSample = juce::jlimit (0, lastSample, trigger.sampleOffset);
+            const int gateEnd = juce::jmax (startSample, juce::jmin (lastSample,
+                                                                    startSample + kPadMidiGateSamples));
+            // The exporter's map, kept here rather than shared: the live path has a float velocity
+            // already limited to 0.02..1.0 by the scheduler, the clip path has the raw step value.
+            const int velocity = juce::jlimit (1, 127, (int) std::round (trigger.velocity * 127.0f));
+
+            midi.addEvent (juce::MidiMessage::noteOn (sliceforge::kPadMidiChannel, note,
+                                                      (juce::uint8) velocity), startSample);
+            midi.addEvent (juce::MidiMessage::noteOff (sliceforge::kPadMidiChannel, note), gateEnd);
+        }
+    }
 }
 
 SliceForgeAudioProcessor::SliceForgeAudioProcessor()
@@ -408,7 +460,14 @@ void SliceForgeAudioProcessor::processBlock (juce::AudioBuffer<float>& buffer, j
     preview.render (engine.getBusBuffer (0), numSamples);
 
     copyEngineBusesToHost (buffer, numSamples);
+
+    // Step 28: the event buffer the host handed us is *our* output bus, so it is emptied before it is
+    // filled. Clearing first is what makes "the sequencer's notes are an extra out, not a
+    // replacement" true: anything the host played at us has already been turned into playback events
+    // above, and anything still sitting in here would otherwise be re-emitted as if we had written
+    // it. A host that wants to hear the incoming notes plays them to a track of its own.
     midiMessages.clear();
+    emitSequencerMidi (sequenceOutput, midiMessages, numSamples);
 }
 
 void SliceForgeAudioProcessor::copyEngineBusesToHost (juce::AudioBuffer<float>& buffer, int numSamples)

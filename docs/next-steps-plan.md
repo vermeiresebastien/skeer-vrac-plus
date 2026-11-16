@@ -121,8 +121,9 @@ were stale inside a day, because every step that lands edits the very files it c
 (`VRAC_EXTRA`, `PLUGIN_CODE`, `getChildFile ("SliceForge")`) are the durable half. Round 2's claim that
 the README should read 347 is retracted above. What the README *was* wrong about is its check counts
 (109 against a 117-check suite) and "about 5% of one core"; both were fixed with Step 29 on 2026-11-15.
-  (Same exemption: that 117 and the 347 above are dated reads. The live pair is 169 checks and 350 host-visible,
-  re-measured 2026-11-16 after the Step 26 host-path gate was reworked into four per-arm checks.)
+  (Same exemption: that 117 and the 347 above are dated reads. The live pair is 175 checks and 350 host-visible,
+  re-measured 2026-11-16: Step 26's host-path gate was reworked into four per-arm checks, and Step 28's MIDI
+  output bus added six.)
 Everything else in `AGENTS.md`'s frozen list checked out, including `Sequencer.cpp:12`,
 `storage.ts:5-7`, `sampleStore.ts:7`, `UI/Theme.cpp:75` and `VaultLibrary.cpp:143` — the last is
 `native/Source/VaultLibrary.cpp`, not under `Source/UI/`, and round 1's Step 11 cited it without the
@@ -865,6 +866,29 @@ one path and not the other. Then the real gate, and the reason this outranks a l
 Ableton, arm a MIDI track to SliceForge's output, record, and play the clip back through a different
 drum rack.
 
+Built 2026-11-16, red first. With production at `82d8866` and the new assertions in place, the smoke suite
+printed `FAIL - 171/175 checks passed` on `FAIL  MIDI out carries nothing but four note-on/note-off pairs
+[0/0 notes, 0 other events]`, `FAIL  MIDI out notes carry the scheduler offset, 36 + pad and the 32-sample
+gate [0 events: ]`, `FAIL  MIDI out notes are all on channel 10 [0 off-channel of 0]` and
+`FAIL  MIDI out velocity uses the exporter's round(velocity x 127) mapping [0 note-ons: ]` (exit 1), and the
+host test exited 1 on `FAIL hosted plugin advertises no MIDI output bus (producesMidi() is false)` with
+`buses: 1 in / 8 out` still on the line above it — the audio layout is unchanged; what was missing is the
+event bus. The change is `NEEDS_MIDI_OUTPUT TRUE` (`native/CMakeLists.txt:113`, plus a re-configure: the
+macro is generated into `Defs.txt`, so without one the flag is a no-op), one shared drum-channel constant
+(`Params.h:19`), a `producesMidi()` that follows the build's own answer and survives targets where the
+macro does not exist (`PluginProcessor.h:43-50`), and `emitSequencerMidi` (`PluginProcessor.cpp:12-61`)
+called in place of the bare clear at the bottom of `processBlock` (`:469-470`). Restored and re-measured:
+`PASS - 175/175 checks passed` at CPU 4.53% of one core (4.57% and 5.11% on the two earlier runs of the same
+bytes), `PASS VST3 host test` printing
+`midi out: 9 note-ons / 9 note-offs over 48 blocks, peak 0.892715`, layout at 28 checks, ctest 100% out of
+3, every one at exit 0. Seven mutations were then run against the final bytes and every one reddened the
+smoke suite with a named check — no emission, no clear-first, gate 32→48, channel 10→1, truncated velocity,
+onset +1 sample, and a loop bound that emits a phantom hit on blocks the scheduler left empty — but five of
+the seven leave the host test green, so read 8D before repeating any of this as "the host test gates the
+wire". Not verified: the Ableton acceptance above, which is the only evidence that a real sequencer records
+what this emits; and a host holding an already-instantiated plugin will not see the bus until reload, which
+is why it is in the commit message.
+
 **Step 29 — Stop the smoke suite from asserting the state of the music library (0.25 d).**
 
 Verified state when this was written: `ctest --test-dir native/build -C Release` reported 113/114 and
@@ -1142,6 +1166,61 @@ test their own names (2026-11-16)
   What is left is positional fragility, not a false green: a later edit that lights a second step in that
   pattern keeps the check green while no longer proving which slot ran. LOW, and the real song-mode
   discriminator is the exact-list differential at `SmokeTest.cpp:1226` that Step 26 shipped.
+
+## 8D. What Step 28 had to correct about its own gate, and what its host test does not prove (2026-11-16)
+
+- **Neither half of the gate as written above is a thing a host can be asked to do.** "`HostTest` requests
+  a layout with MIDI output enabled" is not an operation: bus layout is not requested by the caller, it is
+  what the binary advertises, and JUCE derives a hosted plugin's `producesMidi()` from the count of event
+  *output* buses it found (`juce_VST3PluginFormat.cpp:3508-3509`, reported at `:3186`). So the assertion
+  became `HostTest.cpp:94` on the real instance, which reads what Live would route to rather than what this
+  source claims about itself. "The count of MIDI notes equals the count of audio triggers" is not reachable
+  either: the hosted instance exposes no trigger oracle, so there is nothing on that side of the equation to
+  read. The count comparison therefore moved to `SmokeTest.cpp:512-666`, where the fixture lights exactly
+  four steps of one pattern and the eight expected events are derived arithmetically from the step grid -
+  the count is pinned by what the pattern says, not by an oracle, and the four checks at `:618-641` each
+  name the property they compare. The split is the honest one, and it is the reason both programs are needed.
+- **`NEEDS_MIDI_OUTPUT` is a configure-time macro, and the console targets define no `JucePlugin_*` at all.**
+  The flag reaches the code through `…_artefacts/JuceLibraryCode/Release/Defs.txt`, so flipping it in
+  `native/CMakeLists.txt:113` does nothing until CMake is re-configured; `SliceForge_artefacts` reads
+  `JucePlugin_ProducesMidiOutput=1` and `SliceForgeHostTest`/`SmokeTest`/`LayoutTest` carry *zero*
+  `JucePlugin_` defines, because `juce_add_console_app` has no plugin to describe. That rules out a bare
+  `return JucePlugin_ProducesMidiOutput;` in `PluginProcessor.h:43-50` (it would not compile in three of the
+  four targets) and it is why the emission at `PluginProcessor.cpp:470` is not gated on the answer: the
+  buffer belongs to the caller, the wrapper only drains what it created, and gating on the flag would make
+  the behaviour unobservable in exactly the programs that gate it.
+- **Five of the seven falsifiers leave the host test green, so do not describe it as gating the wire.** It
+  asserts a *clean stream* - equal on/offs, nothing but notes, all of them on channel 10 inside 36..51, all
+  inside the block that emitted them, audio still non-silent - and a widened gate (`kPadMidiGateSamples`
+  32→48), a one-sample onset shift, a truncated velocity byte and a dropped `midiMessages.clear()` (it feeds
+  that buffer empty, so pass-through has nothing to pass) are all invisible to it. The
+  phantom-event falsifier (loop bound `i < triggerCount` → `i <= triggerCount`, which emits a default
+  `SeqStep` on every block - 36 of the smoke fixture's 40 had nothing scheduled at all, and its first check
+  read `44/44 notes`) grew the host count from 9 pairs to 57 and still printed `PASS`: extra notes are clean
+  notes. It went red only for the mutations that change what is on the wire rather than how it reads - no
+  emission at all (`0 on / 0 off … audio peak 0.892715`) and the channel move (`18 off channel 10 or outside
+  36..51`) - plus the pre-change tree, where the bus simply is not there. The exact-list check in the smoke
+  suite is the load-bearing gate for pitch, timing, gate length and velocity; `HostTest` gates the
+  advertisement and the shape.
+- **A `MockHostPlayHead` that reports its default 120 BPM under a ramp built for another tempo makes a
+  correct emitter look 224 samples late.** `scheduleHostBlock` prefers the host's tempo over the document's
+  (`Sequencer.cpp:261`), so `samplesPerPpq` came out at 24000 rather than 12800 and step 1 landed at 6624
+  instead of 6400 on the first green run. The emitter was right - the audio played the same sample - which is
+  why the check caught it rather than drowning in it. Any new host-synced fixture has to put its tempo on
+  the head; the pre-existing ones do (`SmokeTest.cpp:711`, `:887`, `:961`, `:979`), and the Step 28 block now
+  says so at `:512-527`.
+- **Two asymmetries are shipped on purpose and are now in `native/README.md`.** The live gate is 32 samples
+  while the exporter's is `jmax (12, round (ticksPerStep * 0.45))` ticks (`Sequencer.cpp:885`): one is a
+  performance, the other a clip that has to survive a tempo change, and no single number does both. And the
+  emission follows the sequencer's own gate - `laneIsAudible`, i.e. the grid's lane M/S (`Sequencer.cpp:60-67`) -
+  not the mixer's per-pad `mute` parameter, which is an engine state applied to the voice
+  (`Params.cpp:184`, `VoiceEngine.cpp:307`). A muted pad therefore still plays its notes out over MIDI. That
+  is defensible (the step really was scheduled) and it is a product decision, not a fact: if the owner wants a
+  switch, or wants pad mute to silence the wire, both are one condition in `emitSequencerMidi`.
+- **Not verified by any of this, and unverifyable headless:** the Ableton half of Step 28's gate - arm a MIDI
+  track on the plugin's output, record, replay through a different rack. And the consequence of the flag
+  change is a scan-time one: a host holding an already-instantiated SliceForge will not grow the bus until the
+  plugin is reloaded, which is in the commit message per the decision above.
 
 ## 9. Not doing
 

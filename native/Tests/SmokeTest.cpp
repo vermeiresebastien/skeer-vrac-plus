@@ -74,8 +74,12 @@ namespace
         bool finite = true;
     };
 
+    /** Renders `blocks` blocks of 512 samples.
+        `midiOut`, when given, accumulates whatever the plugin left in the MIDI buffer, stamped with
+        its absolute sample position - that is the whole point of Step 28's checks, and it is opt-in
+        so every pre-existing caller keeps the behaviour it was written against. */
     Rendered render (SliceForgeAudioProcessor& processor, int blocks, float velocity = 1.0f, int pad = 0,
-                     int note = -1, int startBlock = 0)
+                     int note = -1, int startBlock = 0, juce::MidiBuffer* midiOut = nullptr)
     {
         Rendered result;
         juce::AudioBuffer<float> buffer (juce::jmax (2, processor.getTotalNumOutputChannels()), 512);
@@ -89,6 +93,8 @@ namespace
                 midi.addEvent (juce::MidiMessage::noteOn (1, note, velocity), 0);
             buffer.clear();
             processor.processBlock (buffer, midi);
+            if (midiOut != nullptr)
+                midiOut->addEvents (midi, 0, buffer.getNumSamples(), block * buffer.getNumSamples());
             for (int bus = 0; bus < sliceforge::kNumBuses; ++bus)
             {
                 auto busBuffer = processor.getBusBuffer (buffer, false, bus);
@@ -501,6 +507,162 @@ int main()
         render (hostProcessor, 1, 1.0f, 0, -1, 999);
         check (! hostProcessor.isSequencerTransportPlaying(), "host stop stops the sequencer");
         hostProcessor.setPlayHead (nullptr);
+    }
+
+    /*  Step 28 - the sequencer's own triggers have to reach the host as MIDI notes.
+        The clock here is chosen so the expectation is arithmetic rather than transcription: 225 BPM
+        with division 2 (two steps per quarter, so an eighth note per step) is 60/225 x 48000 / 2
+        = 6400 samples per step at 48 kHz, and a block is 512, so the four lit steps below sit at
+        absolute samples 0, 6400, 12800 and 19200 - block 0 offset 0, block 12 offset 256, block 25
+        offset 0, block 37 offset 256. Both the on-grid and the mid-block case are therefore in the
+        expected list, which is the part of the claim that "a note event lands at the sample offset
+        the scheduler reported" actually has to survive. Each head position is written from
+        `block * blockPpq` instead of accumulated, so the only rounding in the fixture is one
+        multiplication per block. That same arithmetic is why the head has to report 225 BPM and not
+        the 120 it is constructed with: scheduleHostBlock prefers the host's tempo over the document's
+        (Sequencer.cpp:261), so the ppq-to-sample conversion that decides an offset is the head's. A
+        head lying about the tempo would still be self-consistent - the audio would play the same
+        wrong sample - but the list below would be pinning a transcription of the head's fiction
+        rather than the step grid, and the two would only be reconcilable by re-deriving it. */
+    {
+        MockHostPlayHead playHead;
+        playHead.bpm = 225.0;
+        SliceForgeAudioProcessor midiProcessor;
+        midiProcessor.setPlayHead (&playHead);
+        midiProcessor.prepareToPlay (48000.0, 512);
+        auto sequence = sliceforge::cloneSequencerData (*midiProcessor.getSequencerData());
+        sequence->hostSync = true;
+        sequence->bpm = 225.0;
+        sequence->division = 2;
+        sequence->swing = 0.0f;
+        sequence->length = 16;
+        sequence->activePattern = 0;
+        sliceforge::clearPattern (sequence->patterns[0]);
+        const auto lightStep = [] (sliceforge::SeqPattern& pattern, int pad, int step, float velocity)
+        {
+            // A whole SeqStep, not just `on`: flam 0, ratchet 1, nudge 0 and probability 1 mean this
+            // fixture owes exactly one hit per lit step, so the expected list has no hidden sub-hits.
+            auto& cell = pattern.rows[(size_t) pad][(size_t) step];
+            cell = sliceforge::SeqStep {};
+            cell.on = true;
+            cell.velocity = velocity;
+        };
+        lightStep (sequence->patterns[0], 0, 0, 1.0f);
+        lightStep (sequence->patterns[0], 0, 1, 1.0f);
+        lightStep (sequence->patterns[0], 0, 2, 0.5f);
+        lightStep (sequence->patterns[0], 5, 3, 1.0f);
+        midiProcessor.setSequencerData (sequence);
+        setParam (midiProcessor, "seq.pattern", 0.0f);
+
+        juce::MidiBuffer emitted;
+        juce::AudioBuffer<float> midiBuffer (juce::jmax (2, midiProcessor.getTotalNumOutputChannels()), 512);
+        playHead.playing = true;
+        for (int block = 0; block < 40; ++block)
+        {
+            playHead.ppq = (double) block * (512.0 * 225.0 / 60.0 / 48000.0);
+            juce::MidiBuffer incoming;   // nothing is sent in: this is the plugin's own output bus
+            midiBuffer.clear();
+            midiProcessor.processBlock (midiBuffer, incoming);
+            emitted.addEvents (incoming, 0, 512, block * 512);
+        }
+
+        /*  The expected list is arithmetic, not a transcript: note = 36 + pad (`kPadMidiBase`), one
+            step = 6400 samples, note-off 32 samples after the note-on (`kPadMidiGateSamples`, and
+            every one of these four sits far enough inside its block for the clamp to be inert).
+            Velocity is compared separately, below, so a failure names which of the three properties
+            the wire got wrong. */
+        struct Expected
+        {
+            int sample;
+            bool noteOn;
+            int note;
+        };
+        const std::array<Expected, 8> expected { { { 0, true, 36 },      { 32, false, 36 },
+                                                   { 6400, true, 36 },   { 6432, false, 36 },
+                                                   { 12800, true, 36 },  { 12832, false, 36 },
+                                                   { 19200, true, 41 },  { 19232, false, 41 } } };
+        // 1.0 -> 127, 1.0 -> 127, 0.5 -> round (63.5) = 64, 1.0 -> 127: the exporter's own mapping.
+        const std::array<int, 4> expectedVelocities { 127, 127, 64, 127 };
+
+        std::vector<Expected> got;
+        std::vector<int> noteOnVelocities;
+        int otherEvents = 0, noteOns = 0, noteOffs = 0, wrongChannel = 0;
+        for (const auto metadata : emitted)
+        {
+            const auto message = metadata.getMessage();
+            if (! message.isNoteOn() && ! message.isNoteOff())
+            {
+                ++otherEvents;
+                continue;
+            }
+            if (message.isNoteOn())
+            {
+                ++noteOns;
+                noteOnVelocities.push_back ((int) message.getVelocity());
+            }
+            else
+            {
+                ++noteOffs;
+            }
+            if (message.getChannel() != 10)   // literal, not kPadMidiChannel: the map is the claim
+                ++wrongChannel;
+            got.push_back ({ (int) metadata.samplePosition, message.isNoteOn(), message.getNoteNumber() });
+        }
+
+        juce::String gotList;
+        for (const auto& event : got)
+            gotList += juce::String (event.sample) + (event.noteOn ? ":on " : ":off ")
+                     + juce::String (event.note) + " ";
+
+        check (noteOns == 4 && noteOffs == 4 && otherEvents == 0,
+               "MIDI out carries nothing but four note-on/note-off pairs",
+               juce::String (noteOns) + "/" + juce::String (noteOffs) + " notes, "
+                   + juce::String (otherEvents) + " other events");
+
+        bool listMatches = got.size() == expected.size();
+        if (listMatches)
+            for (size_t i = 0; i < expected.size(); ++i)
+                listMatches = listMatches && got[i].sample == expected[i].sample
+                                    && got[i].noteOn == expected[i].noteOn
+                                    && got[i].note == expected[i].note;
+        check (listMatches, "MIDI out notes carry the scheduler offset, 36 + pad and the 32-sample gate",
+               juce::String ((int) got.size()) + " events: " + gotList);
+
+        check (wrongChannel == 0 && ! got.empty(), "MIDI out notes are all on channel 10",
+               juce::String (wrongChannel) + " off-channel of " + juce::String ((int) got.size()));
+
+        bool velocitiesMatch = noteOnVelocities.size() == expectedVelocities.size();
+        if (velocitiesMatch)
+            for (size_t i = 0; i < expectedVelocities.size(); ++i)
+                velocitiesMatch = velocitiesMatch && noteOnVelocities[i] == expectedVelocities[i];
+        juce::String gotVelocities;
+        for (const auto v : noteOnVelocities)
+            gotVelocities += juce::String (v) + " ";
+        check (velocitiesMatch, "MIDI out velocity uses the exporter's round(velocity x 127) mapping",
+               juce::String ((int) noteOnVelocities.size()) + " note-ons: " + gotVelocities);
+
+        playHead.playing = false;
+        playHead.ppq = 40.0 * (512.0 * 225.0 / 60.0 / 48000.0);
+        juce::MidiBuffer stopped;
+        midiBuffer.clear();
+        midiProcessor.processBlock (midiBuffer, stopped);
+        check (stopped.getNumEvents() == 0, "a stopped host transport emits no MIDI",
+               juce::String (stopped.getNumEvents()) + " events");
+
+        // Both halves are load-bearing: the buffer must stay empty *and* the note must still be
+        // audible, or "no pass-through" would also be satisfied by ignoring incoming MIDI.
+        juce::MidiBuffer forwarded;
+        const auto forwardedHit = render (midiProcessor, 1, 1.0f, 4, 40, 0, &forwarded);
+        int forwardedNotes = 0;
+        for (const auto metadata : forwarded)
+            if (metadata.getMessage().isNoteOn() || metadata.getMessage().isNoteOff())
+                ++forwardedNotes;
+        check (forwardedNotes == 0 && forwardedHit.total > 0.001f,
+               "incoming MIDI plays but is not passed through to the output bus",
+               juce::String (forwarded.getNumEvents()) + " events, audio "
+                   + juce::String (forwardedHit.total, 4));
+
+        midiProcessor.setPlayHead (nullptr);
     }
 
     // A parameter-locked hit must still reach the engine as audio.

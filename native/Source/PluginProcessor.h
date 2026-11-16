@@ -31,7 +31,23 @@ public:
 
     const juce::String getName() const override { return "SliceForge"; }
     bool acceptsMidi() const override { return true; }
-    bool producesMidi() const override { return false; }
+    /*  Step 28: the answer has to follow what the build advertises, and it has to survive being
+        compiled somewhere that never heard of the macro. The plugin target defines
+        JucePlugin_ProducesMidiOutput (native/CMakeLists.txt NEEDS_MIDI_OUTPUT, now TRUE); the three
+        console test programs compile this same source through juce_add_console_app, which emits no
+        JucePlugin_ defines at all - measured in their generated Release/Defs.txt. A bare
+        `return JucePlugin_ProducesMidiOutput;` therefore fails to compile in those targets, and
+        treating "undefined" as "true" would claim a bus that the export does not advertise.
+        What the smoke programs still exercise is the emission itself, which does not depend on this
+        answer: the buffer is the caller's, and it is the host's decision whether to keep it. */
+    bool producesMidi() const override
+    {
+       #if defined (JucePlugin_ProducesMidiOutput) && JucePlugin_ProducesMidiOutput
+        return true;
+       #else
+        return false;
+       #endif
+    }
     bool isMidiEffect() const override { return false; }
     double getTailLengthSeconds() const override { return 5.0; }
 

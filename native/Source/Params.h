@@ -12,6 +12,11 @@ namespace sliceforge
     constexpr int kNumModels = kNumFamilies * kModelsPerFamily;
     constexpr int kMaxSlices = 64;
     constexpr int kPadMidiBase = 36; // C1
+    /*  The drum channel, 1-based as every juce::MidiMessage channel argument is. One map, three
+        users: the incoming notes the plugin decodes at PluginProcessor.cpp, the live MIDI-out bus
+        (Step 28) and the exported clip (Sequencer.cpp's makePatternMidiFile). A second constant here
+        would be a second truth, which is exactly how a clip and a performance stop agreeing. */
+    constexpr int kPadMidiChannel = 10;
 
     /*  The pattern bank lives here rather than in Sequencer.h because both sides need it: the
         parameter layout declares four choices, and ParameterCache::readActivePattern clamps the host
