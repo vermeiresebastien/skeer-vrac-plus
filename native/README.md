@@ -45,7 +45,7 @@ host-synced 32-step sequencer with pattern chaining, polymeter, parameter locks 
 | Installed plugin | `%ProgramFiles%\Common Files\VST3\SliceForge.vst3` |
 | Installed standalone | `%LOCALAPPDATA%\Programs\SliceForge\SliceForge.exe` |
 | Launch folder | `..\launch\` — `SliceForge.exe`, `SliceForge.vst3`, `SliceForge-1.0.0-Windows-x64.zip`, `start.bat` |
-| Test suite | 186 engine/state checks, editor layout snapshots, VST3 host load |
+| Test suite | 190 engine/state checks, editor layout snapshots, VST3 host load |
 
 The plugin bundle is self-contained (factory audio and SKEER brand assets are embedded, no
 external resource folder). The build is about **24 MB**. The VST3 session identity is preserved
@@ -215,13 +215,15 @@ control falls outside its parent.
   host-state XML) restores bypassed and still plays
 - randomizer, Euclidean, parseable MIDI file and CPU-headroom checks
 
-Current result: **186/186 passed** - that is what `SliceForgeSmokeTest.exe` prints on the tree this file
-describes, so re-run it rather than trusting the number here - with the engine using between **4.4% and
-6.1% of one core** across separate runs of the same binary while continuously triggering pads at
-48 kHz / 512 samples (the three runs behind that 186/186 printed 4.59%, 4.57% and 4.77%; the
-175-check runs they replaced printed 4.53%, 4.57% and 5.11% on three invocations of those bytes).
-The spread is real, so the
-figure is reported and never asserted: real-time safety rests on the finite-and-in-ceiling checks, not on
+Current result: **190/190 passed** - that is what `SliceForgeSmokeTest.exe` prints on the tree
+this file describes, so re-run it rather than trusting the number here - with the engine using
+between **4.4% and 6.9% of one core** across separate runs of the same binary while continuously
+triggering pads at 48 kHz / 512 samples (the one run behind that 190/190 printed 6.91%; the
+three runs behind the 186/186 it replaced printed 4.59%, 4.57% and 4.77%, and the 175-check runs
+before those printed 4.53%, 4.57% and 5.11% on three invocations of those bytes). The four
+checks that took 186 to 190 add fixtures, not engine work, and the machine load of each run was
+not measured, so the spread is not attributed to them. The spread is real, so the figure is
+reported and never asserted: real-time safety rests on the finite-and-in-ceiling checks, not on
 a wall-clock bound that measured the machine rather than the engine.
 
 ---
@@ -431,7 +433,7 @@ Source/
     SourcePanel / PadEditorPanel / HeaderBar / FooterBar / SequencerGrid / SequencerPanel /
     VaultPanel
 Tests/
-  SmokeTest.cpp         186 audio/state checks
+  SmokeTest.cpp         190 audio/state checks
   LayoutTest.cpp        editor bounds + PNG snapshots
   HostTest.cpp          scans and loads the built VST3 through JUCE's host path
 ```

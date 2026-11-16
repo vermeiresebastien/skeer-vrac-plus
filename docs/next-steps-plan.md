@@ -121,9 +121,9 @@ were stale inside a day, because every step that lands edits the very files it c
 (`VRAC_EXTRA`, `PLUGIN_CODE`, `getChildFile ("SliceForge")`) are the durable half. Round 2's claim that
 the README should read 347 is retracted above. What the README *was* wrong about is its check counts
 (109 against a 117-check suite) and "about 5% of one core"; both were fixed with Step 29 on 2026-11-15.
-  (Same exemption: that 117 and the 347 above are dated reads. The live pair is 186 checks and 350
+  (Same exemption: that 117 and the 347 above are dated reads. The live pair is 190 checks and 350
   host-visible, re-measured 2026-11-16: Step 26's host-path gate was reworked into four per-arm checks,
-  Step 28's MIDI output bus added six, and Step 27's exported-file parity added eleven.)
+  Step 28 added six, Step 27's exported-file parity eleven, and item 14's wiring audit four (8F).)
 Everything else in `AGENTS.md`'s frozen list checked out, including `Sequencer.cpp:12`,
 `storage.ts:5-7`, `sampleStore.ts:7`, `UI/Theme.cpp:75` and `VaultLibrary.cpp:143` — the last is
 `native/Source/VaultLibrary.cpp`, not under `Source/UI/`, and round 1's Step 11 cited it without the
@@ -895,7 +895,7 @@ longer distinguishable from a request); the shared `swingPpqForStep` returning `
 `the exported clip swings the odd steps` *and* the render path's own `micro-timed steps survive
 out-of-order block boundaries`, while both differentials stayed green. That last one is the honest
 limitation of a differential: when the code both sides share goes wrong, they agree. It is why the tick
-lists are pinned as literals (`SmokeTest.cpp:2075`, `:2095`, `:2115`) and why those three literals are
+lists are pinned as literals (`SmokeTest.cpp:2171`, `:2191`, `:2211`) and why those three literals are
 measurements of the render path, not formulas re-derived in the test. The host test is swing-blind — it
 printed the same `9 note-ons / 9 note-offs` on the mutated bytes as on the clean ones — so it gates bus
 availability and event counts (Step 28's job) and nothing about timing.
@@ -925,7 +925,7 @@ swing/tempo metadata is asserted as parsed ticks, not as what a host does with t
 Deliberately left: the sub-hit velocity asymmetry — the clip writes grace and ratchet hits at the lane's
 main velocity while the scheduler dims them (0.62 / 0.72), so a printed flam is louder than a played one.
 That is a sound decision, not an engine bug, and is now pinned by a characterisation check
-(`SmokeTest.cpp:2087`, `"931 960 1080 "`) so that changing it is a decision someone makes on purpose.
+(`SmokeTest.cpp:2183`, `"931 960 1080 "`) so that changing it is a decision someone makes on purpose.
 Also deliberately not built: the plan's "print the backbone" switch (probability gates off) and a
 pass-number *file name*, both UI work; and stamping the clip with the pass you just heard, which needs
 `SeqPlaybackState::passCount` — audio-thread state — synchronised before any UI may read it. Both are
@@ -1194,8 +1194,12 @@ test their own names (2026-11-16)
   delete-the-append mutation reddens **no arm's render assertion at all**. `readActivePattern()` null-guards
   to `0` (`Params.cpp:305-306`), which is pattern A and therefore arm A's own expected value, so arm A
   printed `ok`, and arms B, C and D were caught one level earlier by their fixture pre-check -
-  `fixture invalid param=0 want 1 mirror=2` - before a single block was rendered. What that proves is that
-  the pre-check is the component detecting a missing parameter and the four-arm comparison is not; the
+  `fixture invalid param=0 want 1 mirror=2` - before a single block was rendered. That short-circuit was
+  the gate's shape then, and item 14 read this very sentence as the defect it describes and removed it:
+  the pre-check no longer excuses the render, and the same stub on the 190-check tree prints
+  `fixture invalid param=0 want 1 mirror=2 saw [3 10 ] expected [9 4 ] mirror holds pattern 2 peak
+  0.526246` at `FAIL - 183/190`, so a dead wire is now also a wrong thing heard. Section 8F carries that
+  run. What that proved *then* is that the pre-check is the component detecting a missing parameter and the four-arm comparison is not; the
   comparison is qualified by the rotation, which is a mutation the cache cannot absorb. The pre-check earns
   its keep a different way: a parameter read that ever becomes asynchronous reports a broken arm rather than
   a broken wire. Two further findings came out of that work. First,
@@ -1206,7 +1210,7 @@ test their own names (2026-11-16)
   sequencer-only check has to pass the out-of-range 999 like the existing host checks do, or the audio it
   measures is not the sequencer's. A deterministic per-pad hit counter on the block output would still be
   the cleaner observable, and is the piece a future harness wants.
-  What the gate does *not* buy: the four arms discharge the cache-to-render wire, and the shipped comment
+  What the gate does *not* buy: the five arms discharge the cache-to-render wire, and the shipped comment
   at `SmokeTest.cpp:1553-1555` promises section 8C says so in both places, so here is the other half -
   stamps give pad identity, not iteration, so nothing here can see a step that repeated or a step that
   dropped, and the mid-block half of the once-per-block parameter read (`PluginProcessor.cpp:369-370`) is
@@ -1241,19 +1245,29 @@ test their own names (2026-11-16)
   below was re-read at the target line rather than offset - the plan has grown by 215 lines and
   `SmokeTest.cpp` by 491 since this bullet was first written (the re-point itself is part of the 215), so
   both namespaces drifted:
-  plan `:38` still resolves, and the `720`-sample calls it means are now `SmokeTest.cpp:1659` and `:1661`;
+  plan `:38` still resolves, and the `720`-sample calls it means are now `SmokeTest.cpp:1755` and `:1757`;
   plan `:138` and `:560` (written `:135` and `:557`) both ask to "tighten `SmokeTest.cpp:948` from
   `< 8.0 s`", and there is no such bound anywhere in the file - CPU is printed and deliberately not
-  asserted, with the reason in the comment at `SmokeTest.cpp:2718-2720`; plan `:434` cites `:835` for the
-  `0.349`/`0.844` pair, which is at `:2408` and `:2412`; plan `:985` names a check,
-  `a Sample Vault track loads into SliceForge`, that is not in the suite (the vault block runs `:2148` to
-  `:2249`, and the gate that loads a file this test owns is `a real wav loads through the user-sample path`
-  at `:2212`); plan `:1069` cites `:1283-1289` for the formatting-branch gate, which is at `:2611-2632`;
-  plan `:1094` cites `:736-750` for the truncated-blob refusal, which is at `:1750-1762`. Correcting the
+  asserted, with the reason in the comment at `SmokeTest.cpp:2814-2816`; plan `:434` cites `:835` for the
+  `0.349`/`0.844` pair, which is at `:2504` and `:2508`; plan `:985` names a check,
+  `a Sample Vault track loads into SliceForge`, that is not in the suite (the vault block runs `:2244` to
+  `:2345`, and the gate that loads a file this test owns is `a real wav loads through the user-sample path`
+  at `:2308`); plan `:1069` cites `:1283-1289` for the formatting-branch gate, which is at `:2707-2728`;
+  plan `:1094` cites `:736-750` for the truncated-blob refusal, which is at `:1846-1858`. Correcting the
   six entries is a prose edit in somebody else's historical record and is deliberately not done here; what
   is done is naming where each one actually lives.
+  **Item 14 moved all of them again, and this list is re-pointed a second time for it.** `SmokeTest.cpp`
+  grew by 96 lines across **two** net-inserting hunks (+47 at `:1561`, +49 at `:1633`, from `b8e4523`'s
+  own hunk headers) beside two line-neutral edits, so the offset is uniform only *below the last of
+  them* - every address this bullet re-points sits past `:1741`, and anything in the 17-line gap between
+  the hunks would have moved by +47. Which is why the number was checked and not derived:
+  each of the twelve numbers above was re-read at its target line in `b8e4523` and every one names the
+  construct this bullet claims (`:2308` is `a real wav loads through the user-sample path`, `:2504` and
+  `:2508` are the `0.349`/`0.844` pair, `:1788` is the `out.triggers[0].pad == 1` read below, `:2183` is the
+  `"931 960 1080 "` characterisation). The file is now 2831 lines, and `SmokeTest.cpp` has grown by 587 since
+  this bullet was first written.
 - **One review finding on this tree was checked and withdrawn.** `song mode follows the pattern chain`
-  (`SmokeTest.cpp:1692`) reads `out.triggerCount > 0 && out.triggers[0].pad == 1`, and that was flagged as
+  (`SmokeTest.cpp:1788`) reads `out.triggerCount > 0 && out.triggers[0].pad == 1`, and that was flagged as
   asserting one element where the claim is about the set. It is not: `length = 4` and `ppq = 1.0` put
   absolute step 4 in chain slot 1 (`Sequencer.cpp:46`), `makeFeatureSequence` gives that slot pattern 1,
   and pattern 1 has exactly one lit step - so the first trigger *is* the complete set for this fixture.
@@ -1266,12 +1280,16 @@ test their own names (2026-11-16)
   them above `:361`, so `:361` moved to `:367` while `:771` moved to `:933`; `16258b3` added 329 more, so
   the vault-era cites ended up 491, 493 and 489 lines below where they were written; `Sequencer.cpp` moved
   +13 above the exporter helper and +47 below it (956 -> 1003 lines); and `PluginProcessor.cpp` moved +52
-  in `5f8815d` alone (1196 -> 1255). Two dead cites are inside shipped source and are deliberately left
+  in `5f8815d` alone (1196 -> 1255). Two dead cites were inside shipped source and were deliberately left
   where they are: `SmokeTest.cpp:523` cites `Sequencer.cpp:261` for the host-tempo preference (now `:274`),
   and `SmokeTest.cpp:1553`/`:1555` cite `Sequencer.cpp:291` (now `:304`) and `PluginProcessor.cpp:315-316`
   (the call is `:367`, the comment `:369-370`). Those are comment-only edits to files the gates compile, so
   each one costs a rebuild and a re-gate and should ride the next stage that touches a gated source, not a
-  doc commit. What this section keeps re-learning is that a cite to a line is worth exactly one commit:
+  doc commit. **That stage came: `b8e4523` repaired both, on a pass that was already rebuilding all four
+  targets for item 14, so they cost no extra gate.** `:523` now reads `Sequencer.cpp:274`, and the wiring
+  comment reads `Sequencer.cpp:304` and `PluginProcessor.cpp:369-371` (comment plus argument, which is the
+  honest span for "read once per block"). Both were line-neutral substitutions, which is why the twelve
+  re-pointed addresses above could move by one uniform offset. What this section keeps re-learning is that a cite to a line is worth exactly one commit:
   cite the check name or the function name, and keep a number only where the sentence is about what a
   particular run printed.
 - **The cap was then measured on this tree, not only on the one it was proposed on.** The probe recorded
@@ -1404,7 +1422,7 @@ Item 13a's premise is right about the mechanism and wrong about the history. The
 build where `seq.pattern` is *deleted* the identity conjunct at `:132` is unreachable, and delete-only bisection
 can therefore never show that half of the gate works. The history: the total-preserving reorder had already been
 run twice, at 06:37:22 and 07:47:49 (`stageC-s26-mut2-host.log`, `stageC-s26-m2final-host.log`), and `c57f277`
-quotes its FAIL line in its own message. What was missing is a capture on the current 186-check tree with a green
+quotes its FAIL line in its own message. What was missing is a capture on the then-current 186-check tree with a green
 pair on restored bytes. This section is that capture.
 
 - **The mutation is two lines.** `native/Source/Params.cpp` registers `seq.pattern` at `:199` and the output-stage
@@ -1466,6 +1484,126 @@ pair on restored bytes. This section is that capture.
   loads the build copy, so it describes these bytes only through that comparison, not through the path it opens.
 - **Not verified here, and untouched by it:** no install, no re-export, no push, and no source change
   survived this section; 13g's `0.08` literal is untouched, and `904b289..HEAD` is `AGENTS.md` alone.
+
+## 8F. Item 14: the stub was ordered as a coverage probe and the tree reddened (recorded 2026-11-16)
+
+The dispatch said the pattern parameter path has no test at all, predicted that stubbing
+`readActivePattern` to `return 0` would leave the smoke suite green, and called that expected green the
+finding. It was run on `1bfe8e8` exactly as ordered and it does not stay green, so the finding is not the
+one the brief predicted - and the reason it is not is more useful than the prediction was.
+
+- **183/190, seven reds, smoke exit 1.** `native/Source/Params.cpp:307` became `return 0;`, all four
+  targets were rebuilt (`Params.cpp` is compiled three times over - SliceForge, SmokeTest and LayoutTest
+  each own a copy of the TU, and the mutated object postdates the source in all three), and the suite
+  printed `FAIL - 183/190 checks passed`. Four reds are value reads of the accessor itself -
+  `selecting a pattern moves the parameter and tells the host [value=0 landed=yes notifications=1
+  notified=2 expected=2 at 1 notification of 2]`, `a session saved with the parameter on pattern C comes
+  back on pattern C [param=0 doc=0]`, `a session written before seq.pattern existed keeps its stored
+  pattern [param=0 doc=3]`, `when the parameter and the blob disagree, the parameter plays and the mirror
+  follows [param=0 doc=0]` - and three are the wiring gate's arms B, C and D. Arm A printed `ok`, because
+  0 is its own expected value, which is the by-construction agreement 8C already records. So 14a's "zero
+  coverage" was a stale snapshot of a 165-check tree, and the sixteen call sites that exist now refute
+  it - twelve reads through `getPatternParameter`, four writes through `setPatternParameter`, counted on
+  `b8e4523`.
+- **Three of the four checks 14a asked for were already shipped, and are reported rather than copied.**
+  (i) mirror 0 with parameter 3 *is* ladder arm D (`:1607`, mirror table at `:1609-1612`). (iii) mirror 3
+  with the sentinel is the class of `with no parameter in sight the document still decides` at `:1398-1404`;
+  the shipped case uses mirror 2, and mirror 2 versus 3 is not a new equivalence class for a branch whose
+  whole answer is `data.activePattern`. Driving a sentinel through the processor at all is impossible: the
+  caller clamps before it passes (`Params.cpp:307`), so the sentinel only ever reaches the callee from
+  non-processor callers - which is why (iii) lives in the engine block. 14b's round trip is at
+  `:1453-1467` and asserts *both* conjuncts the ruling asked for (`restored.getPatternParameter() == 2`
+  and `restoredDoc->activePattern == 2`), so "if that reddens it is a real bug" never had to be tested: it
+  is green and it is a gate. 14d is `Params.h:25`/`:31` with no magic 3 anywhere, and `Params.cpp:294-308`
+  carries the `return 0` with the reason - `SequencerPanel.cpp:481` reads it unclamped and `:509` indexes
+  `patterns[]` with it, so the sentinel would be an out-of-bounds read of a four-element array. 14c's two
+  comments were already honest at `PluginProcessor.cpp:1094` and `SequencerPanel.cpp:367-374`.
+- **The hole was real, and it was under the pre-check, not under the suite.** Seven reds, and *zero* of
+  them at the render level: the ladder short-circuited on its fixture pre-check, so arms B, C and D failed
+  with `fixture invalid param=0 want 1 mirror=2` before a block was rendered and the pad comparison never
+  ran. 8C had written that behaviour up as a finding about which component detects what; item 14 read the
+  same sentence as a defect and removed the short-circuit. The stub now prints
+  `[fixture invalid param=0 want 1 mirror=2 saw [3 10 ] expected [9 4 ] mirror holds pattern 2 peak
+  0.526246]` - the same seven checks, but four of them carry audible evidence, `peak` proves the engine
+  rendered rather than stalled, and relaxing the pre-check can no longer un-gate the wire.
+  `saw [` / `expected [` kept their exact spelling so the four `saw [` strings that live in 8C still
+  match this file. 8E holds none of them, and that is said here rather than left to be found.
+- **The fifth arm, and what it is actually worth.** The four ladder arms share one invariant - the mirror
+  is `(parameter + 1) mod 4` - so an implementation keyed on that relation instead of on the value is
+  invisible to all four. The witness is `data.activePattern == (live + 1) % kSeqPatterns ? live :
+  data.activePattern`, the shape of "the mirror looks stale, trust the document instead". Built into
+  `Sequencer.cpp:39-42`: **189/190, one red, and it is the new arm** - `saw [6 7 ] expected [3 10 ] mirror
+  holds pattern 3`. Stated plainly, because the honest number is smaller than the enthusiasm: no ordinary
+  mutation of either branch needs this arm (`min`-style confusions die at arm D, `max`-style and
+  `live == 0 ? doc : live` die at arm A), the witness is constructible rather than plausible production
+  code, and what the arm buys is pair coverage against a whole family of relation-keyed implementations
+  for one line of a table.
+- **Song mode had never travelled through the processor.** `songMode` is written in six places in the
+  suite, three of them `true`, and none of those three reaches `setSequencerData`: two hand the document
+  straight to `processSequencerBlock` and the third to `makePatternMidiFile`. So the flag's trip from
+  the processor's ingest into `processBlock` was ungated, and so was the invariance 14c's ruling asked
+  for.
+  Three arms now (`:1693-1738`), each filling all eight chain slots with one pattern so that no arm
+  depends on which slot the transport reached: (chain 3, parameter 0), (chain 3, parameter 3) and (chain 1,
+  parameter 3). The first two are the ruling's "changing the parameter does not change the output" - same
+  fixture, different parameter, identical expected pad pair; the third is the control that makes it a
+  claim rather than a tautology, because an invariance asserted against one chain value is also satisfied
+  by a chain that is ignored. Arm 1 is green by construction under "the parameter wins" (its parameter is
+  its chain), which is precisely why the invariance is stated against a chain on D where arm 0 refuses a
+  parameter of 0.
+- **Two falsifiers, and the second one is the proof that this was new coverage.** Parameter-overrides-chain
+  in `Sequencer.cpp:49-50`: 186/190, four reds - the two new discriminating arms *and* both pre-existing
+  engine checks, arm 1 green as documented. Then `songMode` dropped on the floor at `setSequencerData`
+  ingest: **188/190, and the only two reds are the new arms** - `song mode lets the chain pick the pattern
+  and the parameter stay silent` and `song mode follows the pattern chain` both stayed green, because they
+  hand the document straight to the engine and never touch the route that lost the flag. That pair of
+  results is the whole argument: the first says the new arms agree with the old ones, the second says only
+  the new arms can see the processor.
+- **Gate, on the shipped bytes.** `b8e4523` added four checks, removed none, renamed none; the four
+  existing ladder names are byte-identical, and the green log holds 190 smoke `ok` lines (218 unique
+  names across the log, layout's 28 included). Build exit 0, `PASS - 190/190 checks passed` smoke exit 0,
+  host `350 = 348 layout + Bypass + Program` and `PASS VST3 host test` exit 0, layout 28 checks exit 0,
+  ctest `100% tests passed out of 3` exit 0. The `.obj` census closes at seconds: SmokeTest.obj 12:02:35 >
+  cpp 12:01:54, Params.obj 11:51:51 > 11:51:01, Sequencer.obj 11:55:18 > 11:54:25, PluginProcessor.obj
+  11:56:41 > 11:55:46, exe linked 12:02:36, VST3 11:56:31 > the last PluginProcessor.cpp write. CPU on
+  this run: 6.91% of one core, one measurement, machine load unmeasured - 8C's warning about treating a
+  wall-clock number as a comparison applies, and the four added checks add fixtures, not engine work.
+- **Two errors this pass published, and their corrections.** (1) `b8e4523`'s message cites the sentinel
+  check at `SmokeTest.cpp:1490-1496` and 14b's round trip at `:1549-1553`. Both are wrong: the true
+  addresses are `:1398-1404` and `:1453-1467`, and the cause is that an offset was applied to two
+  addresses sitting above the first inserting hunk, which therefore never moved. The tell is that the
+  two wrong numbers are not even the same offset - `:1490` is `:1398` +92 and `:1549` is `:1453` +96 -
+  so they were reconstructed, not re-read, which is what 8C's re-point bullet exists to prevent. The
+  blob hash the same message publishes, `37a8fbfe5454…` for `native/Tests/SmokeTest.cpp`, was verified
+  against `git show b8e4523:native/Tests/SmokeTest.cpp` and is correct. (2) Two lines in
+  `item14-F3-songparam.log` labelled "restore proof" were printed after that run's mutation had already
+  been applied, so they show a mutated hash; the true F1/F2/F3 restore proofs are in the F4 log header -
+  Params.cpp `fb4f7b44…` and blob `f9869c64…`, Sequencer.cpp `607ef68f…` and blob `370e3eab…`, both equal
+  to HEAD. Neither log is tracked (`.gitignore:10` = `native/build/`), which is why both corrections are
+  written here and in the next commit message rather than left in an evidence directory.
+- **Restore method, corrected against the dispatch.** The brief said `git stash pop`. Not used, and it
+  would have produced a false clean: under global `core.autocrlf=true` with no `.gitattributes`, a
+  git-mediated worktree write smudges an `i/lf w/lf` file to CRLF, which moves the worktree hash while
+  `git status --porcelain` still reads clean - measured on this lane during item 13, and the warning
+  prints on the very `git diff` used to check it. Every mutation this pass was applied and reverted with
+  a byte-exact editor and proved by blob equality instead. `PluginProcessor.cpp` is the one dirty-by-default
+  file in the tree (`i/lf w/crlf`), so its worktree hash `e8a4c882…` is *not* reproducible from the commit;
+  the publishable value is the blob's `a73bf191…`, and both are recorded side by side in the log rather
+  than one of them quoted alone.
+- **The README paragraph grew the file by two lines, and that is where the drift lands.**
+  `native/README.md` is 495 lines against 493 at `1bfe8e8`, so a cite to a README line below `:218` is
+  +2 on this tree. Two of the plan's README cites were already dead before this commit, and the growth
+  did not break them: `:250` cites `native/README.md:394` for "32 fixed voices; no audio-thread
+  allocation or locking", which is `:439` at `1bfe8e8` and `:441` now, and `:537` cites `:422` for the
+  JUCE licence sentence, which is `:488` and `:490`. Named here, not rewritten there, on 8C's precedent
+  that re-pointing somebody else's historical record is a prose edit while saying where a string lives
+  is a fact.
+- **Not verified, and left open.** Mid-block automation of `seq.pattern` is still untested - one read per
+  block is the design and nothing observes the inside of a block. A chain that varies *within* one bar is
+  still gated only engine-side; the new arms deliberately remove slot arithmetic as a variable. Nothing
+  installed, nothing re-exported to `launch/`, nothing pushed: the module in `Common Files\VST3` is still
+  the owner's copy and the zip is still the 04:56 build, both behind this HEAD. 14e's item-13 list was
+  delivered last pass (`e6e2c44`, `780ec07`, `1bfe8e8`) and the `0.08` literal is untouched, as ruled.
 
 ## 9. Not doing
 
