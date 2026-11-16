@@ -51,6 +51,37 @@ Theme:
   - DARK / LIGHT button in the header switches the whole interface
   - choice is remembered in %APPDATA%\SliceForge\theme.txt
 
+LICENCE:
+  SliceForge is licensed under the GNU Affero General Public License version 3. The verbatim
+  licence text is the file LICENSE at the root of the source repository, as published by the
+  Free Software Foundation at https://www.gnu.org/licenses/agpl-3.0.txt. That text, and not any
+  sentence in this product, is what says what you may do with it; commercial use is permitted by
+  the licence on the same terms as any other use.
+
+SOURCE FOR THESE BINARIES:
+  Public repository: https://github.com/vermeiresebastien/skeer-vrac-plus
+  The SliceForge.exe and the SliceForge.vst3 bundle in this archive are exported from the
+  launch/ folder, and launch/ is committed in that repository together with the source that
+  builds it. The commit whose tree carries these binaries is therefore the commit they are
+  buildable from, and that commit is the complete corresponding source. There is no separate
+  written offer, no mirror and no expiry: the repository above is the offer.
+  One input is deliberately not in the repository. native/external/JUCE is gitignored and is
+  cloned at configure time by native/CMakeLists.txt:17-32 (tag 8.0.4, from
+  https://github.com/juce-framework/JUCE.git). First configure of a fresh checkout needs
+  network access for that clone; everything else in the product is in the repository.
+
+THIRD-PARTY COMPONENTS:
+  - JUCE 8.0.4 modules are dual-licensed AGPLv3 or commercial JUCE licence
+    (native/external/JUCE/LICENSE.md:6-8). This product is carried under the AGPLv3 leg.
+  - The Steinberg VST3 SDK vendored inside that JUCE checkout is offered under the Steinberg
+    VST3 licence OR, alternatively, under GPLv3
+    (native/external/JUCE/modules/juce_audio_processors/format_types/VST3_SDK/LICENSE.txt:9-12).
+    This build uses the GPLv3 leg.
+  - Other components JUCE brings in (AudioUnitSDK, FLAC, Ogg Vorbis, jpeglib, zlib and the
+    rest) carry their own terms, listed with the path to each licence text in
+    native/external/JUCE/LICENSE.md:36-55. Those files arrive with the JUCE clone.
+  Full build commands, tests and docs: README.md in the same repository.
+
 Vendor: SKEER
 Bundle ID: com.skeer.sliceforge
 Session identity is preserved from previous SliceForge builds.

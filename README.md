@@ -47,8 +47,11 @@ playhead and transport indicator.
 The browser edition remains fully functional with its original interface styling and is
 documented below.
 
-This is an independent, non-commercial interpretation built from the VRAC+ product brief and
-interface references. It is not affiliated with Beatsurfing / Druw Audio.
+This is an independent interpretation built from the VRAC+ product brief and interface
+references. It is not affiliated with Beatsurfing / Druw Audio. SliceForge is licensed under the
+GNU Affero General Public License version 3 ([LICENSE](LICENSE)); that licence permits any
+purpose, commercial use included, so the sentences in this file describe what the project is and
+why it was made — they are not licence conditions.
 
 ![SliceForge in light mode](docs/screenshots/sliceforge-light.png)
 
@@ -314,10 +317,68 @@ apart.
 
 ## Credits and disclaimer
 
-This is an independent, non-commercial educational build, created as a response to the VRAC+
-product brief and two interface reference images. **VRAC+**, **Beatsurfing**, associated
+This build was created as a response to the VRAC+ product brief and two interface reference
+images, as an independent interpretation rather than a version of someone else's product. That is
+a description of its intent, not a condition on what you may do with it: SliceForge is licensed
+under the GNU Affero General Public License version 3 ([LICENSE](LICENSE)), which permits
+commercial use on the same terms as any other use. **VRAC+**, **Beatsurfing**, associated
 marketing copy and any original product assets are the property of their respective owners
 (Beatsurfing / Druw Audio srl). This project is not affiliated with, endorsed by or distributed
 by them. No original commercial sample content is included.
 
 Original product information: [beatsurfing.com/audio-plugins/vrac-plus](https://beatsurfing.com/audio-plugins/vrac-plus/).
+
+---
+
+## Licence
+
+SliceForge is licensed under the **GNU Affero General Public License version 3**. The verbatim
+licence text is [`LICENSE`](LICENSE) at the repository root, as published by the Free Software
+Foundation at <https://www.gnu.org/licenses/agpl-3.0.txt>. Everything in this section describes
+the arrangement around that text; the licence text itself is what says what you may do with the
+code.
+
+### Corresponding source for the shipped binaries
+
+The public repository is <https://github.com/vermeiresebastien/skeer-vrac-plus>. The deliverables
+under `launch/` — `SliceForge.exe`, the `SliceForge.vst3/` bundle and
+`SliceForge-1.0.0-Windows-x64.zip`, which is exported from them — are committed in this repository
+by the owner's decision of 2026-11-14, so the binaries and the full corresponding source for them
+already sit in the same tree, in the same commit: the commit whose `launch/` holds those bytes is
+the commit they are buildable from. There is no separate written offer, no mirror URL and no
+expiry date; the source is the repository above.
+
+Rebuilding needs one input that is deliberately not in the repository:
+`native/external/JUCE` is gitignored, and `native/CMakeLists.txt:17-32` clones it at configure
+time — `git clone --depth 1 --branch "${JUCE_VERSION}"` from
+`https://github.com/juce-framework/JUCE.git`, with `JUCE_VERSION` set to `8.0.4` at
+`native/CMakeLists.txt:14`. Everything else the binaries are made of — engine, plugin, UI, tests,
+packaging scripts, and the factory audio and brand assets compiled in as `SliceForgeAssets` binary
+data — is in the repo. Build and test commands are in `AGENTS.md` §Commands and
+[`native/README.md`](native/README.md).
+
+### Third-party components, and which licence leg this build uses
+
+- **JUCE 8.0.4.** The JUCE Framework modules are dual-licensed under the AGPLv3 or the commercial
+  JUCE licence, as `native/external/JUCE/LICENSE.md` says at its lines 6-8.
+  This project carries JUCE under the **AGPLv3 leg**.
+- **Steinberg VST3 SDK**, vendored inside that JUCE checkout at
+  `native/external/JUCE/modules/juce_audio_processors/format_types/VST3_SDK/`. Its
+  `LICENSE.txt:9-12` offers the SDK under the Steinberg VST3 licence **or, alternatively, under
+  GPLv3**, and states that you may use it under either "as it is most appropriate for your
+  project"; `:5-7` adds that this licence applies only to the files that reference it. This build
+  uses the **GPLv3 leg**. Whether a given distribution satisfies either text is for the distributor
+  to establish; the clauses themselves are in the files named above.
+- **Everything else JUCE brings in** — `AudioUnitSDK`, `Oboe`, `FLAC`, `GLEW` including Mesa and
+  Khronos, `Ogg Vorbis`, `jpeglib`, `CHOC` including QuickJS, `LV2`, `pslextensions`, `AAX`,
+  `Box2D`, `pnglib`, `zlib`, `HarfBuzz`, `SheenBidi` — carries its own terms, each listed with the
+  path to its licence text in `native/external/JUCE/LICENSE.md:36-55`. That file arrives with the
+  JUCE clone, and the licence texts are kept at the paths it gives rather than transcribed here.
+- **Factory audio and interface assets** are original or procedurally generated and are compiled
+  into the plugin as binary data; no commercial VRAC+ recordings or product assets are included
+  (see *Credits and disclaimer* above).
+
+The frozen identifiers `Vrac`, `Erwm`, `"VRACPlus"`, `"VRAC_EXTRA"`, the `0x56524143`/`'VRAC'`
+pattern magic, the `.vracpreset` and `.vracpattern` extensions and the web storage keys are data
+keys, not branding, and this licence decision changes none of them (`AGENTS.md`
+§Non-negotiables). `VRAC+` in this file keeps referring to the commercial Beatsurfing product.
