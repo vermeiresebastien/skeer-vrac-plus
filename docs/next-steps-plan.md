@@ -1486,6 +1486,31 @@ Step 29 was built the same day, and `native/Tests/SmokeTest.cpp` is the only fil
   The check that means "restored" is `diff <(git show HEAD:$f | tr -d '\r') <(tr -d '\r' < $f)`, which is
   empty, together with an empty `git diff -- $f`. `git status` still lists the file as modified because
   the mtime moved.
+- **Corrected forward, 2026-11-16 — two committed messages published a hash their own commit cannot
+  reproduce, and this bullet existed before both of them.** `c57f277` (Step 26) and `5f8815d` (Step 28)
+  each list `native/Source/PluginProcessor.cpp` under "restored bytes" using the **working-tree**
+  SHA-256 — `704272544c…` and `e8a4c882…` — while the blob each of those commits actually stores is:
+
+  | commit | published (worktree, unreproducible) | `git show <commit>:native/Source/PluginProcessor.cpp \| sha256sum` |
+ |---|---|---|
+  | `c57f277` | `704272544c8cbea9…` | `f9ecce1d300c2318a0a18fc68fa6dfaeae8242515ee7a1b4042f4cf017d4f0c1` |
+  | `5f8815d` | `e8a4c88277bbfd8e…` | `a73bf191a6a9d15bafb7ef0d2a99f6ce26ecec3bf096b5c594c4139e5b36ba60` |
+
+  The cause is the one measured above: `git ls-files --eol` reports `i/lf w/crlf` for this file, the only
+  source file in either set that is CRLF in the working tree, so `git add` normalized it on the way in
+  and the raw working-tree hash can never be recomputed from the commit. Every other hash in both
+  messages *does* reproduce (`fb4f7b44…`/`6c69b8d8…`/`d8f171a6…`/`63f08cd4…` for `c57f277`;
+  `93eb69d7…`/`fb875e6c…`/`f9375308…`/`cf7a74ac…`/`61cffc9b…` for `5f8815d`), which is why the mistake is
+  easy to miss: four and five of six are right, so the list reads as if it were all right.
+  **The rule for any future record line is `git show <sha>:<path> | sha256sum`, never `sha256sum <path>`,**
+  and if a worktree hash is quoted it must be labelled as the worktree hash.
+  This is a forward correction, not an amend: when the owner authorized the correction `c57f277` was
+  `HEAD~1`, and `5f8815d` then made it `HEAD~2`, so rewriting it would also rewrite `82d8866` and
+  `5f8815d` and orphan two citations that name `82d8866` as their red-test baseline (the `5f8815d`
+  message's own "Production at `82d8866`" line, and §8D above). Nothing is pushed, so both routes were
+  open; the cost of the rewrite is every reference this day wrote down, and the defect is a *number in a
+  message*, which the corrected pair above answers. The CR-stripped `diff` remains the restore witness
+  for this one file.
 
 Market claims about VRAC+ (release July 2026, €39 early bird rising to €149, VST/VST3/AU/AAX on
 macOS and Windows, the "same slice for every pad" complaint, per-pad multi-slicing added September
