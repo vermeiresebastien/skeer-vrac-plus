@@ -879,8 +879,8 @@ a user renames. The note map stops being a literal: `kPadMidiChannel`/`kPadMidiB
 `:19`) are what the exporter emits (`Sequencer.cpp:930-936`) and what the live out already emitted, so
 the clip and the wire cannot drift apart by construction.
 
-Restored and re-measured: `PASS - 186/186 checks passed` at 4.59% of one core, and 4.57% on a second
-invocation of the same bytes (exit 0 both times), layout at 28 checks, `PASS VST3 host test` printing
+Restored and re-measured: `PASS - 186/186 checks passed` at 4.59%, 4.57% and 4.77% of one core on three
+invocations (exit 0 each time), layout at 28 checks, `PASS VST3 host test` printing
 `parameters: 350 = 348 layout + Bypass + Program` and `midi out: 9 note-ons / 9 note-offs over 48 blocks`,
 ctest 100% out of 3, every one at exit 0. All three test binaries and the VST3 were rebuilt before the
 runs — the first host-test attempt judged the previous plugin bytes because only the console targets had
@@ -895,10 +895,28 @@ longer distinguishable from a request); the shared `swingPpqForStep` returning `
 `the exported clip swings the odd steps` *and* the render path's own `micro-timed steps survive
 out-of-order block boundaries`, while both differentials stayed green. That last one is the honest
 limitation of a differential: when the code both sides share goes wrong, they agree. It is why the tick
-lists are pinned as literals (`SmokeTest.cpp:2075`, `:2095`, `:2109`) and why those three literals are
+lists are pinned as literals (`SmokeTest.cpp:2075`, `:2095`, `:2115`) and why those three literals are
 measurements of the render path, not formulas re-derived in the test. The host test is swing-blind — it
 printed the same `9 note-ons / 9 note-offs` on the mutated bytes as on the clean ones — so it gates bus
 availability and event counts (Step 28's job) and nothing about timing.
+
+The falsification harness itself needed two fixes before its evidence could be trusted, and both are
+worth recording because each would otherwise read as an engine result. The first pass died writing its own
+log — it concatenated the host test's *exit code* where it meant the output — which left the tree inside
+the last mutation and that leg's host log empty. The retry then ran a command string whose path carried a
+single backslash, so python read `"\n"` as a newline, `cmd` answered `'.' is not recognized as an internal
+or external command`, and the suite "exited 1" **without ever starting**. The re-run mutated
+`swingPpqForStep` to `return 0.0`, built at exit 0, printed `FAIL - 184/186 checks passed` at smoke exit 1
+on `the exported clip swings the odd steps` plus the render path's own `micro-timed steps survive
+out-of-order block boundaries`, and restored in a `finally` block whose header records the mutated and
+restored hashes: restored bytes = the pristine copy = the shipped blob (`Sequencer.cpp` is `i/lf w/lf`, so
+its worktree hash equals its blob hash and the restore is self-proving). The final gate is the committed
+tree: source restored 10:06:40 → `Sequencer.obj` 10:07:00 → smoke exe 10:07:01 → VST3 module 10:07:23 →
+smoke `PASS - 186/186` (exit 0), layout 28 checks (exit 0), host `350 = 348 layout + Bypass + Program` and
+`midi out: 9 note-ons / 9 note-offs` (exit 0), ctest 100% out of 3 (exit 0). Read this as the rule for the
+next mutation series: record the pre-mutation hash *into* the red log, capture the exit codes rather than
+the strings alone, and re-gate after the restore — a tree caught mid-mutation is not the defect, the
+missing post-restore green is.
 
 Not verified: no real host imported the printed clip and compared it against what the plugin played, so
 "the pattern you heard" is proven between the two code paths in one process, not against Ableton's

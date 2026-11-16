@@ -218,8 +218,9 @@ control falls outside its parent.
 Current result: **186/186 passed** - that is what `SliceForgeSmokeTest.exe` prints on the tree this file
 describes, so re-run it rather than trusting the number here - with the engine using between **4.4% and
 6.1% of one core** across separate runs of the same binary while continuously triggering pads at
-48 kHz / 512 samples (the two runs behind that 186/186 printed 4.59% and 4.57%; the 175-check runs they
-replaced printed 4.53%, 4.57% and 5.11% on three invocations of those bytes). The spread is real, so the
+48 kHz / 512 samples (the three runs behind that 186/186 printed 4.59%, 4.57% and 4.77%; the
+175-check runs they replaced printed 4.53%, 4.57% and 5.11% on three invocations of those bytes).
+The spread is real, so the
 figure is reported and never asserted: real-time safety rests on the finite-and-in-ceiling checks, not on
 a wall-clock bound that measured the machine rather than the engine.
 
