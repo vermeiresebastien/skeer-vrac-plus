@@ -1313,6 +1313,29 @@ test their own names (2026-11-16)
   `native/`, while a doc that discusses a rename is expected to contain the name it discusses. Prose
   occurrences in this file are the record, not the residue, and their count is deliberately not stated -
   any number written here would be one more thing this file has to re-measure just to stay true.
+- **348 and 350 are two views of one surface, and the position under them is not a split.** The bare
+  processor asserts 348 (`SmokeTest.cpp:178`) and the loaded VST3 asserts 350 (`HostTest.cpp:110`); the
+  difference is exactly the wrapper's `Bypass` and `Program`, and both numbers are current - 347 and 349
+  were the same two views before `seq.pattern`. That sentence already exists in `AGENTS.md`, in
+  `native/README.md` and in `c57f277`'s own message, so no historical commit needed rewriting. What was
+  nearly repaired into a wrong value by reading the two counts as a split is the index: `seq.pattern` sits
+  at 347 in *both* views, because the wrapper appends its pair after the layout, so the host's own check
+  (`HostTest.cpp:132`, `patternIndex != parameters.size() - 3`) and the bare check's `getLast()` agree on
+  the same slot, and the host run prints `index 347` of 350. Note the asymmetry and why it is safe: the
+  host derives its expected index from a count, which the bare view deliberately refuses to do for its
+  total. Deriving the index is falsifiable, because an unregistered `seq.pattern` leaves `patternIndex`
+  at -1 and reddens that same arm; deriving the total is not, because `16 * 21 + 9 + 2 + 1` is the
+  layout's own arithmetic and goes green whether or not the parameter was ever added. So `:178` keeps its
+  literal, and the comment at `:172-177` now says that in those words.
+- **A re-link, and what it proves about the delivered module.** The rebuild this comment needed stamped a
+  new `native/build/…/SliceForge.vst3`, so the build tree and `launch/` print different SHA-256s while
+  nothing that compiles into the module changed. They differ in 4 bytes of 24,530,432: the low half of the
+  PE `TimeDateStamp` at 0-based 304-305 and a second copy of the same field at 23,107,220-221, which
+  decode to 1794822887 against 1794820043 - 10:54:47 versus the 10:07:23 this section's export chain
+  records for the shipped module. So the module a host test loads out of the build tree is the module in
+  the archive, byte for byte except its link stamp, and any packaging rule about "build != launch" should
+  compare the decoded stamp delta before calling a re-link a divergence. `launch/` itself was not touched
+  by this stage: all three deliverables re-verified against their recorded hashes.
 
 ## 8D. What Step 28 had to correct about its own gate, and what its host test does not prove (2026-11-16)
 

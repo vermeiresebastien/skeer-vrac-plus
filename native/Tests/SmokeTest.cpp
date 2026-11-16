@@ -171,9 +171,10 @@ int main()
                    + "/" + juce::String (sliceforge::kNumFamilies) + "/" + juce::String (sliceforge::kNumModels));
     // 21 controls per pad, nine globals before the pad loop, the two output-stage parameters after
     // it and `seq.pattern` appended last. A host that numbers parameters counts them, so this surface
-    // is part of the file format. The expected value is a literal on purpose: `16 * 21 + 9 + 2 + 1`
-    // re-derives the count from the same arithmetic the layout is built from, so it goes green when
-    // the parameter it is supposed to prove does not exist.
+    // is part of the file format. The expected value below is a literal on purpose: the derived form
+    // `16 * 21 + 9 + 2 + 1` re-uses the layout's own arithmetic, so it would go green even if
+    // `seq.pattern` were never registered. Do not replace 348 with that expression; the identity of
+    // the parameter that earns it is what the block below proves.
     check (processor.getParameters().size() == 348,
            "the parameter surface is the documented 348 controls",
            juce::String ((int) processor.getParameters().size()));
