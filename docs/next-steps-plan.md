@@ -1122,7 +1122,7 @@ against the tree this entry describes.
 test their own names (2026-11-16)
 
 - **No host resync tolerance separates a seek from noise once half a block is as wide as a step.** The
-  committed predicate is `jmax (0.02, blockPpq * 0.5)` (`Sequencer.cpp:291`), and legitimate sub-block
+  committed predicate is `jmax (0.02, blockPpq * 0.5)` (`Sequencer.cpp:304`), and legitimate sub-block
   disagreement is bounded by half a block while the smallest deliberate move is one step (`1 / division`).
   Those are separable only while `0.5 * blockPpq < 1 / division`, i.e. `numSamples * bpm < 720000` at 1/32
   on 48 kHz. Past the seam a one-step edit reads as playback and is swallowed (`SmokeTest.cpp` keeps the
@@ -1132,13 +1132,13 @@ test their own names (2026-11-16)
   below are the record, not the files.) The run printed three reds, and only one of them is the cap doing
   its job:
   `KNOWN DEFECT: a one-step 1/32 edit inside a 0.28 ppq block is not a seek` moves from `clears=1` to
-  `clears=2`, which is exactly the falsifier that check's own comment names (`SmokeTest.cpp:790-792`).
+  `clears=2`, which is exactly the falsifier that check's own comment names (`SmokeTest.cpp:953-955`).
   The other two are collateral, and both sit at settings the committed formula already separates.
-  `sub-block rounding on a 1/32 grid is not a seek` (`SmokeTest.cpp:805-820`) is 4096 samples at 120 BPM
+  `sub-block rounding on a 1/32 grid is not a seek` (`SmokeTest.cpp:968-984`) is 4096 samples at 120 BPM
   with 0.08 ppq of per-block rounding, and it reddens at `clears=9`; `blockPpq` there is 0.1707, so the
   honest window is `(0.0853, 0.125)` - above half a block or every block trips, below one 1/32 step or a
   seek is swallowed - a cap at half a step lands it at 0.0625, and 4096 x 120 is well *below* the 720000
-  seam. `a small block keeps the original tolerance window` (`SmokeTest.cpp:771-781`) is 512 at 120 with
+  seam. `a small block keeps the original tolerance window` (`SmokeTest.cpp:933-943`) is 512 at 120 with
   0.015 ppq of rounding and also reddens at `clears=9`, and that third red is the one nobody predicted -
   it is what identifies the expression that ran. The probe used the dispatch brief's own clamp,
   `jmin (blockPpq * 0.5, 0.5 / division)`, which has **no floor in it**: at 512/120 that is
@@ -1157,7 +1157,7 @@ test their own names (2026-11-16)
 - **The wire from the cache into the render path was ungated - and this entry's first pass called that
   unfixable, which was wrong.** Step 26 moved the pattern choice into `seq.pattern`, and `processBlock`
   passes `parameterCache.readActivePattern()` into `processSequencerBlock` as one int per block
-  (`PluginProcessor.cpp:315`, with the argument itself at `:319`). The gates covered both ends - the
+  (`PluginProcessor.cpp:367`, with the argument itself at `:371`). The gates covered both ends - the
   callee, by a four-pattern differential driven through the new argument, and the cache, by
   `getPatternParameter()` - but nothing covered the wiring between them. Measured, at the time: stubbing
   `readActivePattern()` to `return 0` reddened four checks - `selecting a pattern moves the parameter and
@@ -1167,10 +1167,11 @@ test their own names (2026-11-16)
   call-site argument with a constant reddened **nothing**. What this entry then asserted - that a headless
   test has no `AudioPlayHead`, so the host path cannot be driven, and that the only pad observable is a
   millisecond stamp too coarse to use - was a skipped search. `SmokeTest.cpp:15` already defines
-  `MockHostPlayHead` and two fixtures already run a real `processBlock` through it (`:454`, `:481`);
+  `MockHostPlayHead` and two fixtures already run a real `processBlock` through it (`SmokeTest.cpp:469`
+  and `:528`, where each fixture declares its head; `render` is what calls `processBlock`, at `:95`);
   `getPadHitStamp` is
-  public (`PluginProcessor.h:70`) and `updatePadHit` fires for every event the scheduler emits
-  (`PluginProcessor.cpp:398`); and the differential needs no sub-millisecond resolution because it asks
+  public (`PluginProcessor.h:86`) and `updatePadHit` fires for every event the scheduler emits
+  (`PluginProcessor.cpp:450`); and the differential needs no sub-millisecond resolution because it asks
   *which pad*, not *when*. The shipped gate is four checks, not one: `the host path plays the pattern the
   parameter names (pattern A)` through `(pattern D)`. Each arm builds its own processor and playhead,
   drives `seq.pattern` to `p`, sets that arm's document mirror to `(p + 1) mod kSeqPatterns` so no arm can
@@ -1206,22 +1207,22 @@ test their own names (2026-11-16)
   measures is not the sequencer's. A deterministic per-pad hit counter on the block output would still be
   the cleaner observable, and is the piece a future harness wants.
   What the gate does *not* buy: the four arms discharge the cache-to-render wire, and the shipped comment
-  at `SmokeTest.cpp:1391-1394` promises section 8C says so in both places, so here is the other half -
+  at `SmokeTest.cpp:1553-1555` promises section 8C says so in both places, so here is the other half -
   stamps give pad identity, not iteration, so nothing here can see a step that repeated or a step that
-  dropped, and the mid-block half of the once-per-block parameter read (`PluginProcessor.cpp:315-316`) is
+  dropped, and the mid-block half of the once-per-block parameter read (`PluginProcessor.cpp:369-370`) is
   still untested. A host that automates `seq.pattern` inside one render quantum can still hand that block
   two different answers, and no check in the suite would notice.
 - **Two checks in the suite had names containing a verb their expressions never observed, and both are
-  fixed on this tree.** `host-synced playhead advances` (`SmokeTest.cpp:496`) asserted
+  fixed on this tree.** `host-synced playhead advances` (`SmokeTest.cpp:502`) asserted
   `getSequencerPlayheadStep() >= 0` under a playhead that was frozen for the whole fixture, and
-  `step sequencer advances the playhead` (`SmokeTest.cpp:361`) asserted the same `>= 0` on the internal
+  `step sequencer advances the playhead` (`SmokeTest.cpp:367`) asserted the same `>= 0` on the internal
   clock. The observable is
-  not worthless - `-1` is what `Sequencer.cpp:923` reports when there is no usable transport, so `>= 0`
+  not worthless - `-1` is what `Sequencer.cpp:970` reports when there is no usable transport, so `>= 0`
   does separate "the host path answered" from "it did not" - but a wire that latched on step 0 prints 0
   forever and reads as a pass, which is precisely what a check called *advances* must not be able to do.
   Both now pin the arithmetic: the host fixture advances the head by the engine's own block step for 16
-  blocks and expects step 1 (`floor (0.3413 x 4)`, `Sequencer.cpp:321`), the internal one renders 40 blocks
-  and expects step 3 (`Sequencer.cpp:357` reports the step at the *end* of the block), and each fixture
+  blocks and expects step 1 (`floor (0.3413 x 4)`, `Sequencer.cpp:334`), the internal one renders 40 blocks
+  and expects step 3 (`Sequencer.cpp:370` reports the step at the *end* of the block), and each fixture
   pins `division = 4` and `swing = 0` so the expectation is arithmetic on the clock rather than on a
   default. Falsified by replacing both `playheadStep` expressions with the constant `0`:
   `FAIL  step sequencer advances the playhead  [0]` and `FAIL  host-synced playhead advances  [0]` at
@@ -1236,25 +1237,43 @@ test their own names (2026-11-16)
   reading the target line, not by arithmetic. The other six were already wrong at
   `e0b246d` - each one was checked against `git show HEAD:native/Tests/SmokeTest.cpp`, so this is
   transcription, not drift - and
-  `AGENTS.md` means exactly this when it says a cite is a snapshot and not an address: `:38` points at a
-  7000-sample block call that no longer exists (the oversized block is gone, and the `720`-sample calls it
-  means are now `:1497` and `:1499`); `:135` and `:557` both ask to "tighten `SmokeTest.cpp:948` from
+  `AGENTS.md` means exactly this when it says a cite is a snapshot and not an address, and every number
+  below was re-read at the target line rather than offset - the plan has grown by 215 lines and
+  `SmokeTest.cpp` by 491 since this bullet was first written (the re-point itself is part of the 215), so
+  both namespaces drifted:
+  plan `:38` still resolves, and the `720`-sample calls it means are now `SmokeTest.cpp:1659` and `:1661`;
+  plan `:138` and `:560` (written `:135` and `:557`) both ask to "tighten `SmokeTest.cpp:948` from
   `< 8.0 s`", and there is no such bound anywhere in the file - CPU is printed and deliberately not
-  asserted, with the reason in the comment at `:2227-2229`; `:431` cites `:835` for the `0.349`/`0.844`
-  pair, which is at `:1917` and `:1921`; `:870` names a check, `a Sample Vault track loads into SliceForge`,
-  that is not in the suite (the vault block runs `:1657` to `:1760`, and the gate that loads a file this
-  test owns is `a real wav loads through the user-sample path` at `:1719`); `:954` cites `:1283-1289` for
-  the formatting-branch gate, which is at `:2120-2141`; `:979` cites `:736-750` for the truncated-blob
-  refusal, which is at `:1588-1602`. Correcting the six is a prose edit in somebody else's historical
-  entry and is deliberately not done here; what is done is naming where each one actually lives.
+  asserted, with the reason in the comment at `SmokeTest.cpp:2718-2720`; plan `:434` cites `:835` for the
+  `0.349`/`0.844` pair, which is at `:2408` and `:2412`; plan `:985` names a check,
+  `a Sample Vault track loads into SliceForge`, that is not in the suite (the vault block runs `:2148` to
+  `:2249`, and the gate that loads a file this test owns is `a real wav loads through the user-sample path`
+  at `:2212`); plan `:1069` cites `:1283-1289` for the formatting-branch gate, which is at `:2611-2632`;
+  plan `:1094` cites `:736-750` for the truncated-blob refusal, which is at `:1750-1762`. Correcting the
+  six entries is a prose edit in somebody else's historical record and is deliberately not done here; what
+  is done is naming where each one actually lives.
 - **One review finding on this tree was checked and withdrawn.** `song mode follows the pattern chain`
-  (`SmokeTest.cpp:1530`) reads `out.triggerCount > 0 && out.triggers[0].pad == 1`, and that was flagged as
+  (`SmokeTest.cpp:1692`) reads `out.triggerCount > 0 && out.triggers[0].pad == 1`, and that was flagged as
   asserting one element where the claim is about the set. It is not: `length = 4` and `ppq = 1.0` put
   absolute step 4 in chain slot 1 (`Sequencer.cpp:46`), `makeFeatureSequence` gives that slot pattern 1,
   and pattern 1 has exactly one lit step - so the first trigger *is* the complete set for this fixture.
   What is left is positional fragility, not a false green: a later edit that lights a second step in that
   pattern keeps the check green while no longer proving which slot ran. LOW, and the real song-mode
-  discriminator is the exact-list differential at `SmokeTest.cpp:1226` that Step 26 shipped.
+  discriminator is the exact-list differential at `SmokeTest.cpp:1388` that Step 26 shipped.
+- **Every code-file cite in the five bullets above was re-read at its target line against `69e01ba`, and
+  the drift was caused by the two code commits that followed `c57f277`.** The offsets are not one number,
+  which is why arithmetic re-points nothing: `5f8815d` added 162 lines to `SmokeTest.cpp` but only 6 of
+  them above `:361`, so `:361` moved to `:367` while `:771` moved to `:933`; `16258b3` added 329 more, so
+  the vault-era cites ended up 491, 493 and 489 lines below where they were written; `Sequencer.cpp` moved
+  +13 above the exporter helper and +47 below it (956 -> 1003 lines); and `PluginProcessor.cpp` moved +52
+  in `5f8815d` alone (1196 -> 1255). Two dead cites are inside shipped source and are deliberately left
+  where they are: `SmokeTest.cpp:523` cites `Sequencer.cpp:261` for the host-tempo preference (now `:274`),
+  and `SmokeTest.cpp:1553`/`:1555` cite `Sequencer.cpp:291` (now `:304`) and `PluginProcessor.cpp:315-316`
+  (the call is `:367`, the comment `:369-370`). Those are comment-only edits to files the gates compile, so
+  each one costs a rebuild and a re-gate and should ride the next stage that touches a gated source, not a
+  doc commit. What this section keeps re-learning is that a cite to a line is worth exactly one commit:
+  cite the check name or the function name, and keep a number only where the sentence is about what a
+  particular run printed.
 
 ## 8D. What Step 28 had to correct about its own gate, and what its host test does not prove (2026-11-16)
 
