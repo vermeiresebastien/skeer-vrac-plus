@@ -1397,6 +1397,76 @@ test their own names (2026-11-16)
   change is a scan-time one: a host holding an already-instantiated SliceForge will not grow the bus until the
   plugin is reloaded, which is in the commit message per the decision above.
 
+## 8E. Item 13: the host identity assert made observable, and what its own sweep found (recorded 2026-11-16)
+
+Item 13a's premise is right about the mechanism and wrong about the history. The mechanism:
+`native/Tests/HostTest.cpp:110` returns 1 on the parameter count at `:114` before the by-id block runs, so on a
+build where `seq.pattern` is *deleted* the identity conjunct at `:132` is unreachable, and delete-only bisection
+can therefore never show that half of the gate works. The history: the total-preserving reorder had already been
+run twice, at 06:37:22 and 07:47:49 (`stageC-s26-mut2-host.log`, `stageC-s26-m2final-host.log`), and `c57f277`
+quotes its FAIL line in its own message. What was missing is a capture on the current 186-check tree with a green
+pair on restored bytes. This section is that capture.
+
+- **The mutation is two lines.** `native/Source/Params.cpp` registers `seq.pattern` at `:199` and the output-stage
+  pair at `:192-193`; moving the pair below the selector keeps the total at 348 layout / 350 host and changes only
+  which control occupies the tail. `git stash show -p` records it as 2 added / 2 removed and the file stays 364
+  lines, so the red window is line-neutral by construction.
+- **Red, on a build of `904b289` carrying that reorder** (`native/build/pm/item13a-mut-*`, mutated source
+  `39544ca5001a…`). All four of the brief's expectations, each quoted from its own command's output and exit:
+  `  FAIL  seq.pattern is a four-choice parameter appended after every existing id  [param=Active Pattern range=0.000..3.000 step=1.000 last=global.out]`
+  then `FAIL - 185/186 checks passed`, `smoke exit=1` - the smoke total did not move, one check did;
+  `FAIL seq.pattern is not the appended four-step control a host must see: index 345 of 350, steps 4, default 0`,
+  `host exit=1`, and **no count FAIL line**, which is the whole point: the assert that fired is
+  `patternIndex != parameters.size() - 3` at `HostTest.cpp:132`, printed at `:137`. Index 345 is arithmetic, not
+  a coincidence - 9 globals + 21 x 16 pads put the selector at 345 when it sits before the pair, and
+  `size() - 3` is 347. ctest attributed it the same way: `33% tests passed, 2 tests failed out of 3` (Smoke,
+  Host), `ctest exit=8`.
+- **Green, after the restore and a rebuild of all four targets** (`item13a-final-*`, restored source
+  `fb4f7b4480…`, equal to `git show HEAD:native/Source/Params.cpp | sha256sum`):
+  `PASS - 186/186 checks passed`, `smoke exit=0`; the host prints `seq.pattern: host id 825878785, index 347, 4
+  steps, default 0, named Active Pattern` (`:143`), `parameters: 350 = 348 layout + Bypass + Program` (`:148`)
+  and `PASS VST3 host test` (`:282`), `host exit=0`; `100% tests passed out of 3`, `ctest exit=0`. So 13e's
+  escape branch did not trigger: N = 347 as shipped, JUCE does append `Bypass` and `Program` after the layout,
+  and that ordering is now both asserted (`:132`) and *seen to discriminate* - which is exactly what the
+  deletion mutation could never give it.
+- **What still does not see this defect: `SliceForgeLayoutTest`.** It is the one of the three that passed under
+  the mutation. It re-derives its expectations from the same layout, so ordering is invisible to it;
+  append-position is gated only by `SmokeTest.cpp:193-197` and `HostTest.cpp:132`.
+- **13f, executed as asked, with a side effect nobody had priced.** The delta was parked in
+  `git stash push -- native/Source/Params.cpp` rather than a scratch copy. Stash rewrites the file through the
+  smudge filter, so an `i/lf w/lf` source came back `i/lf w/crlf`: its *worktree* sha256 moved to `12f9287b…`
+  while the blob stayed `f9869c64…`, and `git status --porcelain` reported the tree clean the entire time.
+  Getting the shipped bytes back took `sed -i 's/\r$//'` plus `git update-index --really-refresh`. Two rules
+  follow: a restore is proved by `git show HEAD:<path> | sha256sum` and an empty `git diff --raw`, never by a
+  worktree hash; and for a deliberately-red window, commit-then-revert beats `git stash`, because a stash is
+  one mutable stack shared by every lane working in this tree.
+- **13b was already discharged; its own file was not.** The 9 + 21 x 16 + 2 + 1 composition and the prescriptive
+  "Quote the total as 350 and name the composition" shipped in `c57f277` at `AGENTS.md:143-150` and
+  `native/README.md:154-161`; the brief's `:136`/`:137`/`:139` are `e0b246d` addresses, which is why they read as
+  unpatched. Sweeping AGENTS.md's numeric cites instead found six dead ones - `PluginProcessor.cpp:23` (live
+  `:75`), the four `VRAC_EXTRA` cites `:974`/`:978`/`:1036`/`:1041` (live `:1043`/`:1047`/`:1116`/`:1121`) and
+  `HostTest.cpp:69` (live `:110`) - and each was proved live when written: `git show c57f277:native/Tests/HostTest.cpp`
+  puts the `!= 350` assert on line 69, and `5f8815d` moved it to 110 by adding 41 lines above it. Drift, not
+  transcription. All six were corrected line-neutrally - 183 lines before and after, 3 changed - and landed in
+  `e6e2c44`, a concurrent docs commit whose own message re-verifies every one of those targets independently. The
+  durable form is a name anchor ("the `!= 350` count assert"); `AGENTS.md:139` is what tells the reader to check.
+- **13c and 13d, from these logs only.** Unique passing check names: 148 in `stageB-precommit-smoke.log`, 169 in
+  `stageC-s26-commit-smoke.log`, 186 in `item13a-final-smoke.log`, and no name repeats inside any of the three.
+  148 -> 169 is 27 added and 6 removed names; 169 -> 186 is 17 added and 0 removed. `c57f277` published "21
+  checks added, 0 removed, 1 renamed", which reconciles as arithmetic (27 - 6 = 21) but undercounts the renames
+  by five: the six names that disappeared are `the parameter surface is the documented 347 controls` plus four
+  `… resyncs …` checks and `a small block keeps the original resync window`, all renamed in place into the
+  `clears`/`tolerance` vocabulary. The true sentence is 21 new checks, 6 renamed in place, 0 deleted. Forward
+  correction only - `c57f277` is shipped and amending it now rewrites three commits, which stays the owner's call.
+- **One tuple re-measured rather than inherited.** `launch/` and the installed module are now byte-identical
+  (`1a0747b8e6ca…`, 24,530,432 B, link stamp 1794820043 = 10:07:23), and a build of this HEAD differs from them
+  in exactly four bytes: `cmp -l` names 305-306 and 23107221-23107222, the two copies of the PE `TimeDateStamp`.
+  The three-way divergence 8C recorded is therefore closed for the module, and the launch zip is 5 members with
+  0 backslash separators whose `SliceForge.vst3` entry hashes to that same value. The green host test still
+  loads the build copy, so it describes these bytes only through that comparison, not through the path it opens.
+- **Not verified here, and untouched by it:** no install, no re-export, no push, and no source change
+  survived this section; 13g's `0.08` literal is untouched, and `904b289..HEAD` is `AGENTS.md` alone.
+
 ## 9. Not doing
 
 Learned/ML onset detection and in-plugin stem separation — the runtime is absent (nothing of torch,
