@@ -1274,6 +1274,37 @@ test their own names (2026-11-16)
   doc commit. What this section keeps re-learning is that a cite to a line is worth exactly one commit:
   cite the check name or the function name, and keep a number only where the sentence is about what a
   particular run printed.
+- **The cap was then measured on this tree, not only on the one it was proposed on.** The probe recorded
+  above ran while the suite was 165 checks, and it *inferred* that the floored form of the cap would keep
+  `a small block keeps the original tolerance window` green. That inference is now a measurement, taken on
+  `5afa40f` with `native/Source/Sequencer.cpp` at `607ef68f203f88528ddaf28efe804f7f0f8d96e7d597d0043c67c7d163d1e11b`
+  (blob hash and worktree hash agree - this file is `i/lf w/lf`) and the suite at 186 checks. Applying the
+  unfloored `jmin (blockPpq * 0.5, 0.5 / division)` prints `FAIL - 183/186 checks passed` with three reds:
+  that small-block check at `[clears=9 expected=1]`, the `KNOWN DEFECT:` one-step-edit characterisation at
+  `[clears=2 expected=1]`, and `sub-block rounding on a 1/32 grid is not a seek` at `[clears=9 expected=1]`.
+  Applying the floored `jmin (jmax (0.02, blockPpq * 0.5), 0.5 / division)` prints
+  `FAIL - 184/186 checks passed`: the small-block check comes back `ok` and the other two stay red at the
+  same printed numbers. So the floor does buy that one case back, and the cap still spends the two settings
+  where the committed formula already separates noise from a seek - which is the whole reason it is refused
+  rather than tuned. Neither run is a gate and no check was changed: the source was restored inside the
+  same run, `restored sha256` equals the pre-mutation hash above, `git diff` on the file is empty, the
+  post-restore build exits 0 and the post-restore smoke exits 0 on `PASS - 186/186 checks passed`, and the
+  three `launch/` hashes are unchanged because no exporter ran. The earlier
+  `native/build/pm/cb3-clamp-probe.log` is superseded by this run - it describes a 165-check suite and
+  carries no header, no hashes and no exit codes - and it is left under that name rather than renamed,
+  because its name is not what is wrong with it.
+- **The `hostResyncs` -> `historyClears` rename was executed in exactly one stage, and the disputed counts
+  are three different true things.** In `e0b246d` the old name sits at 7 sites in 3 files
+  (`Sequencer.cpp` 1, `Sequencer.h` 1, `SmokeTest.cpp` 5). All 7 are renamed 1:1 inside `c57f277` and
+  nowhere else: `git log -S hostResyncs` returns `c57f277` plus `4abe4b0`, the commit that introduced the
+  field, while `git log -S historyClears` returns `c57f277` alone. That commit removes 7 lines carrying the
+  old name and adds 9 carrying the new one, because the 7 renamed pairs are joined by two net-new mentions
+  - the `probabilityRollFor` comment at `native/Source/Sequencer.h:163` and this doc's own prose at `:669`.
+  So: 8 live code sites on `5afa40f` (`Sequencer.h:153` and `:163`, `Sequencer.cpp:312`,
+  `SmokeTest.cpp:875` `:1013` `:1101` `:1120` `:1123`), 9 occurrences including the doc line, and zero old
+  sites in any tracked file or in the worktree (`git grep -q hostResyncs` exits 1 against `HEAD` and against
+  the working tree). The rename moved no smoke total: exactly one of the 9 added lines is a `check (` call,
+  and it is that check's own expression being renamed, not a check being added.
 
 ## 8D. What Step 28 had to correct about its own gate, and what its host test does not prove (2026-11-16)
 
