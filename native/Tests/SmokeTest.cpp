@@ -173,8 +173,7 @@ int main()
     // it and `seq.pattern` appended last. A host that numbers parameters counts them, so this surface
     // is part of the file format. The expected value below is a literal on purpose: the derived form
     // `16 * 21 + 9 + 2 + 1` re-uses the layout's own arithmetic, so it would go green even if
-    // `seq.pattern` were never registered. Do not replace 348 with that expression; the identity of
-    // the parameter that earns it is what the block below proves.
+    // `seq.pattern` were never registered - do not replace 348 with that expression.
     check (processor.getParameters().size() == 348,
            "the parameter surface is the documented 348 controls",
            juce::String ((int) processor.getParameters().size()));

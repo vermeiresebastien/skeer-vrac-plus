@@ -1314,7 +1314,7 @@ test their own names (2026-11-16)
   occurrences in this file are the record, not the residue, and their count is deliberately not stated -
   any number written here would be one more thing this file has to re-measure just to stay true.
 - **348 and 350 are two views of one surface, and the position under them is not a split.** The bare
-  processor asserts 348 (`SmokeTest.cpp:178`) and the loaded VST3 asserts 350 (`HostTest.cpp:110`); the
+  processor asserts 348 (`SmokeTest.cpp:177`) and the loaded VST3 asserts 350 (`HostTest.cpp:110`); the
   difference is exactly the wrapper's `Bypass` and `Program`, and both numbers are current - 347 and 349
   were the same two views before `seq.pattern`. That sentence already exists in `AGENTS.md`, in
   `native/README.md` and in `c57f277`'s own message, so no historical commit needed rewriting. What was
@@ -1326,7 +1326,12 @@ test their own names (2026-11-16)
   total. Deriving the index is falsifiable, because an unregistered `seq.pattern` leaves `patternIndex`
   at -1 and reddens that same arm; deriving the total is not, because `16 * 21 + 9 + 2 + 1` is the
   layout's own arithmetic and goes green whether or not the parameter was ever added. So `:178` keeps its
-  literal, and the comment at `:172-177` now says that in those words.
+  literal, and the comment at `:172-176` now says that in those words. That comment was then rewritten
+  once more for a reason worth keeping: the first version of it was six lines where it replaced five, and
+  one inserted line above the check shifted every live `SmokeTest.cpp` cite in this section by one -
+  about twenty pointers, all correct the morning before. The fix is not to re-point twenty cites; it is
+  that an edit inside a file this section cites by line number has to be line-neutral, so the comment is
+  now three lines replacing three, and the pointers survived.
 - **A re-link, and what it proves about the delivered module.** The rebuild this comment needed stamped a
   new `native/build/…/SliceForge.vst3`, so the build tree and `launch/` print different SHA-256s while
   nothing that compiles into the module changed. They differ in 4 bytes of 24,530,432: the low half of the
