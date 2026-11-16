@@ -1814,6 +1814,335 @@ int main()
             check (parsed.readFrom (midiStream) && parsed.getNumTracks() > 0,
                    "exported MIDI file can be parsed again");
         }
+
+        {
+            /*  Step 27: the printed clip has to be the pattern you heard.
+
+                Until here the exporter read `step.on` and nothing else, so swing, mute, solo and
+                probability were each decided twice: once by the render path and once by a straighter
+                copy of it that knew about none of them. A clip dragged into a host therefore played a
+                grid the plugin never played, and its dropout set belonged to no pass at all.
+
+                The reference is the render path itself - the same fixture, the same host tempo, the
+                same pass counter, scheduled block by block - and both sides are reduced to the same
+                two currencies: (pad, step) for *which* hits, ticks for *when*. The lists have to be
+                equal, not similar and not a subset.
+
+                Pads 0 and 5 carry the differential because they have no flam and no ratchet, so one
+                trigger is exactly one main hit and the step can be recovered from the position without
+                ambiguity (0.3 swing moves a hit by 0.3 of a step, well inside the nearest one). Pad 1
+                deliberately carries both sub-hit kinds, which is why it is gated by its own exact tick
+                list rather than by membership: its grace sits 0.88 of a step before the hit and its
+                ratchet half a step after, and either would round into a neighbouring step.
+
+                The fixture is 120 BPM on 48 kHz at division 4: one step is 6000 samples, 240 ticks,
+                so 25 samples per tick. */
+            auto data = makeFeatureSequence();
+            data->length = 16;
+            data->division = 4;
+            data->bpm = 120.0;
+            data->swing = 0.3f;
+
+            auto& exportPattern = data->patterns[0];
+            for (int s = 0; s < 16; ++s)
+            {
+                auto& backbone = exportPattern.rows[0][(size_t) s];
+                backbone.on = true;
+                backbone.velocity = 1.0f;
+
+                auto& rolled = exportPattern.rows[5][(size_t) s];
+                rolled.on = true;
+                rolled.velocity = 1.0f;
+                rolled.probability = 0.5f;
+            }
+            auto& decorated = exportPattern.rows[1][4];
+            decorated.on = true;
+            decorated.velocity = 0.5f; // the other end of the round(velocity x 127) map
+            decorated.flam = 1;
+            decorated.ratchet = 2;
+            for (int s = 1; s < 16; s += 4) // the swung side of the grid, so mute is proved off-grid
+            {
+                auto& quieted = exportPattern.rows[3][(size_t) s];
+                quieted.on = true;
+                quieted.velocity = 1.0f;
+            }
+            exportPattern.laneMute[3] = true;
+
+            const double stepSamples = 6000.0;
+            const double stepTicks = 240.0;
+            const int pad0Note = 36, pad1Note = 37, pad3Note = 39, pad5Note = 41;
+
+            // One bar of the render path, as absolute sample positions for one pad. The state is
+            // seeded one pass short because the block that engages the transport is the block that
+            // advances the counter: pass 2 is the first pass anybody hears. 188 blocks of 512 covers
+            // the 16 steps (187.5 blocks) plus the look-ahead the scheduler runs past the end.
+            const auto liveEvents = [&] (int64_t pass, int pad)
+            {
+                std::vector<int> positions;
+                sliceforge::SeqPlaybackState state;
+                state.passCount = pass - 1;
+                juce::Random random (42);
+                constexpr int block = 512;
+                const double blockPpq = (double) block * (host.bpm / 60.0) / 48000.0;
+                for (int b = 0; b < 188; ++b)
+                {
+                    auto passHost = host;
+                    passHost.ppq = blockPpq * (double) b;
+                    sliceforge::SeqBlockOutput out;
+                    sliceforge::processSequencerBlock (*data, passHost, false, 48000.0, block,
+                                                       random, state, out);
+                    for (int i = 0; i < out.triggerCount; ++i)
+                        if (out.triggers[(size_t) i].pad == pad)
+                            positions.push_back (b * block + out.triggers[(size_t) i].sampleOffset);
+                }
+                return positions;
+            };
+
+            const auto liveSteps = [&] (int64_t pass, int pad)
+            {
+                juce::String list;
+                for (const int position : liveEvents (pass, pad))
+                    if (position >= 0 && position < 16 * 6000)
+                        list << (int) std::llround ((double) position / stepSamples) << " ";
+                return list;
+            };
+
+            // The same positions in the clip's currency. The live path quantises a hit to the block
+            // that carries it, so a position can be a sample off the exact grid - never enough to move
+            // a rounded tick, since one tick is 25 samples.
+            const auto liveTicks = [&] (int64_t pass, int pad)
+            {
+                juce::String list;
+                for (const int position : liveEvents (pass, pad))
+                    if (position >= 0 && position < 16 * 6000)
+                        list << (int) std::llround ((double) position / 25.0) << " ";
+                return list;
+            };
+
+            struct ClipNote
+            {
+                int tick;
+                int note;
+                int channel;
+                int velocity;
+            };
+
+            /*  Reads the clip back the way a host would. `createMatchingNoteOffs` is false on purpose:
+                the gate has to judge what the exporter wrote, not the note-offs a parser invents to
+                close the file. Events, not bytes - the sizes of two clips that hold different
+                decisions are not comparable, and a re-encode inflates. */
+            const auto readClip = [] (const juce::MemoryBlock& midi)
+            {
+                std::vector<ClipNote> notes;
+                juce::MemoryInputStream stream (midi.getData(), midi.getSize(), false);
+                juce::MidiFile file;
+                if (file.readFrom (stream, false) && file.getNumTracks() > 0)
+                    if (const auto* track = file.getTrack (0))
+                        for (int i = 0; i < track->getNumEvents(); ++i)
+                        {
+                            const auto& message = track->getEventPointer (i)->message;
+                            if (message.isNoteOn())
+                                notes.push_back ({ (int) std::llround (message.getTimeStamp()),
+                                                   message.getNoteNumber(),
+                                                   message.getChannel(),
+                                                   (int) message.getVelocity() });
+                        }
+                return notes;
+            };
+
+            const auto clipTicksFor = [&] (const std::vector<ClipNote>& notes, int note)
+            {
+                juce::String list;
+                for (const auto& event : notes)
+                    if (event.note == note)
+                        list << event.tick << " ";
+                return list;
+            };
+
+            const auto clipStepsFor = [&] (const std::vector<ClipNote>& notes, int note)
+            {
+                juce::String list;
+                for (const auto& event : notes)
+                    if (event.note == note)
+                        list << (int) std::llround ((double) event.tick / stepTicks) << " ";
+                return list;
+            };
+
+            const auto clipCountFor = [] (const std::vector<ClipNote>& notes, int note)
+            {
+                int seen = 0;
+                for (const auto& event : notes)
+                    if (event.note == note)
+                        ++seen;
+                return seen;
+            };
+
+            const auto clipNoteSet = [] (const std::vector<ClipNote>& notes)
+            {
+                std::vector<int> found;
+                for (const auto& event : notes)
+                    found.push_back (event.note);
+                std::sort (found.begin(), found.end());
+                found.erase (std::unique (found.begin(), found.end()), found.end());
+                juce::String list;
+                for (const int note : found)
+                    list << note << " ";
+                return list;
+            };
+
+            // The two fields a re-encode can quietly rewrite: the channel nibble and the velocity
+            // byte. Both come back as sets, so a clip that mixed channels or folded two velocities
+            // into one shows up in the list rather than in a count.
+            const auto clipChannelSet = [] (const std::vector<ClipNote>& notes)
+            {
+                std::vector<int> found;
+                for (const auto& event : notes)
+                    found.push_back (event.channel);
+                std::sort (found.begin(), found.end());
+                found.erase (std::unique (found.begin(), found.end()), found.end());
+                juce::String list;
+                for (const int channel : found)
+                    list << channel << " ";
+                return list;
+            };
+
+            const auto clipVelocitySet = [&] (const std::vector<ClipNote>& notes, int note)
+            {
+                std::vector<int> found;
+                for (const auto& event : notes)
+                    if (event.note == note)
+                        found.push_back (event.velocity);
+                std::sort (found.begin(), found.end());
+                found.erase (std::unique (found.begin(), found.end()), found.end());
+                juce::String list;
+                for (const int velocity : found)
+                    list << velocity << " ";
+                return list;
+            };
+
+            const auto clipText = [] (const juce::MemoryBlock& midi)
+            {
+                juce::String found;
+                juce::MemoryInputStream stream (midi.getData(), midi.getSize(), false);
+                juce::MidiFile file;
+                if (file.readFrom (stream, false) && file.getNumTracks() > 0)
+                    if (const auto* track = file.getTrack (0))
+                        for (int i = 0; i < track->getNumEvents(); ++i)
+                        {
+                            const auto& message = track->getEventPointer (i)->message;
+                            if (message.isTextMetaEvent())
+                                found = message.getTextFromTextMetaEvent();
+                        }
+                return found;
+            };
+
+            const auto midi2 = sliceforge::makePatternMidiFile (*data, 2);
+            const auto midi3 = sliceforge::makePatternMidiFile (*data, 3);
+            const auto midiDefault = sliceforge::makePatternMidiFile (*data);
+            const auto clip2 = readClip (midi2);
+            const auto clip3 = readClip (midi3);
+            const auto clipDefault = readClip (midiDefault);
+
+            auto soloFixture = *data;
+            soloFixture.patterns[0].laneSolo[0] = true;
+            const auto clipSolo = readClip (sliceforge::makePatternMidiFile (soloFixture, 2));
+
+            // Every list is built once and named: a check's detail argument is evaluated whether the
+            // check passes or fails, so recomputing a 188-block render inside the detail string would
+            // make the cost of a green run the same as the cost of a red one.
+            const juce::String clip0Ticks = clipTicksFor (clip2, pad0Note);
+            const juce::String clip1Ticks = clipTicksFor (clip2, pad1Note);
+            const juce::String clip2Five = clipStepsFor (clip2, pad5Note);
+            const juce::String clip3Five = clipStepsFor (clip3, pad5Note);
+            const juce::String clipDefaultFive = clipStepsFor (clipDefault, pad5Note);
+            const juce::String live2Five = liveSteps (2, 5);
+            const juce::String live3Five = liveSteps (3, 5);
+            const juce::String live0Ticks = liveTicks (2, 0);
+            const int mutedLaneClipNotes = clipCountFor (clip2, pad3Note);
+            const int mutedLaneLiveEvents = (int) liveEvents (2, 3).size ();
+            const int rolledLaneClipNotes = clipCountFor (clip2, pad5Note);
+            const juce::String soloLaneNotes = clipNoteSet (clipSolo);
+            const juce::String clipChannels = clipChannelSet (clip2);
+            const juce::String clip0Velocities = clipVelocitySet (clip2, pad0Note);
+            const juce::String clip1Velocities = clipVelocitySet (clip2, pad1Note);
+            const juce::String defaultClipText = clipText (midiDefault);
+
+            // The swung grid, as the file's own note-on ticks: an even step on s*240, an odd step
+            // 72 ticks (0.3 of a step) later. The literal is the fixture's arithmetic, and the render
+            // path agrees with it independently - live0Ticks, printed in the onsets check below, came
+            // out of the scheduler's own block-by-block positions.
+            check (clip0Ticks == "0 312 480 792 960 1272 1440 1752 1920 2232 2400 2712 2880 3192 3360 3672 ",
+                   "the exported clip swings the odd steps",
+                   "clip 36=[" + clip0Ticks + "]");
+
+            check (mutedLaneClipNotes == 0 && mutedLaneLiveEvents == 0,
+                   "a muted lane reaches the clip and is silent in the render",
+                   "clip notes=" + juce::String (mutedLaneClipNotes)
+                       + " live events=" + juce::String (mutedLaneLiveEvents));
+
+            // Grace 960 - 0.12 * 240 = 931.2 -> 931, main 960, ratchet 960 + 240 / 2 = 1080. The old
+            // exporter already wrote flams and ratchets, so this was green before the change: it is a
+            // characterisation of what the change must not break, falsified by deleting the two loops.
+            check (clip1Ticks == "931 960 1080 ",
+                   "flam and ratchet survive into the exported clip",
+                   "clip 37=[" + clip1Ticks + "]");
+
+            // Both pass literals are the render path's own fired-step lists for the fixture above -
+            // live2Five and live3Five, measured - not a coin flip and not probabilityRollFor derived a
+            // second time. Pinned as literals so the differential below cannot be satisfied by two
+            // empty lists.
+            check (clip2Five == "2 3 4 5 7 10 12 14 15 ",
+                   "the clip's probability lane is pass 2's draw",
+                   "clip 41=[" + clip2Five + "] live=[" + live2Five + "]");
+
+            // The differential, both ways round, for two passes: which steps sound has one answer.
+            // The last two conjuncts keep it honest - an export that dropped every rolled step would
+            // agree with a render that dropped every rolled step, and a lane that never drops anything
+            // would agree with itself at full length.
+            check (live2Five == clip2Five && live3Five == clip3Five
+                       && ! clip2Five.isEmpty() && rolledLaneClipNotes < 16,
+                   "the render path and the clip fire the same steps of the probability lane",
+                   "live2=[" + live2Five + "] clip2=[" + clip2Five
+                       + "] live3=[" + live3Five + "] clip3=[" + clip3Five + "]");
+
+            check (live0Ticks == clip0Ticks,
+                   "the clip's onsets are the onsets the scheduler picked",
+                   "live=[" + live0Ticks + "] clip=[" + clip0Ticks + "]");
+
+            check (clip3Five == "0 1 2 5 6 7 8 10 11 13 15 "
+                       && clip2Five != clip3Five
+                       && clipDefaultFive == clip2Five,
+                   "the printed clip is a named pass that re-rolls on request",
+                   "pass2=[" + clip2Five + "] pass3=[" + clip3Five
+                       + "] default=[" + clipDefaultFive + "]");
+
+            check (soloLaneNotes == "36 ",
+                   "a soloed lane is the only lane the clip prints",
+                   "notes=[" + soloLaneNotes + "]");
+
+            // The rest of the event fields a host actually reads, taken out of the file rather than
+            // assumed from the code that wrote it: one channel for everything, and both of this
+            // fixture's velocities at both ends of the map. The velocity is read with getVelocity(),
+            // which in JUCE is the raw 0..127 byte - getFloatVelocity() is the 0..1 one, and scaling
+            // the byte by 127 again is what first made this check print 16129.
+            //
+            // The pad-1 list is all three of its hits at 64, which is the exporter's map and NOT what
+            // the render path plays: the scheduler dims its grace to 0.62 and its ratchet to 0.72 of
+            // the lane velocity. That asymmetry is the residual Step 27 leaves open, written up in
+            // docs/next-steps-plan.md, and pinning what the file really contains is what makes a later
+            // change to either side show up here.
+            check (clipChannels == "10 ",
+                   "every note of the exported clip is on the drum channel",
+                   "channels=[" + clipChannels + "]");
+
+            check (clip0Velocities == "127 " && clip1Velocities == "64 ",
+                   "the clip's velocity byte is the exporter's round(velocity x 127) map",
+                   "36=[" + clip0Velocities + "] 37=[" + clip1Velocities + "]");
+
+            check (defaultClipText.containsIgnoreCase ("pass 2"),
+                   "the clip says which pass it is a snapshot of",
+                   "text=[" + defaultClipText + "]");
+        }
     }
 
     // SKEER Sample Vault link. This is a graceful integration: when the vault is

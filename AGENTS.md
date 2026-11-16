@@ -117,6 +117,13 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
 - Modules shared with the tests stay DOM- and Node-free (`src/types.ts`, `src/audio/engineCore.ts`).
 - Report a build or test result from that command's own exit status and log. A piped command
   reports the pipe's status, and a background GUI process exiting 0 means the window closed.
+- Three idioms of the native smoke suite, each found the hard way. `check (cond, name, detail)`
+  **evaluates** its detail argument even when the check passes, so a render, a parse or any other work
+  belongs in a named local above the check and not inside the string. The suite's list builders append a
+  space after *every* element, so an expectation literal is `"36 "` and `"931 960 1080 "`, never `"36"` —
+  a missing trailing space makes a correct exporter look broken. And `MidiMessage::getVelocity()` returns
+  the raw 0..127 **byte** (`juce_MidiMessage.h:331`), while `getFloatVelocity()` (`:340`) returns 0..1 —
+  multiplying the first by 127 yields 16129.
 
 ## Known drift — do not trust these without re-checking
 

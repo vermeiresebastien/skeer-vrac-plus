@@ -45,7 +45,7 @@ host-synced 32-step sequencer with pattern chaining, polymeter, parameter locks 
 | Installed plugin | `%ProgramFiles%\Common Files\VST3\SliceForge.vst3` |
 | Installed standalone | `%LOCALAPPDATA%\Programs\SliceForge\SliceForge.exe` |
 | Launch folder | `..\launch\` — `SliceForge.exe`, `SliceForge.vst3`, `SliceForge-1.0.0-Windows-x64.zip`, `start.bat` |
-| Test suite | 175 engine/state checks, editor layout snapshots, VST3 host load |
+| Test suite | 186 engine/state checks, editor layout snapshots, VST3 host load |
 
 The plugin bundle is self-contained (factory audio and SKEER brand assets are embedded, no
 external resource folder). The build is about **24 MB**. The VST3 session identity is preserved
@@ -184,6 +184,11 @@ control falls outside its parent.
   trigger at the sample offset the scheduler reported, `36 + pad` on channel 10, the exporter's
   `round (velocity x 127)` byte, a 32-sample gate, nothing else in the buffer, nothing when the host
   transport is stopped, and no pass-through of the notes played at the plugin
+- exported-file parity: the printed MIDI clip is the pattern the sequencer played - the same swing on
+  the odd steps, the same lane mutes and solos, the same probability draws for one named pass, the same
+  note map. Proven two ways: one fixture is rendered through the scheduler and both paths are asked the
+  same questions, and the resulting tick lists are pinned as literals, because a differential alone
+  stays green when the code the two paths share goes wrong together
 - factory presets and full state round-trip
 - undo/redo and randomisation
 - MIDI CC learn and learned-parameter movement
@@ -210,11 +215,11 @@ control falls outside its parent.
   host-state XML) restores bypassed and still plays
 - randomizer, Euclidean, parseable MIDI file and CPU-headroom checks
 
-Current result: **175/175 passed** - that is what `SliceForgeSmokeTest.exe` prints on the tree this file
+Current result: **186/186 passed** - that is what `SliceForgeSmokeTest.exe` prints on the tree this file
 describes, so re-run it rather than trusting the number here - with the engine using between **4.4% and
 6.1% of one core** across separate runs of the same binary while continuously triggering pads at
-48 kHz / 512 samples (the runs behind that 175/175 reported 4.53%, 4.57% and 5.11% on three invocations of
-the same bytes). The spread is real, so the
+48 kHz / 512 samples (the two runs behind that 186/186 printed 4.59% and 4.57%; the 175-check runs they
+replaced printed 4.53%, 4.57% and 5.11% on three invocations of those bytes). The spread is real, so the
 figure is reported and never asserted: real-time safety rests on the finite-and-in-ceiling checks, not on
 a wall-clock bound that measured the machine rather than the engine.
 
@@ -320,7 +325,11 @@ engine and follows host transport when available.
   step brings back the pattern that was replaced. The song chain stores pattern *numbers*, so a
   chain slot pointing at the destination plays the copy from then on.
 - **MIDI** — export a Standard MIDI File of the current pattern or song chain, or start a MIDI
-  file drag into a host that accepts external file drops.
+  file drag into a host that accepts external file drops. The file is the groove you heard: swing,
+  lane mutes and solos, probability dropouts, flams, ratchets and nudges are baked into it, and it uses
+  the same `36 + pad` note map the plugin's own live MIDI out uses. One printed file is one *pass* — the
+  plugin re-rolls its probability lanes every time the transport restarts, so the file names the pass it
+  is a snapshot of inside itself, and looping that clip in your host replays that same set of dropouts.
 - **Live MIDI out** — while the sequencer plays, every hit it schedules is also written to the
   plugin's own MIDI output bus as `36 + pad` on channel 10, at the sample offset the engine hears, so a
   drum rack or a second instrument can play along with the kit. There is no switch for it: the notes
@@ -421,7 +430,7 @@ Source/
     SourcePanel / PadEditorPanel / HeaderBar / FooterBar / SequencerGrid / SequencerPanel /
     VaultPanel
 Tests/
-  SmokeTest.cpp         175 audio/state checks
+  SmokeTest.cpp         186 audio/state checks
   LayoutTest.cpp        editor bounds + PNG snapshots
   HostTest.cpp          scans and loads the built VST3 through JUCE's host path
 ```

@@ -157,6 +157,21 @@ namespace sliceforge
             return (double) (h >> 11) * (1.0 / 9007199254740992.0); // [0, 1)
         }
 
+        /** How far an odd step is pushed late, in quarter notes - the whole shuffle, in one place.
+
+            This used to be a private detail of `scheduleAbsoluteStep`, and the exporter wrote the grid
+            without it, so a clip imported into the host played a straighter groove than the plugin had
+            just played. The fix is not a second transcription of that formula: a second copy is how the
+            next change to the shuffle ends up on one path and not the other. Step 27's gate renders the
+            same fixture both ways and compares, and mutating the helper below reddens *both* halves.
+        */
+        double swingPpqForStep (const SequencerData& data, int64_t absoluteStep, int division) noexcept
+        {
+            return (absoluteStep & 1) != 0
+                       ? juce::jlimit (0.0, 0.66, (double) data.swing) / (double) division
+                       : 0.0;
+        }
+
         void scheduleAbsoluteStep (const SequencerData& data,
                                    int64_t absoluteStep,
                                    double blockStartPpq,
@@ -177,9 +192,7 @@ namespace sliceforge
             const auto& pattern = data.patterns[(size_t) patternIndex];
             auto& histories = hostMode ? state.lastHostPadStep : state.lastInternalPadStep;
             const double basePpq = (double) absoluteStep / (double) division;
-            const double swing = (absoluteStep & 1) != 0
-                                     ? juce::jlimit (0.0, 0.66, (double) data.swing) / division
-                                     : 0.0;
+            const double swing = swingPpqForStep (data, absoluteStep, division);
             const double samplesPerPpq = 60.0 * sampleRate / juce::jmax (20.0, bpm);
             const double stepPpq = 1.0 / (double) division; // one step, in quarter notes
 
@@ -843,7 +856,7 @@ namespace sliceforge
         return std::make_shared<SeqPattern> (wrapper->patterns[0]);
     }
 
-    juce::MemoryBlock makePatternMidiFile (const SequencerData& data)
+    juce::MemoryBlock makePatternMidiFile (const SequencerData& data, std::int64_t exportPass)
     {
         const int division = sanitiseDivision (data.division);
         const double ticksPerStep = (double) kMidiTicksPerQuarter / division;
@@ -851,11 +864,21 @@ namespace sliceforge
         const int chainLength = juce::jlimit (1, kSeqChainLength, data.chainLength);
         const int totalSteps = data.songMode ? barLength * chainLength : barLength;
 
+        /*  A printed clip is one pass of a pattern that re-rolls, so the file has to say which pass it
+            is: a host that imports the same clip twice gets the same notes twice, while the plugin
+            plays a different dropout set every time the transport restarts. The claim is stated inside
+            the file rather than only in its name, because a name is the first thing a user renames.
+            It is written as an ASCII text meta event (type 3), the one JUCE round-trips as text. */
+        juce::String caption = "SKEER SliceForge pattern - probability snapshot of pass ";
+        caption << exportPass;
+        caption += " (swing, mute, solo, probability, flam and ratchet are baked in here;"
+                   " the plugin re-rolls every pass)";
+
         juce::MidiMessageSequence sequence;
         sequence.addEvent (juce::MidiMessage::tempoMetaEvent (
             (int) std::round (60000000.0 / juce::jmax (20.0, data.bpm))), 0.0);
         sequence.addEvent (juce::MidiMessage::timeSignatureMetaEvent (4, 4), 0.0);
-        sequence.addEvent (juce::MidiMessage::textMetaEvent (3, "SKEER SliceForge pattern"), 0.0);
+        sequence.addEvent (juce::MidiMessage::textMetaEvent (3, caption), 0.0);
 
         for (int absolute = 0; absolute < totalSteps; ++absolute)
         {
@@ -867,12 +890,32 @@ namespace sliceforge
 
             for (int pad = 0; pad < kNumPads; ++pad)
             {
-                const int laneLength = laneLengthForPad (pattern, pad, barLength);
-                const auto& s = pattern.rows[(size_t) pad][(size_t) wrapStep (absolute, laneLength)];
-                if (! s.on)
+                /*  The three questions the render path puts to every step, asked here in the same
+                    order and by the same functions - laneIsAudible for mute and solo, the step's own
+                    flags, then probabilityRollFor for the draw. This is the whole of Step 27: the
+                    file used to ask only "is the step on", so a clip described a straighter,
+                    unmuted, never-dropped version of whatever the plugin had just played.
+
+                    The pass counter is part of the roll's key, which is why exportPass is an
+                    argument: a printed file cannot play the re-roll, so it is stamped with one
+                    pass's draws and says so above. */
+                if (! laneIsAudible (pattern, pad))
                     continue;
 
+                const int laneLength = laneLengthForPad (pattern, pad, barLength);
+                const auto& s = pattern.rows[(size_t) pad][(size_t) wrapStep (absolute, laneLength)];
+                if (! s.on || s.probability <= 0.0f)
+                    continue;
+                if (s.probability < 0.999f
+                    && probabilityRollFor (patternIndex, pad, absolute, exportPass) > s.probability)
+                    continue;
+
+                /*  One step sits 1 / division quarter notes after the last, an odd step is pushed late
+                    by the shuffle, and a nudge is a fraction of a step - all three read from the
+                    helper the render path reads, converted once from quarter notes to ticks. */
                 const double baseTick = (double) absolute * ticksPerStep
+                                      + swingPpqForStep (data, absolute, division)
+                                            * (double) kMidiTicksPerQuarter
                                       + (double) s.nudge * ticksPerStep;
                 const int flams = juce::jlimit (0, 2, s.flam);
                 const int ratchets = juce::jlimit (1, 4, s.ratchet);
@@ -884,9 +927,13 @@ namespace sliceforge
                     const int onTick = (int) std::round (tick);
                     const int offTick = onTick + juce::jmax (12, (int) std::round (ticksPerStep * 0.45));
                     const auto velocity = juce::jlimit (1, 127, (int) std::round (s.velocity * 127.0f));
-                    sequence.addEvent (juce::MidiMessage::noteOn (10, 36 + pad, (juce::uint8) velocity),
+                    sequence.addEvent (juce::MidiMessage::noteOn (kPadMidiChannel,
+                                                                  kPadMidiBase + pad,
+                                                                  (juce::uint8) velocity),
                                        (double) onTick);
-                    sequence.addEvent (juce::MidiMessage::noteOff (10, 36 + pad), (double) offTick);
+                    sequence.addEvent (juce::MidiMessage::noteOff (kPadMidiChannel,
+                                                                   kPadMidiBase + pad),
+                                       (double) offTick);
                 };
 
                 for (int f = flams; f >= 1; --f)

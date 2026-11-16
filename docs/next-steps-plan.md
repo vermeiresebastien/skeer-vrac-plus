@@ -121,9 +121,9 @@ were stale inside a day, because every step that lands edits the very files it c
 (`VRAC_EXTRA`, `PLUGIN_CODE`, `getChildFile ("SliceForge")`) are the durable half. Round 2's claim that
 the README should read 347 is retracted above. What the README *was* wrong about is its check counts
 (109 against a 117-check suite) and "about 5% of one core"; both were fixed with Step 29 on 2026-11-15.
-  (Same exemption: that 117 and the 347 above are dated reads. The live pair is 175 checks and 350 host-visible,
-  re-measured 2026-11-16: Step 26's host-path gate was reworked into four per-arm checks, and Step 28's MIDI
-  output bus added six.)
+  (Same exemption: that 117 and the 347 above are dated reads. The live pair is 186 checks and 350
+  host-visible, re-measured 2026-11-16: Step 26's host-path gate was reworked into four per-arm checks,
+  Step 28's MIDI output bus added six, and Step 27's exported-file parity added eleven.)
 Everything else in `AGENTS.md`'s frozen list checked out, including `Sequencer.cpp:12`,
 `storage.ts:5-7`, `sampleStore.ts:7`, `UI/Theme.cpp:75` and `VaultLibrary.cpp:143` — the last is
 `native/Source/VaultLibrary.cpp`, not under `Source/UI/`, and round 1's Step 11 cited it without the
@@ -842,6 +842,77 @@ absent lane 3, the present lane 1 with 3 events, and that lane 5 is not simply a
 separate assertions, so the check says which lie the exporter is still telling. Fails today on all
 three counts.
 
+Built 2026-11-16, red first. With the eleven new assertions in place and the exporter still at its
+previous shape, the smoke suite printed `FAIL - 175/184 checks passed` (exit 1) on `FAIL  the exported
+clip swings the odd steps [clip 36=[0 240 480 720 960 1200 1440 1680 1920 2160 2400 2640 2880 3120 3360
+3600 ]]`, `FAIL  a muted lane reaches the clip and is silent in the render [clip notes=4 live events=0]`,
+`FAIL  the clip's probability lane is pass 2's draw [clip 41=[0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 ]
+live=[2 3 4 5 7 10 12 14 15 ]]`, `FAIL  the render path and the clip fire the same steps of the
+probability lane [live2=[2 3 4 5 7 10 12 14 15 ] clip2=[0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 ] live3=[0
+1 2 5 6 7 8 10 11 13 15 ] clip3=[0 1 2 3 4 5 6 7 8 9 10 11 12 13 14 15 ]]`, `FAIL  the clip's onsets are
+the onsets the scheduler picked` (same two lists, ticks not steps), `FAIL  the printed clip is a named
+pass that re-rolls on request [pass2=… pass3=… default=… all sixteen steps]`, `FAIL  a soloed lane is the
+only lane the clip prints [notes=[36 37 39 41 ]]`, `FAIL  the clip says which pass it is a snapshot of
+[text=[SKEER SliceForge pattern]]` and `FAIL  flam and ratchet survive into the exported clip [clip
+37=[931 960 1080 ]]`. Three of those nine — the swung-tick list, the pass-2 draw and the flam/ratchet
+list — were red for two reasons at once, because my first draft had dropped the trailing space that this
+suite's list builders put after every element, so the expectations could never match even a correct
+exporter. Fixing that is what turned `flam and ratchet survive into the exported clip` green with no
+change to the exporter at all: it is a characterisation check of what the old exporter already got right,
+not a Step 27 gate. Every literal below was therefore re-proved red in its final shape by the mutation
+series, and that series — not this paragraph — is the evidence to trust.
+
+The change is five things, none of them a second copy of a decision. The shuffle is pulled out of
+`scheduleAbsoluteStep` into `swingPpqForStep` (`Sequencer.cpp:168`), which the live path calls at `:195`
+and the exporter at `:917`; behaviour at the live site is byte-for-byte the same expression, so the only
+new thing on the render path is a function call. The exporter now asks the render path's three questions
+in its order — `laneIsAudible` (`:902`), the step's own `on`/`probability <= 0` flags (`:907`), then
+`probabilityRollFor (…, exportPass)` (`:910`) — where the live equivalent is the single fused test at
+`:226`. The pass number is single-sourced: `kFirstRenderPass = 2` (`Sequencer.h:25`) with
+`passCount = kFirstRenderPass - 1` (`:166`, value-identical to the old literal) and
+`makePatternMidiFile (data, exportPass = kFirstRenderPass)` (`:117-118`), because the reset that engages
+a clock increments the counter *before* it schedules, so pass 2 is the first thing anybody hears and a
+printed clip is stamped with that same pass by default. The snapshot claim is written as an ASCII text
+meta event inside the file (`Sequencer.cpp:874-881`), not in the UI's suggested name
+(`SequencerPanel.cpp:950-951` still offers `SKEER SliceForge Pattern.mid`), because a name is the first thing
+a user renames. The note map stops being a literal: `kPadMidiChannel`/`kPadMidiBase` (`Params.h:14`,
+`:19`) are what the exporter emits (`Sequencer.cpp:930-936`) and what the live out already emitted, so
+the clip and the wire cannot drift apart by construction.
+
+Restored and re-measured: `PASS - 186/186 checks passed` at 4.59% of one core, and 4.57% on a second
+invocation of the same bytes (exit 0 both times), layout at 28 checks, `PASS VST3 host test` printing
+`parameters: 350 = 348 layout + Bypass + Program` and `midi out: 9 note-ons / 9 note-offs over 48 blocks`,
+ctest 100% out of 3, every one at exit 0. All three test binaries and the VST3 were rebuilt before the
+runs — the first host-test attempt judged the previous plugin bytes because only the console targets had
+been rebuilt, which is P1's trap exactly.
+
+Five mutations were then run against the final bytes, each restored byte-exactly by hash: no swing term in
+the exporter → 184/186 (`the exported clip swings the odd steps` + the onsets differential); audible gate
+deleted → 184/186 (mute check `[clip notes=4 live events=0]` and solo `[notes=[36 37 39 41 ]]`);
+probability draw deleted → 183/186 (pass-2 literal, differential, named-pass); `exportPass` frozen to
+`kFirstRenderPass` → 184/186 (differential + named-pass: pass 3 then equals pass 2, and the default is no
+longer distinguishable from a request); the shared `swingPpqForStep` returning `0.0` → 184/186, reddening
+`the exported clip swings the odd steps` *and* the render path's own `micro-timed steps survive
+out-of-order block boundaries`, while both differentials stayed green. That last one is the honest
+limitation of a differential: when the code both sides share goes wrong, they agree. It is why the tick
+lists are pinned as literals (`SmokeTest.cpp:2075`, `:2095`, `:2109`) and why those three literals are
+measurements of the render path, not formulas re-derived in the test. The host test is swing-blind — it
+printed the same `9 note-ons / 9 note-offs` on the mutated bytes as on the clean ones — so it gates bus
+availability and event counts (Step 28's job) and nothing about timing.
+
+Not verified: no real host imported the printed clip and compared it against what the plugin played, so
+"the pattern you heard" is proven between the two code paths in one process, not against Ableton's
+timeline; the drag-to-host path (`SequencerPanel.cpp:946-961`) is unexercised by any test; and the file's
+swing/tempo metadata is asserted as parsed ticks, not as what a host does with the set-tempo event.
+Deliberately left: the sub-hit velocity asymmetry — the clip writes grace and ratchet hits at the lane's
+main velocity while the scheduler dims them (0.62 / 0.72), so a printed flam is louder than a played one.
+That is a sound decision, not an engine bug, and is now pinned by a characterisation check
+(`SmokeTest.cpp:2087`, `"931 960 1080 "`) so that changing it is a decision someone makes on purpose.
+Also deliberately not built: the plan's "print the backbone" switch (probability gates off) and a
+pass-number *file name*, both UI work; and stamping the clip with the pass you just heard, which needs
+`SeqPlaybackState::passCount` — audio-thread state — synchronised before any UI may read it. Both are
+owner decisions, and the exported clip always says "pass 2" until then.
+
 **Step 28 — Send the sequencer to the host as MIDI (2 d), or delete the implication that it does.**
 
 Verified state: two independent blockers, both named in item 3 above — `NEEDS_MIDI_OUTPUT FALSE`
@@ -1315,6 +1386,8 @@ order: the pattern parameter first, because MIDI out is useless if every clip pl
 MIDI out; then making the offline export honest, which reuses the same swing and roll code and so
 should land after Step 22 rather than before it. This block is why the sequencer stops being a feature
 *inside* the plugin and becomes one in the session, and it is cheaper than anything in Phase 5.
+All three landed in that order on 2026-11-16, so the block is closed; what is left of it is acceptance
+in a real host, which no check in this repo can do.
 
 **3. Make the kit-from-one-file work — 2.5 d, after Step 21.** Step 24 (2) then Step 25 (1). Step 24 is
 the highest-value step in the document on pure listening grounds, and it is a length computation, not

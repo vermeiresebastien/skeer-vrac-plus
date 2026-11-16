@@ -4,6 +4,7 @@
 #include "Params.h"
 
 #include <array>
+#include <cstdint>
 #include <limits>
 #include <memory>
 
@@ -13,6 +14,15 @@ namespace sliceforge
     // cache that clamps a host into the bank. This header gets them through its include at :4.
     constexpr int kSeqSteps = 32;
     constexpr int kSeqChainLength = 8;
+
+    /*  The pass number of the first render anybody hears.
+
+        A fresh SeqPlaybackState starts at one less than this, because both clocks advance the counter
+        on the block that restarts them - and they restart *before* they schedule anything. The first
+        audible pass of a session is therefore 2, not 1. It is a constant rather than a literal in two
+        places because the offline exporter has to claim the same pass the plugin plays, which is what
+        makePatternMidiFile's exportPass is for. */
+    constexpr std::int64_t kFirstRenderPass = 2;
 
     struct StepLocks
     {
@@ -96,7 +106,16 @@ namespace sliceforge
     std::shared_ptr<SequencerData> deserialiseSequencer (const juce::MemoryBlock& data);
     juce::MemoryBlock serialisePattern (const SeqPattern& pattern);
     std::shared_ptr<SeqPattern> deserialisePattern (const juce::MemoryBlock& data);
-    juce::MemoryBlock makePatternMidiFile (const SequencerData& data);
+    /** Renders the pattern as a standard MIDI file.
+
+        `exportPass` is the pass whose probability draws the file is a snapshot of, and it defaults to
+        kFirstRenderPass - the first pass anybody hears - because a printed clip cannot play the
+        re-roll: one file is one set of draws, and the draw belongs to the pass counter as much as it
+        belongs to the step. The pass is stated inside the file (text meta event 3) so the claim
+        survives a rename. Everything else - swing, mute and solo, probability, flam, ratchet, nudge,
+        tempo and the note map - is decided by the same code the render path decides with. */
+    juce::MemoryBlock makePatternMidiFile (const SequencerData& data,
+                                           std::int64_t exportPass = kFirstRenderPass);
 
     struct SeqHostInfo
     {
@@ -142,7 +161,9 @@ namespace sliceforge
         // the block. Either way it clears its step history and gets its own probability draws, so
         // a host that loops a bar re-rolls instead of replaying one frozen dropout set all
         // session. Advanced on the same reset as historyClears, above. See probabilityRollFor.
-        int64_t passCount = 1;
+        // Starts one below the first audible pass because the reset that engages the transport
+        // increments it before it schedules anything: see kFirstRenderPass.
+        int64_t passCount = kFirstRenderPass - 1;
     };
 
     struct SeqBlockOutput
