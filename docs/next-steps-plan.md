@@ -93,15 +93,17 @@ Five findings drove the ranking. All four code ones are verified defects, not op
 
 ## 1. Two things the research corrected
 
-- **The parameter count is two numbers, and `native/README.md:155` now states both.** The layout
-  declares **347** — 8 global + `source.sensitivity` + 21 parameters × 16 pads + `global.clip` +
-  `global.out` (`native/Source/Params.cpp`, the pad loop adds exactly 21 ids) — while the host sees
-  **349**, because JUCE's VST3 wrapper appends its own `Bypass` and `Program` to whatever the
-  processor exposes. Round 2 of this plan read the 347 it had derived from the layout, saw the 349 the
+- **The parameter count is two numbers, and `native/README.md:154-161` states both.** The layout
+  declared **347** when this was first worked out — 8 global + `source.sensitivity` + 21 parameters ×
+  16 pads + `global.clip` + `global.out` (`native/Source/Params.cpp`, the pad loop adds exactly 21 ids)
+  — while the host saw **349**, because JUCE's VST3 wrapper appends its own `Bypass` and `Program` to
+  whatever the processor exposes. Round 2 of this plan read the 347 it had derived from the layout, saw the 349 the
   test printed, and concluded the README was wrong by two; it was the reading that was wrong. Nothing
   used to catch a disagreement between them: `HostTest.cpp` only *printed* the count and asserted
-  `< 300`, which 347, 349 and 345 all satisfy. `native/Tests/HostTest.cpp:68` now asserts exactly
-  349, so the composition in the README is a test result rather than a claim.
+  `< 300`, which 347, 349 and 345 all satisfy. `native/Tests/HostTest.cpp:69` now asserts exactly
+  350 and `native/Tests/SmokeTest.cpp:171` asserts the 348 the layout builds - one more than the
+  derivation above, because Step 26 appended `seq.pattern` - so the composition in the README is a
+  test result rather than a claim.
 - **The naming risk the market lane flagged is mostly already retired.** The installed bundle is
   `SliceForge.vst3`; the `VRAC+.vst3` copy in `%LOCALAPPDATA%\Programs\Common\VST3` was deleted on
   2026-11-14. The `Vrac` / `Erwm` codes remain in the binary, but they are invisible session
@@ -808,7 +810,7 @@ turns out to be pattern-coupled. The tolerance regime above one step per block s
 defect entry in 8C.
 
 Side effects, all swept in this commit: the layout is 348 parameters and a host sees 350, so `AGENTS.md:136-142`,
-`native/README.md:48`, `:154-159`, `:199` and `:399` moved off 347/349 - and 348 (bare) and 350 (host) are
+`native/README.md:48`, `:154-161`, `:199-204` and `:405` moved off 347/349 - and 348 (bare) and 350 (host) are
 both current, not a typo for each other, because the wrapper appends `Bypass` and `Program` after the
 layout. `SmokeTest.cpp:171` asserts 348 and `HostTest.cpp:69` asserts 350, each anchored to the previously
 measured value in its own view rather than re-derived.
