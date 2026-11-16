@@ -98,8 +98,8 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
   are data keys, not branding:
   - `PLUGIN_CODE Vrac` and `PLUGIN_MANUFACTURER_CODE Erwm` (`native/CMakeLists.txt:106-107`): the
     pair is the VST3 module identity in the host session; changing either orphans every saved set.
-  - `"VRACPlus"` (the APVTS ValueTree type, `native/Source/PluginProcessor.cpp:23`) and
-    `"VRAC_EXTRA"` (`:974`, `:978`, `:1036`, `:1041`): the host-state XML the plugin reads back.
+  - `"VRACPlus"` (the APVTS ValueTree type, `native/Source/PluginProcessor.cpp:75`) and
+    `"VRAC_EXTRA"` (`:1043`, `:1047`, `:1116`, `:1121`): the host-state XML the plugin reads back.
     Renaming them silently drops slices, sequencer and custom-sample data.
   - `0x56524143` / `'VRAC'` in `native/Source/Sequencer.cpp:12`: the magic written into and
     validated on `.vracpattern` files.
@@ -140,7 +140,7 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
   The same goes for the numbers in it, but only for some of them: the smoke total and the CPU figure
   are claims to re-measure, not facts — `native/Tests/SmokeTest.cpp` prints both and asserts neither,
   because a wall-clock bound fails on a loaded machine rather than on an engine that got slower. The
-  exposed-parameter count is the exception, and the one that used to drift: `native/Tests/HostTest.cpp:69`
+  exposed-parameter count is the exception, and the one that used to drift: `native/Tests/HostTest.cpp:110`
   asserts exactly 350 host-visible parameters — 348 from `createParameterLayout` (9 globals before the pad
   loop, 21 for each of 16 pads, the 2 output-stage controls, then `seq.pattern` appended last) plus the
   VST3 wrapper's own
