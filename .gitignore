@@ -1,7 +1,7 @@
 node_modules/
 dist/
 test-results/
-shots/
+# shots/ was ignored until 2026-11-17; it is tracked now, and the zip carries what README links.
 *.log
 .DS_Store
 .env

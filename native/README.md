@@ -80,14 +80,14 @@ cmake --build build --config Release --target SliceForge_VST3 SliceForge_Standal
 cmake --build build --config Release --target launch
 ```
 
-The `launch` target runs `package-launch.ps1`, which refreshes the repository-root `launch/`
-folder: it re-copies `SliceForge.exe`, replaces the whole `SliceForge.vst3` bundle folder, restamps the
-portable zip from `Package/INSTALL.txt`, `Package/THIRD-PARTY-NOTICES.txt`, this README, the root
-`LICENSE` and the two `launch/` start scripts, and SHA-256-compares each copy against
-its build-tree original. It is a separate target rather than a post-build step because Ableton
-holds a loaded VST3's DLL open, and a build-time copy turns that lock into a failed compile that
-hides the result you were trying to test. It also refuses to export while `SliceForge.exe` is running,
-instead of killing a session that has no autosave.
+The `launch` target runs `package-launch.ps1`, which refreshes the repository-root `launch/` folder: it
+re-copies `SliceForge.exe`, replaces the whole `SliceForge.vst3` bundle, and restamps the portable zip from
+`native/Package/INSTALL.txt`, `native/Package/THIRD-PARTY-NOTICES.txt`, this README, the root `LICENSE`, the
+two `launch/` start scripts and the `shots/` pictures this page links, then SHA-256-compares every member
+against the file it claims. It is a separate target rather than a post-build step because Ableton holds a
+loaded VST3's DLL open, and a build-time copy turns that lock into a failed compile hiding the result you
+were trying to test. It also refuses to export while `SliceForge.exe` is running, instead of killing a
+session that has no autosave.
 
 `launch/` is the only place to look for something runnable:
 
@@ -300,7 +300,7 @@ engine and follows host transport when available.
   continued playback.
   Nothing goes silent and edits still land — what does not happen is the hit-history reset, so a jump that
   lands on a step boundary can drop or repeat a single hit. Recorded as a known defect, with the gate that
-  pins both sides of the seam, in `docs/next-steps-plan.md` section 8C.
+  pins both sides of the seam, in the planning document (`docs/next-steps-plan.md` section 8C).
 - **Colour-coded steps** — active steps use their drum-family colour: kick coral orange, snare
   electric blue, hats mint teal and clap violet. The playhead and transport state use the green
   playback colour.
@@ -490,10 +490,11 @@ Tests/
 
 ## Credits / disclaimer
 
-SKEER wordmark and brand direction are used for the SKEER instrument line. IBM Plex Sans, IBM
-Plex Mono and Barlow Condensed are bundled under the SIL Open Font License, whose full text is in
-`Package/THIRD-PARTY-NOTICES.txt`. JUCE 8.0.4 is used under the AGPLv3 leg of its dual licence, and
-that file names every component this build compiles in, with the census that drew the boundary.
+SKEER wordmark and brand direction are used for the SKEER instrument line. IBM Plex Sans, IBM Plex Mono and
+Barlow Condensed are bundled under the SIL Open Font License, whose full text is in `THIRD-PARTY-NOTICES.txt`
+— the name that file has in this portable package, where it sits beside this README, and the same text the
+repository keeps at `native/Package/THIRD-PARTY-NOTICES.txt`. JUCE 8.0.4 is used under the AGPLv3 leg of its
+dual licence, and that file names every component this build compiles in, with the census that drew the boundary.
 
 SliceForge is an independent interpretation inspired by VRAC+ by Beatsurfing. Not affiliated with or
 endorsed by Beatsurfing / Druw Audio. The factory sound library is original procedural material

@@ -544,7 +544,7 @@ Closed by 8I, which refutes this line's own reason: `COMPANY_COPYRIGHT` is a `ju
 Measured: `.git` is 205 MB, 318 loose objects, **zero packs**; `launch/` is 76.5 MB in HEAD; the zip is
 27,750,643 B and the exe 24,210,944 B as plain blobs. The restamp in `92336b5` added a fresh 27.75 MB
 blob for a payload-identical zip — two objects of 27,709,732 B with different hashes — because
-`native/package-launch.ps1:65-69` uses `Compress-Archive`, which embeds mtimes. So every export costs
+`native/package-launch.ps1` embeds entry mtimes (`ZipArchive` has stamped them since Step 16 replaced `Compress-Archive`; §8J measured the 68 differing bytes of an otherwise identical re-export). So every export costs
 about +28 MB forever. Git LFS is configured but genuinely inactive (no `.gitattributes`, no
 `pre-push` hook), so it currently manages nothing. Fixing the determinism is half a day; moving
 `launch/` to release assets reverses a recorded owner decision from 2026-11-14, so it is yours to make,
@@ -1921,8 +1921,8 @@ them:
 [KVR forum thread](https://www.kvraudio.com/forum/viewtopic.php?t=631449),
 [Dubspot review](https://blog.dubspot.com/beatsurfing-vrac-plus-2026),
 [Audio Plugin Guy on free VRAC](https://www.audiopluginguy.com/free-plugin-review-vrac-by-beatsurfing/).
-Still **not** confirmed after two rounds: the "SliceForge" name-collision risk, and the current prices
-of Portico, Influx and Ripchord.
+§8K answers both halves on 2026-11-17 and refutes the ask's premise while doing it: the collision is real
+but sits outside this category, and Portico, Influx and Ripchord are not this product's competitors at all.
 
 ---
 
@@ -2058,7 +2058,7 @@ file cites its own line numbers.
   the wanted outcome: the property is per-target, so the plugin's argument did not leak sideways into
   `SliceForgeSmokeTest.exe` and its siblings. Their `CompanyName` is JUCE's `yourcompany` placeholder -
   unsightly, and no test binary is a deliverable.
-- **Tuple, superseding 8H's.** module `b15476669eb2b5f3ff960d8cd09fce4df242c3144f2236541e6a27b3a239470d` (24,530,944 B - 512 B more than the `ce66de92…` 8H
+- **Tuple, superseding 8H's and superseded in turn by 8J's,** because 8J left every binary alone and restamped the archive around eight new members. module `b15476669eb2b5f3ff960d8cd09fce4df242c3144f2236541e6a27b3a239470d` (24,530,944 B - 512 B more than the `ce66de92…` 8H
   recorded, which is the entire cost of the added resource string) identical in `native/build/…/VST3`, in
   `launch/`, as the zip member, and in `C:\Program Files\Common Files\VST3`; standalone `c5478449cc40b07f7171416b2ca611cabcf5e8ba6b2a77701b1f8b95f1c1da97`
   (24,220,672 B, also +512 over its `a2b6c901…`); `moduleinfo.json` `df39eafcbd1a21ff5e4e9fa1f32b3d97c514d93a34ec6c071c393049119572da`, unchanged, as it must be -
@@ -2093,3 +2093,196 @@ file cites its own line numbers.
   sighting in Ableton is still the owner's step. And a `LegalCopyright` that names no holder is a choice, not
   a finished job - AGPL section 5 is satisfied by a pointer to the Corresponding Source, but if SKEER or a
   person is to be named, that sentence is the owner's to write.
+
+---
+
+## 8J. The screenshots ship now, and the packer reads the link list out of the README (recorded 2026-11-17)
+
+Appended rather than inserted, on the 8H/8I precedent: anything placed before `:1929` shifts every cite below it.
+
+- **Found by a census, not by a report.** `native/README.md` is an archive member, and the member inside
+  `launch/SliceForge-1.0.0-Windows-x64.zip` linked eight `shots/*.png` files that a nine-member archive did
+  not contain. Every customer who extracted the package therefore saw eight broken images in the document
+  whose job is to show the product - and unlike the repo reader, they cannot regenerate them. The same files
+  were gitignored, so a fresh clone broke those eight *plus* the six `native/shots/` links in the root README.
+  `AGENTS.md:137` recorded only the clone half ("broken in a fresh clone"): true, and silent about the copy
+  that ships.
+- **The owner chose "ship in zip + track in git",** and three measurements made that the cheapest option
+  rather than the most expensive one. (a) The PNGs are byte-stable: `SliceForgeLayout` ran twice more after
+  the first hash set - `ctest -R Layout` at 33.05 s (`100% tests passed out of 1`), then inside the full suite
+  at 8.13 s - and
+  `sha256sum -c` returned 10/10 `OK` (exit 0) on the third generation. That generation was written *after*
+  `git add`, and `git status` still reports `A` and never `AM` for all ten paths, so on every generation
+  measured a `ctest` run leaves the tracked tree clean - which is a fact about these four runs, not a promise
+  the layout test makes. (b) The fix that looks cheapest is not a fix:
+  `gh repo view` answers `visibility: PRIVATE` and an unauthenticated `raw.githubusercontent.com` fetch of a
+  *tracked* file (`LICENSE`) is 404 on both `master` and `main`, so GitHub image URLs would have broken in
+  exactly the hands that receive the zip. (c) PNGs are not a new kind of blob here - `docs/screenshots/` is
+  already tracked at 1,526,195 B - and 1,180,600 B is 1.6% of the ~75 MB of `launch/` blobs that Step 17's
+  `.gitattributes`/LFS decision is actually about, so that pending decision did not move.
+- **The picture list is read out of the README, not written beside it.** `native/package-launch.ps1` now
+  calls `Get-ShippedShotList`, which collects the `![...](shots/*.png)` links from the shipped README and adds
+  each as a member under the same relative name. Both halves of the invariant are gated: a linked picture that
+  is not on disk throws, and a *relative* image link this step does not carry also throws - so an archive can
+  no longer contain a README pointing at an image it lacks, which is the same rule the file already applies to
+  a start script and the licence text. An absolute URL is the only excused link, because that target is not the
+  archive's to supply. The character class admits no separator, so `shots/../../x` is never a member name; the
+  four refusal paths were probed by lifting the function out of the shipped file's AST (`PARSE_ERRORS=0`,
+  `FUNCTION_LOADED_FROM_SHIPPED_SOURCE`) and calling it on modified copies in `%TEMP%` - missing file,
+  `../docs/…` link, `shots/../../CMakeLists.txt` and an absent `shots/` folder each threw, an `https://` badge
+  did not (`ABSOLUTE_URL_ALLOWED=count 8`), and the real README gave `POSITIVE_COUNT=8` and
+  `POSITIVE_TOTAL_BYTES=838303` - the same 838,303 B the archive later measured from the other side.
+- **8 of the 10 tracked PNGs ship,** because 8 are linked. `editor-large.png` (201,826 B) and
+  `sequencer-large.png` (140,471 B) are layout-test output no document points at, and a member nothing
+  references is dead weight: 1,180,600 − 838,303 = 342,297, which is those two files exactly.
+- **An orphan refused to be committed by accident.** `git add native/shots` staged 11 paths: ten PNGs plus
+  `native/shots/.png`, a valid 667-byte 1260×110 image dated 2026-11-14 01:51:31 - the rename day, three days
+  before any name in `native/Tests/LayoutTest.cpp:129-271` (ten `getChildFile ("…png")` sites) wrote a file there, and invisible to plain `ls`
+  because a leading dot hides it. It is not a deliverable and nothing writes it, so it was unstaged and moved
+  to `D:\Projects\tools\sliceforge-rehearsal\orphan-shots-dot-png-667B-2026-11-14T01-51-31.png` rather than
+  committed or deleted: a folder that was ignored until this pass has no history to explain an unexplained
+  artifact, and retirement beats deletion when the alternative is a rebuild from nothing.
+- **Gates, each from its own exit status, each recorded in its own log.** `cmake --build native/build
+  --config Release` exit 0 - and it compiled nothing: an 18-line log (19 with the `EXIT=0` this pass appends),
+  12 per-project `->` lines, **zero**
+  `cl.exe` or `link.exe` lines, and the only `.cpp` mention is the `BinaryData*.cpp` generator line.
+  `ctest --test-dir native/build -C Release --output-on-failure` exit 0, 3/3. `SliceForgeSmokeTest.exe` run
+  directly: exit 0, `PASS - 190/190 checks passed`, with 190 `ok` lines counted in the same log. That suite ran
+  twice against the same binary and printed `CPU: 4.21%` then `4.34%` of one core, and Layout took 8.13 s then
+  27.24 s - the measurement behind `AGENTS.md`'s rule that the CPU figure is printed and not asserted. The 190
+  is the suite's own tally and asserts nothing either, which is why it is quoted here beside the log that
+  prints it rather than as a gate. The export log ends with its own banner, `launch/ refreshed (Release,
+  v1.0.0)`, and `$ErrorActionPreference = 'Stop'` makes that line reachable only on the clean path. The
+  package was then checked by a program that is not the packer: every one of the 17 members hashed out of the
+  archive stream against the file it claims in the tree, `MEMBERS=17 FAILURES=0`, exit 0. A second export with
+  *nothing* changed in the tree then measured the archive's own reproducibility: same 17 names, **0** member
+  hash mismatches, same 28,584,705 B - and 68 bytes different, in 34 runs of exactly 2 bytes, which are the 17
+  local headers and the 17 central-directory records at their DOS time field. So the zip is `d69b1f52…` where
+  the export twenty-one minutes earlier was `5be46f61…`, and Step 17's "every export costs about +28 MB
+  forever" survives the rewrite of its mechanism (`:547`). The extracted-package rehearsal ran on the
+  `5be46f61…` archive; every member of `d69b1f52…` hashes identical to it, so that rehearsal does describe the
+  bytes being committed. Archive shape: 0 backslash separators, 0 directory rows, 8 `shots/` members totalling
+  838,303 B.
+  Shipped README: 8 links, 8 present as members, and 8 present as extracted paths on disk
+  (`EXTRACTED_FILES=17`, `README_LINKS=8 BROKEN=0`). The extracted-package rehearsal was **re-run, not inherited** - 8I's own
+  lesson - with `PATH` trimmed to `System32;Windows` for a child launched by absolute path
+  (`HAS_NODE=False`, `HAS_NPM=False`): `-DryRun` exit 0 printing the browser-edition refusal,
+  `-InstallOnly -Vst3Dir <scratch>` exit 0 with the scratch module `b1547666…` and "matches launch/ file for
+  file". A `git ls-files -z` census over both READMEs: 18 image links, 0 unresolved-and-untracked.
+- **Tuple, superseding 8I's.** The module is `b15476669eb2b5f3ff960d8cd09fce4df242c3144f2236541e6a27b3a239470d`
+  (24,530,944 B) **unchanged** in all four places - build, `launch/`, zip member, `C:\Program Files\Common
+  Files\VST3` - and that is the point: the export regenerated `juce_binarydata_SliceForgeAssets/BinaryData*.cpp`,
+  so "the module cannot have moved" was a claim that needed measuring rather than reasoning. Standalone
+  `c5478449cc40b07f7171416b2ca611cabcf5e8ba6b2a77701b1f8b95f1c1da97` (24,220,672 B), `moduleinfo.json`
+  `df39eafcbd1a21ff5e4e9fa1f32b3d97c514d93a34ec6c071c393049119572da`, `LICENSE` 34,523 B at
+  `0d96a4ff68ad6d4b6f1f30f713b18d5184912ba8dd389f86aa7710db079abcb0`, `INSTALL.txt` `db6a85d5…`,
+  `THIRD-PARTY-NOTICES.txt` `ff6e1227…`, `start.ps1` `7938fe08…` and `start.bat` `0366b728d29b4465…` as 8I
+  measured them. Every one of those is the *worktree* form the archive stores, which for `start.bat`
+  (`i/lf w/crlf`) is by definition not the form the blob holds: `0366b728d29b4465…` in the zip,
+  `b831971f35d1ce53…` from `git cat-file blob :launch/start.bat`. Of 8I's nine members, one changed bytes and
+  eight are new. `native/README.md` went to 29,772 B (from 29,541) with the **worktree** hash `09242229b57f5f591bdba40f7d912e98fffb0460f04cbd5ea42a47b2fb71242a`
+  - labelled, because `git ls-files --eol` says `i/lf w/lf` and `git diff --numstat` warned "LF will be replaced
+  by CRLF the next time Git touches it". The distinction the warning draws is between the two ways of reading
+  this commit, not between two numbers: `git cat-file blob :native/README.md | sha256sum` returns this same
+  `09242229…` (measured after staging, and every other text path in this commit hashes equal between blob and
+  worktree for the same reason), so the number is reproducible from the object forever - while a fresh checkout
+  on this machine gets a CRLF copy of it, which is the thing Step 17 still owes. The zip went to `d69b1f523d8811d7c009a442d05ef2a9e60057b6144a7b08d296705ac44b20bf`
+  (28,584,705 B), and 8I's `4b98b27299654e4d960413cbc35caa086998b7e2d0ade4a35acb7edc5735ebd0` at 27,787,968 B
+  was re-derived from the blob `git show HEAD:launch/…zip` returns - it reproduced exactly, which is the base
+  the +796,737 belongs to. That delta closes member by member, read out of both archives with `zipfile`:
+  795,671 B is the eight PNGs after deflate (838,303 B raw, 5.08% - PNG is already compressed), 66 B is the
+  README after deflate (+231 raw), and the remaining 1,000 B is eight local headers plus eight central-directory
+  records - 8×(30+46) fixed bytes plus the 196 bytes of member names counted twice, exact to the byte, which is
+  the only way a zip can grow without a single payload byte changing. No install step ran, because the module
+  bytes did not change and the installed copy already hashes equal to `launch/`.
+- **Doc surface, held line-neutral on purpose.** `.gitignore` line 4 was *replaced* with a comment, not
+  deleted, so `native/build/` stays at `:10` for the four cites (`:774`, `:1131`, `:1582`, `:1685`) that depend
+  on it. `AGENTS.md:137` was rewritten inside its own two lines, so the cites into `AGENTS.md`
+  (`:61`, `:67`, `:99`, `:139`, `:143-150`, `:151-156`, `:184`) did not move; its `:184` "Six text files are
+  now archive members" stays true, because the eight new members are images. `AGENTS.md:35`, the sentence that
+  lists what the zip is restamped from, gained "the pictures `native/README.md` itself lists" inside its own two
+  lines too, so the file is still 199 lines and every cite above was re-read at its number after the last edit.
+  In this file, Step 17's `:547` still said `package-launch.ps1:65-69` *uses `Compress-Archive`*, which Step 16
+  made false - and a cite that no longer names the construct is worse than no cite, because it reads as a
+  location. The conclusion it carried is intact and re-measured: the writer embeds entry mtimes, so every
+  export still costs a fresh ~28 MB blob. `native/README.md` grew
+  501 → 502 lines, the inserted line sitting below the file's highest cited line `:446`, so no README cite
+  moved. Three `Package/` references were corrected in the two different ways the two readers need: `:85`
+  describes the *packer*, so it now names the repository paths in full (`native/Package/…`); `:495` tells the
+  *receiver* where the licence text lives, so it names `THIRD-PARTY-NOTICES.txt` - the name that file has
+  beside the README in the archive - and then says where the repository keeps it. `:303` cited
+  `docs/next-steps-plan.md` to someone who will never own that file; it now says "the planning document" with
+  the repo path in parentheses. And the packer's comment that explained the separator bug by counting "two of
+  this archive's nine members" now names the *kind* of member instead ("the module is a folder and the
+  screenshots live in a subdirectory"), because a member total inside a comment is a number that goes stale the
+  first time the census changes - and this pass is the evidence: it went from nine to seventeen.
+- **What this does not prove.** Every check above is a *path* test; nothing rendered the markdown and looked
+  at the eight pictures. `docs/screenshots/sliceforge-mobile.png` is tracked but unlinked (4 links against 5
+  files in the root README), which is a documentation gap, not a broken image. Tracking `native/shots/*.png`
+  makes every `ctest` a rewrite of ten files; the determinism of those bytes is bullet (a) above, and the
+  27.24 s Layout run in the gates bullet regenerated all ten again. What tracking *does* mean is that a stray
+  `git add -A` is a binary commit waiting for the day a generator changes, so staged paths still get audited.
+  And Step 18's instruction to "stop `LayoutTest` writing ≥10 PNGs into `native/shots/`" (`:556`) was
+  written when the folder was ignored: the determinism measured here answers the *churn* half of that worry,
+  not the "a test should not mutate the tree" half, which still stands and is still the owner's to schedule.
+
+## 8K. The two market items the plan admitted it had never confirmed (recorded 2026-11-17)
+
+- **Half the ask was not well-formed, and the repo is why.** What `:1924` now points at here used to read
+  ```Still **not** confirmed after two rounds: the "SliceForge" name-collision risk, and the current prices
+  of Portico, Influx and Ripchord.``` and `grep -n "Portico\|Influx\|Ripchord"` over that file returned that
+  one line and no vendor for any of the three - which is still the census, this section being the only other
+  place the names appear. A price cannot be confirmed for a product whose maker the record never
+  states, so the item was resolved by identifying each name instead. **Ripchord** is Trackbout's *free* MIDI
+  chord-progression tool (vendor page at 2.7.0, a KVR product entry and plugins4free all agreeing);
+  **Portico** is Rupert Neve Designs' channel-strip and mastering line (5043, Portico II MBP); **Influx** is
+  ambiguous in audio - FKFX Audio's Influx/Influx Pro is a tube-distortion "sound mangler", and an "Influx
+  Kit" exists inside Spitfire Audio's Aperture/AFRORACK bundle. None of them is a *one continuous recording
+  becomes a playable kit* product, so no price among them describes this market, and the sentence is corrected
+  rather than filled in. The category's real neighbours are Initial Audio's Slice, Antares Auto-Tune Slice,
+  FL Studio's Slicex/Fruity Slicer, Ableton's Slice to New MIDI Track and Maschine's Sample Slicer.
+- **VRAC+ is the comparable, and its claims now rest on a fetch rather than on reporting.** A direct GET of
+  the vendor page (1,002,427 B, `"dateModified":"2026-10-13T17:54:24+00:00"`) contains the literal strings
+  `Original price was: € 149.00.` and `Current price is: € 39.00.` and `VST3 · AU · AAX · macOS & Windows`,
+  and it sells per-pad work today: `PER PAD Warp, Impact, Instability, Tone Shift, Super and a 3-band EQ`,
+  `16 Pads 8 Stereo outputs 4 Model families`. So the price, platform and format claims at `:1916-1918` are
+  first-hand. What the page does *not* carry is a changelog, so "per-pad multi-slicing added September 2026"
+  stays reporting and the "same slice for every pad" complaint stays a KVR thread - both are still on the
+  sources named at `:1920-1922`. Resale trackers scanned today show `$39.00 $149.00`; the vendor's bundles
+  page (dateModified 2026-11-05) is in a Black-Friday promotion at €39 across paid items, so today's €39 is a
+  November price that coincides with July's early bird rather than the early bird still running. That last
+  distinction is the research pass's finding, and the one item here I did not measure myself.
+- **The name collision is real, current, and outside this category - and it predates us.** Verified by direct
+  fetch: Steam application 5238480 titled **SliceForge**, developed and published by NikiBStudio, released
+  **28 Sep 2026**, priced **10,25 €**, store copy "SliceForge turns an audio file into a custom map for Beat
+  Saber" and "Drop any audio file (mp3, wav, flac, m4a, ogg) and SliceForge analyzes the track — BPM, beat
+  grid, drum hits, song structure". Same bare name, same one-audio-file-in / playable-thing-out promise, and
+  it launched about six weeks *before* this repository adopted the name on 2026-11-14 - the order matters,
+  because it means the name was already taken rather than taken up after us. A Mac App Store entry as
+  "SliceForge: VR Map Maker" at $9.99 (listing seen 2026-10-12) is the one part that rests on search snippets:
+  the direct fetch 404'd, so it is recorded as unverified. Separately, a USPTO application for the identical
+  mark - serial **50136261**, filed **2026-09-29**, International Class **042** (SaaS) - is attributed to
+  Strategic Sloth LLC, the game-UI suite at sliceforge.io; that too is a filing-index summary, not the register.
+- **No official register was searched in any territory, and that is the residual.** TSDR answered 401;
+  `tmsearch.uspto.gov` served a 125,603-byte SPA shell containing neither the string "SliceForge" nor the
+  serial number; Justia sat behind a JavaScript challenge; EUIPO, WIPO Global Brand Database and TMview were
+  unreachable. So this section produces a risk rating and not a clearance. The rating is **MEDIUM**: nothing
+  found named SliceForge competes in plugins or instruments, and the music/DSP goods classes look open, but
+  the name is live and recent in paid adjacent software and an identical-mark application is pending in a
+  software class. Closing it properly means a professional search in the classes that matter (IC 009 for
+  recorded-signal-processing software, 015/041 as applicable), which is an owner decision with a price
+  attached - as is any answer to "rename or keep", which is the same decision `AGENTS.md` already freezes the
+  data keys against.
+- **Awareness friction is not a legal finding.** "Slice" is descriptive and crowded in exactly this niche, so
+  the first word of the compound costs discoverability regardless of who owns what; and "-forge" is already
+  used in drum tools by Drumforge. For the house mark, "SKEER" shows no audio *product* collision, but there
+  is a "SKEER SAMPLE PACK" on Bandcamp and a Spotify/Beatport artist named SKEER - a search-ranking cost for a
+  sample-based instrument, which is the kind of thing a rename does not fix.
+- **What changed in the repo.** `:1924-1925` is rewritten to point here instead of asserting a gap; nothing
+  else quotes a price for those three products, and the census is the grep above re-run over the four doc
+  surfaces - five matching lines in this file (four of them this section, one the `:1925` pointer) and **zero**
+  in `AGENTS.md`, `native/README.md` or `INSTALL.txt`, so the only place the names live now is the record that
+  says what they are. No frozen identifier moved: `PLUGIN_CODE Vrac`,
+  `PLUGIN_MANUFACTURER_CODE Erwm`, `"VRACPlus"`, `"VRAC_EXTRA"`, `0x56524143` and the `.vracpreset`/
+  `.vracpattern` extensions are session and file data keys, and a naming risk in the market does not make it
+  safe to orphan a user's saved sets.

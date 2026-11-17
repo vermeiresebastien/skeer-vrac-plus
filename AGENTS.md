@@ -32,8 +32,8 @@ launch/start.bat / start.ps1                install + standalone + browser editi
 - The script stages its copies, SHA-256-compares the stage against the build tree, and only then
   replaces what is already in `launch/`; the zip is written last. Nothing in `launch/` is deleted
   before its replacement has been proven, so a failed export leaves the previous deliverables
-  standing instead of emptying a tracked folder. The zip is restamped from the `launch/` binaries,
-  the two start scripts and the four doc/licence files, and every archive member is hashed back
+  standing instead of emptying a tracked folder. The zip is restamped from the `launch/` binaries, the two start
+  scripts, the four doc/licence files and the pictures `native/README.md` itself lists, and every archive member is hashed back
   against the file it claims to be. Timestamps are not evidence: a skipped copy leaves an old mtime
   on a file that exported fine, and a byte-identical file keeps the mtime of the copy that was
   skipped. The CMake target passes `-Config "$<CONFIG>"`, so a Debug build exports Debug binaries
@@ -134,8 +134,8 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
   native build "needed no repair for the relocation" was wrong for that cache. If configure ever
   fails that way again, delete `CMakeCache.txt` and `CMakeFiles/` (or the whole `build/`, since
   `_deps/juce-build` caches the same paths) and reconfigure.
-- `native/shots/*.png` is gitignored, so the image links in both READMEs are broken in a fresh
-  clone. `native/artifact/` no longer exists — its zip became `launch/SliceForge-1.0.0-Windows-x64.zip`.
+- `native/shots/*.png` is tracked (ignored until 2026-11-17) and the zip carries the pictures the native
+  README links, so both READMEs render in a clone and in the package. `native/artifact/` is gone; its zip is the `launch/` archive.
 - Committed docs lag the tree in this project. Verify a path in the current tree before quoting it.
   The same goes for the numbers in it, but only for some of them: the smoke total and the CPU figure
   are claims to re-measure, not facts — `native/Tests/SmokeTest.cpp` prints both and asserts neither,

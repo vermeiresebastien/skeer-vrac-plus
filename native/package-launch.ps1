@@ -34,6 +34,7 @@ $ReadmeSrc = Join-Path $NativeDir 'README.md'
 # rather than only in the repository, and the installer ships because INSTALL.txt tells the receiver
 # to run it. An archive that names a script it does not contain is a package that cannot be installed.
 $LicenceSrc = Join-Path $RepoRoot 'LICENSE'
+$ShotsDir = Join-Path $NativeDir 'shots'
 $StartPs1 = Join-Path $LaunchDir 'start.ps1'
 $StartBat = Join-Path $LaunchDir 'start.bat'
 
@@ -91,6 +92,45 @@ function Assert-SameBytes([object]$Problems, [string]$What) {
     throw ("$What :: " + (($list | ForEach-Object { "$_" }) -join '; '))
 }
 
+# This README is an archive member, so a picture it links that the archive does not carry is a broken
+# image in the customer's copy - the same defect this script already refuses for a start script or a
+# licence file. The shot list is therefore read OUT OF the README rather than written beside it, so the
+# two cannot drift: the only remaining disagreement is a link to a file that is not on disk, and that
+# throws here instead of shipping a placeholder for someone else to find.
+function Get-ShippedShotList([string]$ReadmePath, [string]$ShotsDirPath) {
+    if (-not (Test-Path -LiteralPath $ShotsDirPath -PathType Container)) {
+        throw "Missing $ShotsDirPath - the README links pictures out of it, so there is no package without it."
+    }
+    $rootFull = (Get-Item -LiteralPath $ShotsDirPath).FullName.TrimEnd('\')
+    $raw = Get-Content -LiteralPath $ReadmePath -Raw
+    $names = @([regex]::Matches($raw, '!\[[^\]]*\]\((shots/[A-Za-z0-9._-]+\.png)\)') |
+        ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique | Sort-Object)
+    $list = @()
+    foreach ($name in $names) {
+        # The character class admits no separator, so nothing after 'shots/' can be a directory. The
+        # prefix test is still there because a member that resolves outside shots/ is not a screenshot.
+        $path = Join-Path $rootFull (Split-Path -Leaf $name)
+        if (-not $path.StartsWith($rootFull + '\', [System.StringComparison]::OrdinalIgnoreCase)) {
+            throw "'$name' in $ReadmePath does not name a file inside $rootFull"
+        }
+        if (-not (Test-Path -LiteralPath $path -PathType Leaf)) {
+            throw "$ReadmePath links $name, but $path is not on disk - the package would ship a broken image."
+        }
+        $list += @{ Name = $name; Path = $path }
+    }
+    # The other half of the invariant: a link this step does not recognise would still be a broken
+    # picture for the customer, so an uncarried relative image link fails the export rather than the
+    # reader. Only an absolute URL is excused, because that target is not the archive's to supply.
+    foreach ($link in @([regex]::Matches($raw, '!\[[^\]]*\]\(([^)]+)\)') |
+            ForEach-Object { $_.Groups[1].Value } | Select-Object -Unique)) {
+        if ($link -match '^[A-Za-z][A-Za-z0-9+.-]*:') { continue }
+        if ($names -notcontains $link) {
+            throw "$ReadmePath links '$link', which this step does not carry - every picture in a shipped README needs an archive member."
+        }
+    }
+    return $list
+}
+
 $Staging = Join-Path $env:TEMP ('sliceforge-launch-' + [guid]::NewGuid().ToString('N'))
 try {
     New-Item -ItemType Directory -Force $Staging | Out-Null
@@ -131,8 +171,9 @@ try {
         # Written member-by-member instead of with Compress-Archive, because Compress-Archive puts a
         # BACKSLASH in every nested member name in both the central directory and the local headers,
         # which is not what the ZIP spec (APPNOTE 4.4.17, "the path stored ... using '/' ") and
-        # POSIX require of a portable archive. The module is a folder, so two of this archive's nine
-        # members were affected, and a host or an unzipper that keys on the spec separator finds no
+        # POSIX require of a portable archive. The module is a folder and the screenshots live in a
+        # subdirectory, so nested members are exactly the ones that were affected, and a host or an
+        # unzipper that keys on the spec separator finds no
         # bundle at all. CreateEntry takes the name verbatim, so the separator here is a decision
         # rather than a side effect, and it is '/'. Directory rows are not written: an archive whose
         # members all name real files cannot disagree with the folder it was packed from.
@@ -140,6 +181,7 @@ try {
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $LaunchBundle = Join-Path $LaunchDir 'SliceForge.vst3'
         $bundleRootFull = (Get-Item -LiteralPath $LaunchBundle).FullName.TrimEnd('\')
+        $Shots = Get-ShippedShotList $ReadmeSrc $ShotsDir
         $members = @()
         $members += @{ Name = 'SliceForge.exe'; Path = (Join-Path $LaunchDir 'SliceForge.exe') }
         $members += @{ Name = 'INSTALL.txt';    Path = $InstallNote }
@@ -148,6 +190,9 @@ try {
         $members += @{ Name = 'THIRD-PARTY-NOTICES.txt';   Path = $NoticesSrc }
         $members += @{ Name = 'start.ps1';                 Path = $StartPs1 }
         $members += @{ Name = 'start.bat';                 Path = $StartBat }
+        # The pictures the shipped README links travel with it, under the same relative name, so the
+        # archive renders on its own and every PNG is hashed back exactly like a binary member.
+        foreach ($shot in $Shots) { $members += @{ Name = $shot.Name; Path = $shot.Path } }
         Get-ChildItem -LiteralPath $LaunchBundle -Recurse -File -Force | ForEach-Object {
             $rel = $_.FullName.Substring($bundleRootFull.Length).TrimStart('\').Replace('\', '/')
             $members += @{ Name = ('SliceForge.vst3/' + $rel); Path = $_.FullName }
@@ -180,6 +225,9 @@ try {
         $zipWanted['third-party-notices.txt'] = (Get-FileHash -LiteralPath $NoticesSrc -Algorithm SHA256).Hash
         $zipWanted['start.ps1'] = (Get-FileHash -LiteralPath $StartPs1 -Algorithm SHA256).Hash
         $zipWanted['start.bat'] = (Get-FileHash -LiteralPath $StartBat -Algorithm SHA256).Hash
+        foreach ($shot in $Shots) {
+            $zipWanted[$shot.Name.ToLowerInvariant()] = (Get-FileHash -LiteralPath $shot.Path -Algorithm SHA256).Hash
+        }
 
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $found = @{}
@@ -207,6 +255,9 @@ try {
                 elseif ($key -eq 'third-party-notices.txt') { $onDisk = $NoticesSrc }
                 elseif ($key -eq 'start.ps1') { $onDisk = $StartPs1 }
                 elseif ($key -eq 'start.bat') { $onDisk = $StartBat }
+                elseif ($key.StartsWith('shots/')) {
+                    $onDisk = Join-Path $ShotsDir ($key.Substring('shots/'.Length).Replace('/', '\'))
+                }
                 elseif ($key.StartsWith($BundlePrefix)) {
                     $onDisk = Join-Path $LaunchDir ($key.Replace('/', '\'))
                 }
