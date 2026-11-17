@@ -531,7 +531,7 @@ void SliceForgeAudioProcessorEditor::showAbout()
     juce::AlertWindow::showMessageBoxAsync (
         juce::MessageBoxIconType::InfoIcon,
         "SKEER SliceForge - drumify any sound",
-        "One sound. One drum kit.\n\n"
+        "One sound. One drum kit.\n\n" "Licensed under the GNU Affero General Public License version 3; the licence text and the third-party notices ship beside this plugin as LICENSE and THIRD-PARTY-NOTICES.txt.\n\n"
         "SKEER SliceForge turns any recording into a sixteen-pad instrument. Auto-slice it, morph each pad across kick, snare, hat and clap models, then shape the result with Warp, Impact, Instability, Tone Shift, Super and a three-band EQ.\n\n"
         "16 pads  /  16 models  /  8 stereo outputs  /  SKEER interface and factory library.\n\n"
         "An independent VST3/standalone interpretation inspired by VRAC+ by Beatsurfing, with SKEER branding. Not affiliated with or endorsed by Beatsurfing / Druw Audio. Factory sound content is original procedural material.",

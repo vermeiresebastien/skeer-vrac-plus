@@ -32,8 +32,8 @@ launch/start.bat / start.ps1                install + standalone + browser editi
 - The script stages its copies, SHA-256-compares the stage against the build tree, and only then
   replaces what is already in `launch/`; the zip is written last. Nothing in `launch/` is deleted
   before its replacement has been proven, so a failed export leaves the previous deliverables
-  standing instead of emptying a tracked folder. The zip is restamped from the `launch/` binaries
-  plus `native/Package/INSTALL.txt` and `native/README.md`, and every archive member is hashed back
+  standing instead of emptying a tracked folder. The zip is restamped from the `launch/` binaries,
+  the two start scripts and the four doc/licence files, and every archive member is hashed back
   against the file it claims to be. Timestamps are not evidence: a skipped copy leaves an old mtime
   on a file that exported fine, and a byte-identical file keeps the mtime of the copy that was
   skipped. The CMake target passes `-Config "$<CONFIG>"`, so a Debug build exports Debug binaries
@@ -181,3 +181,12 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
   `node_modules\.vite`, reconfigures, rebuilds, runs ctest, re-exports and hash-checks `launch/`).
 - `origin` is `https://github.com/vermeiresebastien/skeer-vrac-plus.git`. Renaming that is a
   GitHub-side change that moves the public URL, so it is separate from the local rename.
+- Five text files are now archive members, so their bytes are what a customer receives and
+  `package-launch.ps1` hashes each one back: `launch/start.ps1`, `launch/start.bat`, `LICENSE`,
+  `native/Package/INSTALL.txt` and `native/Package/THIRD-PARTY-NOTICES.txt`. That makes line endings
+  a shipping property. Measured here: `core.autocrlf=true` with no `.gitattributes`, `start.bat` is
+  `i/lf w/crlf` and the other four are `i/lf w/lf` — so Git will hand a fresh checkout CRLF versions
+  of files this worktree holds as LF, and a zip member hash quoted from one layout is not
+  reproducible from the other. Run `git ls-files --eol` before quoting a packaged file's hash, and
+  settle it properly with the Step 17 `.gitattributes`/LFS decision rather than by normalising
+  anything quietly.

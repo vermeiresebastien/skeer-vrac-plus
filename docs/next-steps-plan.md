@@ -93,7 +93,7 @@ Five findings drove the ranking. All four code ones are verified defects, not op
 
 ## 1. Two things the research corrected
 
-- **The parameter count is two numbers, and `native/README.md:154-161` states both.** The layout
+- **The parameter count is two numbers, and `native/README.md:159-166` states both.** The layout
   declared **347** when this was first worked out — 8 global + `source.sensitivity` + 21 parameters ×
   16 pads + `global.clip` + `global.out` (`native/Source/Params.cpp`, the pad loop adds exactly 21 ids)
   — while the host saw **349**, because JUCE's VST3 wrapper appends its own `Bypass` and `Program` to
@@ -247,7 +247,7 @@ two are refuted, and the refutations are why this entry now carries evidence in 
   `:102` printing the pattern control's host index. The bare-processor view is 348; the two differ by the
   wrapper's pair, and both numbers are current.
 - **Retire or scope the "no audio-thread allocation" sentence — refuted, so the sentence stays.**
-  `native/README.md:394` ("32 fixed voices; no audio-thread allocation or locking") is accurate, and
+  `native/README.md:446` ("32 fixed voices; no audio-thread allocation or locking") is accurate, and
   adding the caveat asked for here would have injected a false claim into a correct document. The cited
   site was wrong twice over: `PluginProcessor.cpp:223-227` is the tail of `buildRuntime`
   (`runtime.padStarts[…]` at `:223`, `engine.setRuntime (runtime)` at `:226`, `}` at `:227`, and
@@ -532,13 +532,13 @@ lock *automation lanes* (6 d, large UI, and it is SKULPT's modulation matrix); b
 
 ## 8. Phase 6 — the boring parts that gate any public build
 
-**Step 16 — Licence floor (1 d).** `external/JUCE/LICENSE.md` is AGPLv3-or-commercial and JUCE 8
-ignores the splash flag, so compliance is source conveyance. There is **no tracked `LICENSE` file**
-and `native/README.md:422` says only "under its applicable license". Add `LICENSE` plus a
-`THIRD-PARTY-NOTICES.txt` (the OFL texts for IBM Plex / Barlow — verified present in both `.ttf`
-name tables — JUCE, the Steinberg VST3 headers), ship it inside the zip, link it from an About box,
-and add the missing `LegalCopyright` to the version resource. This is the single largest blocker to
-conveying the build to anyone.
+**Step 16 — Licence floor (1 d).** DONE on 2026-11-17 except one string. `LICENSE` (AGPL-3.0) was
+already tracked; what was missing was conveyance **in the package**, and it is there now:
+`native/Package/THIRD-PARTY-NOTICES.txt` names JUCE 8.0.4 at revision 51d11a2b, the Steinberg VST3
+headers, the codecs with a symbol census that proves which are compiled in and which are not, the six
+OFL fonts with each `.ttf`'s own copyright line and the licence text copied byte-identically, and the
+factory WAVs as in-repo synthesis. The zip carries `LICENSE` and the notices; the About box cites both.
+Still open: JUCE's CMake path has no `LegalCopyright` field — only its Projucer `.rc` examples do.
 
 **Step 17 — Make the zip reproducible and take the binaries out of git (0.5 d, owner decision).**
 Measured: `.git` is 205 MB, 318 loose objects, **zero packs**; `launch/` is 76.5 MB in HEAD; the zip is
@@ -1476,11 +1476,11 @@ pair on restored bytes. This section is that capture.
   `… resyncs …` checks and `a small block keeps the original resync window`, all renamed in place into the
   `clears`/`tolerance` vocabulary. The true sentence is 21 new checks, 6 renamed in place, 0 deleted. Forward
   correction only - `c57f277` is shipped and amending it now rewrites three commits, which stays the owner's call.
-- **One tuple re-measured rather than inherited.** `launch/` and the installed module are now byte-identical
-  (`1a0747b8e6ca…`, 24,530,432 B, link stamp 1794820043 = 10:07:23), and a build of this HEAD differs from them
-  in exactly four bytes: `cmp -l` names 305-306 and 23107221-23107222, the two copies of the PE `TimeDateStamp`.
-  The three-way divergence 8C recorded is therefore closed for the module, and the launch zip is 5 members with
-  0 backslash separators whose `SliceForge.vst3` entry hashes to that same value. The green host test still
+- **One tuple re-measured rather than inherited - and re-measured again by 8H, which supersedes it.**
+  `launch/` and the installed module were then byte-identical (`1a0747b8e6ca…`, 24,530,432 B, link stamp
+  1794820043 = 10:07:23), and a build of that HEAD differed from them in four bytes: `cmp -l` names 305-306
+  and 23107221-23107222, the two PE `TimeDateStamp` copies. The 8C three-way divergence was closed; the zip
+  was then 5 members with 0 backslash separators. The green host test still
   loads the build copy, so it describes these bytes only through that comparison, not through the path it opens.
 - **Not verified here, and untouched by it:** no install, no re-export, no push, and no source change
   survived this section; 13g's `0.08` literal is untouched, and `904b289..HEAD` is `AGENTS.md` alone.
@@ -1594,10 +1594,10 @@ one the brief predicted - and the reason it is not is more useful than the predi
   `native/README.md` is 495 lines against 493 at `1bfe8e8`, so a cite to a README line below `:218` is
   +2 on this tree. Two of the plan's README cites were already dead before this commit, and the growth
   did not break them: `:250` cites `native/README.md:394` for "32 fixed voices; no audio-thread
-  allocation or locking", which is `:439` at `1bfe8e8` and `:441` now, and `:537` cites `:422` for the
+  allocation or locking", which is `:439` at `1bfe8e8` and `:441` then, and `:537` cites `:422` for the
   JUCE licence sentence, which is `:488` and `:490`. Named here, not rewritten there, on 8C's precedent
-  that re-pointing somebody else's historical record is a prose edit while saying where a string lives
-  is a fact.
+  that re-pointing a historical record is a prose edit while saying where a string lives is a fact. 8H
+  grew the file again (`:446` and `:495` now), re-pointed `:250` as a location fact, and deleted `:537`'s.
 - **Not verified, and left open.** Mid-block automation of `seq.pattern` is still untested - one read per
   block is the design and nothing observes the inside of a block. A chain that varies *within* one bar is
   still gated only engine-side; the new arms deliberately remove slot arithmetic as a variable. Nothing
@@ -1783,7 +1783,7 @@ Three forks worth naming explicitly:
 
 Built 2026-11-16 as a boundary rule, not as code: the owner resolved it (SliceForge owns one
 continuous recording becoming a playable 16-pad kit; redrum owns a folder of already-made kit pieces;
-the discriminator is the material type at the door), and the rule now lives in `AGENTS.md:143-148` under
+the discriminator is the material type at the door), and the rule now lives in `AGENTS.md:151-156` under
 "Which repo owns which material". Nothing was built for it, which is the point - the step was a decision.
 
 ---
@@ -1923,3 +1923,81 @@ them:
 [Audio Plugin Guy on free VRAC](https://www.audiopluginguy.com/free-plugin-review-vrac-by-beatsurfing/).
 Still **not** confirmed after two rounds: the "SliceForge" name-collision risk, and the current prices
 of Portico, Influx and Ripchord.
+
+---
+
+## 8H. Step 16 landed, and the package can now install itself (recorded 2026-11-17)
+
+Appended at the end rather than inserted after 8G, on the AGENTS.md precedent: a section placed at
+`:1716` would shift every cite below it, and this file cites its own line numbers.
+
+- **The defect was in the archive, not in the engine.** `INSTALL.txt` told the reader to run
+  `launch\start.ps1`, and the zip contained five members with no script in any of them. The script that did
+  exist could not have run from an extracted folder anyway: it derives `$RepoRoot` from its own parent and
+  step 3 then calls `npm run dev`. So the sentence "copy the bundle in, or let the script do it" was true of
+  a source checkout and false of the thing a customer receives - which is the whole of what "working compile
+  install file" means. Both halves are fixed: `native/package-launch.ps1` now stages `LICENSE`,
+  `THIRD-PARTY-NOTICES.txt`, `launch/start.ps1` and `launch/start.bat` as members and puts all four into the
+  same per-member hash gate as the binaries, and `launch/start.ps1` detects a package with
+  `$IsRepoCheckout = (Test-Path <root>/src) -and (Test-Path <root>/node_modules)` and reports the browser
+  edition as *not part of this package* instead of starting Vite.
+- **`native/Package/THIRD-PARTY-NOTICES.txt` is new: 15,448 B, 281 lines, eight sections plus the verbatim
+  OFL 1.1.** The present/absent tables are an object-file census of *this* build tree, keyed on one
+  distinctive long symbol per component (short substrings - `AU`, `b2`, `gl` - hit 16 to 40 objects and say
+  nothing): FLAC and Ogg in `juce_audio_formats.obj`, jpeg/png/HarfBuzz/SheenBidi in `juce_graphics*.obj`,
+  zlib in `juce_core.obj` and `juce_graphics.obj`, Steinberg VST3 in `juce_audio_plugin_client_VST3.obj`;
+  AudioUnitSDK, AAX, LV2, VST2, Oboe, GLEW, Box2D and CHOC/QuickJS named in no object of
+  `SliceForge.dir`, `SliceForge_VST3.dir` or `SliceForge_Standalone.dir`. The deliverable-side HarfBuzz
+  claim was first written as "the exported name `hb_shape`" and the measurement refutes it: the module holds
+  17 `hb_shape` hits, every one of them the prefix of a longer MSVC-rendered name
+  (`hb_shape_plan_create2`, `_cached2`, `_execute_internal`, `hb_shape_plan_t`), and
+  `hb_shape(?![0-9A-Za-z_])` occurs zero times - so what the bytes prove is statically linked HarfBuzz code,
+  not a HarfBuzz export surface, and the notices file now says exactly that. The licence
+  grant question resolved the other way from how it looked: AGPL-3.0 is the *correct* leg for JUCE 8.0.4 and
+  for the Steinberg headers, not a conflict, so no escalation was owed. The OFL block - the 4,068 B from the
+  `SIL OPEN FONT LICENSE Version 1.1` line onward - is byte-identical to the copy at
+  `D:/Projects/skeer-audio/controller/assets/fonts/ibm-plex-sans/LICENSE.txt`, both sides
+  `6863ff4dc820f24756b6acfb38a2c6bc19d5b8d71b17030330a6f16eb4cee348`; that file's own first 361 bytes are IBM's
+  copyright preamble, which section 5 carries per face instead, so the whole files are *not* equal and the
+  notices claim is scoped to the block. Each of the six faces carries its
+  own copyright record read out of its `name` table, not out of a filename.
+- **Tuple, measured on the exported bytes and re-measured after a second full build** (the relink moved no
+  content hashes, which is why both readings agree): module
+  `ce66de924ffe2366529e2cff1d3dc2d702a633ba4ea4790f87927082f97d2f94` (24,530,432 B) identical in
+  `native/build/…/VST3`, in `launch/`, as the zip member, and in
+  `C:\Program Files\Common Files\VST3`; standalone `a2b6c9013ba33c13c8ab3605d0458d5e699e7ba7731f8323a0f64c08ba746760`
+  (24,220,160 B); `moduleinfo.json` `df39eafcbd1a21ff5e4e9fa1f32b3d97c514d93a34ec6c071c393049119572da`.
+  The 10:07 `1a0747b8e6ca…` module that 8E recorded is superseded, and with it 8E's "differs in exactly four
+  bytes": `launch/`, the zip and the installed copy are now one artifact, not two that a `cmp -l` reconciles.
+- **Text members, as worktree hashes** (`INSTALL.txt` `db6a85d58fa4a738…`, notices `3acf5e7d39f8b01f…`,
+  `README.md` `14c83acb121f4d23…`, `LICENSE` `0d96a4ff68ad6d4b…`, `start.ps1` `7938fe08558d170f…`,
+  `start.bat` `0366b728d29b4465…`). These are *worktree* hashes and they are the right unit here, because
+  they are what the zip gate compares: `unzip`-side bytes, not checkout-side. A fresh checkout on this
+  machine reproduces them only for `start.bat` (`i/lf w/crlf`, 2 CRLF pairs, 88 B); the other five are LF
+  here with `core.autocrlf=true` and no `.gitattributes`, so a checkout that smudges them will hash
+  differently - the hazard AGENTS.md now names, and the one Step 17's `.gitattributes`/LFS decision owns.
+- **Every gate reported from its own exit status:** `cmake --build native/build --config Release` 0; `ctest`
+  3/3 0; `SliceForgeSmokeTest.exe` `PASS - 190/190 checks passed` 0 (CPU printed 4.94 %, asserted by nothing);
+  `npm run build` 0 and `vitest run` 0 (5 files) earlier in the same pass, and still valid because `git status
+  src` is empty and the newest `src/` file predates this work; the `launch` target 0; a re-opened zip with 9
+  members, 0 backslash separators and 0 mismatches against the files it claims; `start.ps1 -DryRun` 0;
+  `start.ps1 -InstallOnly` 0 (one UAC prompt, elevated child, self-verified `CE66DE92…`); the extracted
+  package's own `start.ps1 -DryRun` 0 and `-InstallOnly -Vst3Dir <scratch>` 0 with no repo and no Node, hash
+  matching `launch/` file for file. The scratch scan root was deleted afterwards; nothing else on the machine
+  was written except the system VST3 folder.
+- **What this does not prove.** No real DAW has loaded these bytes - `SliceForgeHostTest` is JUCE's headless
+  host path and it opens the *build* copy, so the install is proven by hash equality, not by a host sighting,
+  and Ableton acceptance is still the owner's step. `LegalCopyright` is still absent (JUCE's CMake path has
+  no such field, only its Projucer `.rc` examples), so Step 16 is done except that one string. The census
+  above is a property of this target selection: enabling AAX or LV2 later makes the "absent" rows false and
+  the notices file has to be re-measured, not edited. And the archive's web-edition claim was fixed by
+  scoping the docs to what ships - the browser edition is still repo-checkout-only, which is a product
+  limitation of this packaging decision, not a bug in `start.ps1`.
+- **Cite state after this pass.** `native/README.md` grew 495 -> 501 lines, +5 below its `:154`, so the two
+  cites a reader acts on were re-pointed as location facts (`:96` -> `README.md:159-166`, `:250` ->
+  `README.md:446`, the latter having been wrong by 47 lines even before this commit); the records that name
+  an address *of their own time* (`:291`, `:814`, `:1462`, `:1597`, `:1699`) were left alone, per the
+  8C/8D precedent restated at `:1598`. `AGENTS.md:151-156` replaces the `:143-148` cite at `:1786` - that one
+  was transcription, not drift, proved by `git diff -U0 AGENTS.md` naming only a line-neutral hunk at `:35`
+  and an append-only hunk at `:184`. This file is 18 additions against 18 deletions: line-neutral, so the
+  1925 lines every other section cites are still the same lines.

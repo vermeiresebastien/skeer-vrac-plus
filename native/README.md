@@ -44,7 +44,7 @@ host-synced 32-step sequencer with pattern chaining, polymeter, parameter locks 
 | Build toolchain | Visual Studio 18 2026 / MSVC 14.51, CMake 3.22+ |
 | Installed plugin | `%ProgramFiles%\Common Files\VST3\SliceForge.vst3` |
 | Installed standalone | `%LOCALAPPDATA%\Programs\SliceForge\SliceForge.exe` |
-| Launch folder | `..\launch\` — `SliceForge.exe`, `SliceForge.vst3`, `SliceForge-1.0.0-Windows-x64.zip`, `start.bat` |
+| Launch folder | `..\launch\` — `SliceForge.exe`, `SliceForge.vst3`, `SliceForge-1.0.0-Windows-x64.zip`, `start.bat`, `start.ps1` |
 | Test suite | 190 engine/state checks, editor layout snapshots, VST3 host load |
 
 The plugin bundle is self-contained (factory audio and SKEER brand assets are embedded, no
@@ -82,7 +82,8 @@ cmake --build build --config Release --target launch
 
 The `launch` target runs `package-launch.ps1`, which refreshes the repository-root `launch/`
 folder: it re-copies `SliceForge.exe`, replaces the whole `SliceForge.vst3` bundle folder, restamps the
-portable zip from `Package/INSTALL.txt` and this README, and SHA-256-compares each copy against
+portable zip from `Package/INSTALL.txt`, `Package/THIRD-PARTY-NOTICES.txt`, this README, the root
+`LICENSE` and the two `launch/` start scripts, and SHA-256-compares each copy against
 its build-tree original. It is a separate target rather than a post-build step because Ableton
 holds a loaded VST3's DLL open, and a build-time copy turns that lock into a failed compile that
 hides the result you were trying to test. It also refuses to export while `SliceForge.exe` is running,
@@ -93,8 +94,10 @@ instead of killing a session that has no autosave.
 ```text
 launch/SliceForge.exe                       standalone instrument
 launch/SliceForge.vst3/                     VST3 bundle (Contents\x86_64-win\SliceForge.vst3)
-launch/SliceForge-1.0.0-Windows-x64.zip     portable package
+launch/SliceForge-1.0.0-Windows-x64.zip     portable package: bundle, standalone, start.ps1,
+                                            start.bat, LICENSE, THIRD-PARTY-NOTICES.txt, README
 launch/start.bat                            install + standalone + browser in one click
+launch/start.ps1                            the same three steps, with -DryRun / -InstallOnly
 ```
 
 `COPY_PLUGIN_AFTER_BUILD` is deliberately disabled, so the build never writes to a system
@@ -111,7 +114,9 @@ staged module against `launch\`, swaps, then removes any `SliceForge.vst3` left 
 only produces a duplicate browser entry and two builds that drift apart. A folder locked by an
 open DAW is skipped rather than the host terminated, and a dev server already listening on 5173 is
 reused. `launch\start.ps1 -DryRun` prints that plan without touching anything; `-InstallOnly` runs
-step 1 alone and exits non-zero if the bundle did not land.
+step 1 alone and exits non-zero if the bundle did not land. The zip ships this same script at its own
+root, where it finds no `src/`, installs anyway, and reports the browser edition as the checkout-only
+feature it is instead of opening a page nothing is serving.
 
 For the manual path, system-wide (the terminal must be elevated):
 
@@ -486,8 +491,9 @@ Tests/
 ## Credits / disclaimer
 
 SKEER wordmark and brand direction are used for the SKEER instrument line. IBM Plex Sans, IBM
-Plex Mono and Barlow Condensed are bundled under the SIL Open Font License. JUCE is used under
-its applicable license.
+Plex Mono and Barlow Condensed are bundled under the SIL Open Font License, whose full text is in
+`Package/THIRD-PARTY-NOTICES.txt`. JUCE 8.0.4 is used under the AGPLv3 leg of its dual licence, and
+that file names every component this build compiles in, with the census that drew the boundary.
 
 SliceForge is an independent interpretation inspired by VRAC+ by Beatsurfing. Not affiliated with or
 endorsed by Beatsurfing / Druw Audio. The factory sound library is original procedural material

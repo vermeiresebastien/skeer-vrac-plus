@@ -1,23 +1,40 @@
 ﻿SKEER SliceForge 1.0.0 native edition (Windows x64)
 
+WHAT THIS ARCHIVE CONTAINS:
+  SliceForge.vst3\           the VST3 bundle - this is the folder to install
+  SliceForge.exe             the standalone instrument; needs no install
+  start.ps1                  installs the bundle, then starts the standalone
+  start.bat                  double-click entry for start.ps1
+  README.md                  full documentation
+  LICENSE                    the GNU Affero General Public License version 3 text
+  THIRD-PARTY-NOTICES.txt    JUCE 8.0.4, the Steinberg VST3 SDK, the vendored codecs,
+                             the six OFL fonts, and what this build does not carry
+  INSTALL.txt                this note
+
 Install:
   Copy the SliceForge.vst3 bundle into the system VST3 folder:
     %ProgramFiles%\Common Files\VST3\
   That is the folder every host scans by default, and it is the only one this product
   installs into. Writing it needs administrator rights, so setup asks for elevation once -
-  the standalone and the browser edition are never started from that elevated process.
+  the standalone and, from a source checkout, the browser edition are never started from
+  that elevated process.
   Do not install a second copy into %USERPROFILE%\Documents\VST3 or
   %LOCALAPPDATA%\Programs\Common\VST3: it adds a duplicate entry to the browser and a
-  second build that silently falls behind after the next compile. launch\start.ps1
-  installs the one copy, removes the others and verifies the result against launch\.
+  second build that silently falls behind after the next compile. start.ps1 (in a
+  checkout it is launch\start.ps1) installs the one copy, removes the others and verifies
+  the result against the bundle beside it.
   If your host lists SliceForge twice, the cause is a second bundle sitting in one of those
-  folders, not the folder itself: delete that copy - launch\start.ps1 does it for you - and
+  folders, not the folder itself: delete that copy - start.ps1 does it for you - and
   rescan. Do NOT remove %USERPROFILE%\Documents\VST3 from your host's custom VST3 folder list
   to fix a duplicate; other plugins may live only there and would disappear from the browser
   with it.
 
 Standalone:
   Run SliceForge.exe.
+
+Browser edition:
+  Not in this archive. It is the React app under src/, served by Vite, and it runs from a
+  source checkout with npm run dev - start.ps1 says so and installs the plugin anyway.
 
 Then rescan VST3 plugins in your DAW. The plugin exposes eight stereo
 outputs; enable the aux outputs in your host to use per-pad routing.
@@ -53,7 +70,8 @@ Theme:
 
 LICENCE:
   SliceForge is licensed under the GNU Affero General Public License version 3. The verbatim
-  licence text is the file LICENSE at the root of the source repository, as published by the
+  licence text is the file LICENSE shipped beside this note (and at the root of the source
+  repository), as published by the
   Free Software Foundation at https://www.gnu.org/licenses/agpl-3.0.txt. That text, and not any
   sentence in this product, is what says what you may do with it; commercial use is permitted by
   the licence on the same terms as any other use.
@@ -71,15 +89,23 @@ SOURCE FOR THESE BINARIES:
   network access for that clone; everything else in the product is in the repository.
 
 THIRD-PARTY COMPONENTS:
+  The shipped record is THIRD-PARTY-NOTICES.txt, beside this note: it names each component, the
+  licence text path it carries, and which of them this build actually compiles in. Summarised:
   - JUCE 8.0.4 modules are dual-licensed AGPLv3 or commercial JUCE licence
     (native/external/JUCE/LICENSE.md:6-8). This product is carried under the AGPLv3 leg.
   - The Steinberg VST3 SDK vendored inside that JUCE checkout is offered under the Steinberg
     VST3 licence OR, alternatively, under GPLv3
     (native/external/JUCE/modules/juce_audio_processors/format_types/VST3_SDK/LICENSE.txt:9-12).
     This build uses the GPLv3 leg.
-  - Other components JUCE brings in (AudioUnitSDK, FLAC, Ogg Vorbis, jpeglib, zlib and the
-    rest) carry their own terms, listed with the path to each licence text in
-    native/external/JUCE/LICENSE.md:36-55. Those files arrive with the JUCE clone.
+  - FLAC, Ogg Vorbis, jpeglib, pnglib, zlib, HarfBuzz and SheenBidi are compiled in; the
+    AudioUnit, AAX, LV2, VST2, Oboe, GLEW, Box2D and CHOC/QuickJS paths are not, and the
+    notices file gives the symbol census that measured that boundary rather than assuming it.
+  - Six font faces ship as binary data in the module - IBM Plex Sans (3 weights) and IBM Plex
+    Mono (2) (Copyright IBM Corp.) and Barlow Condensed Bold (The Barlow Project Authors) - each
+    under the SIL Open Font License 1.1, whose full text is reproduced in THIRD-PARTY-NOTICES.txt
+    because the OFL requires it to accompany the font.
+  - The six factory WAVs are synthesised in this repository by the recipes in
+    src/audio/sampleLibrary.ts:597-635 and carry no third-party sample rights.
   Full build commands, tests and docs: README.md in the same repository.
 
 Vendor: SKEER

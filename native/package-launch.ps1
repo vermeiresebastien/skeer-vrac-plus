@@ -28,7 +28,14 @@ $ExeSrc = Join-Path $Artefacts 'Standalone\SliceForge.exe'
 $BundleSrc = Join-Path $Artefacts 'VST3\SliceForge.vst3'
 $LaunchDir = Join-Path $RepoRoot 'launch'
 $InstallNote = Join-Path $NativeDir 'Package\INSTALL.txt'
+$NoticesSrc = Join-Path $NativeDir 'Package\THIRD-PARTY-NOTICES.txt'
 $ReadmeSrc = Join-Path $NativeDir 'README.md'
+# AGPL-3.0 conveys obligations with the object code, so the licence text travels in the archive
+# rather than only in the repository, and the installer ships because INSTALL.txt tells the receiver
+# to run it. An archive that names a script it does not contain is a package that cannot be installed.
+$LicenceSrc = Join-Path $RepoRoot 'LICENSE'
+$StartPs1 = Join-Path $LaunchDir 'start.ps1'
+$StartBat = Join-Path $LaunchDir 'start.bat'
 
 if (-not (Test-Path -LiteralPath $ExeSrc)) {
     throw "Missing $ExeSrc - build SliceForge_Standalone first."
@@ -124,7 +131,7 @@ try {
         # Written member-by-member instead of with Compress-Archive, because Compress-Archive puts a
         # BACKSLASH in every nested member name in both the central directory and the local headers,
         # which is not what the ZIP spec (APPNOTE 4.4.17, "the path stored ... using '/' ") and
-        # POSIX require of a portable archive. The module is a folder, so three of this archive's six
+        # POSIX require of a portable archive. The module is a folder, so two of this archive's nine
         # members were affected, and a host or an unzipper that keys on the spec separator finds no
         # bundle at all. CreateEntry takes the name verbatim, so the separator here is a decision
         # rather than a side effect, and it is '/'. Directory rows are not written: an archive whose
@@ -137,6 +144,10 @@ try {
         $members += @{ Name = 'SliceForge.exe'; Path = (Join-Path $LaunchDir 'SliceForge.exe') }
         $members += @{ Name = 'INSTALL.txt';    Path = $InstallNote }
         $members += @{ Name = 'README.md';      Path = $ReadmeSrc }
+        $members += @{ Name = 'LICENSE';                   Path = $LicenceSrc }
+        $members += @{ Name = 'THIRD-PARTY-NOTICES.txt';   Path = $NoticesSrc }
+        $members += @{ Name = 'start.ps1';                 Path = $StartPs1 }
+        $members += @{ Name = 'start.bat';                 Path = $StartBat }
         Get-ChildItem -LiteralPath $LaunchBundle -Recurse -File -Force | ForEach-Object {
             $rel = $_.FullName.Substring($bundleRootFull.Length).TrimStart('\').Replace('\', '/')
             $members += @{ Name = ('SliceForge.vst3/' + $rel); Path = $_.FullName }
@@ -165,6 +176,10 @@ try {
         foreach ($pair in $wanted.GetEnumerator()) { $zipWanted[$pair.Key] = $pair.Value }
         $zipWanted['install.txt'] = (Get-FileHash -LiteralPath $InstallNote -Algorithm SHA256).Hash
         $zipWanted['readme.md'] = (Get-FileHash -LiteralPath $ReadmeSrc -Algorithm SHA256).Hash
+        $zipWanted['license'] = (Get-FileHash -LiteralPath $LicenceSrc -Algorithm SHA256).Hash
+        $zipWanted['third-party-notices.txt'] = (Get-FileHash -LiteralPath $NoticesSrc -Algorithm SHA256).Hash
+        $zipWanted['start.ps1'] = (Get-FileHash -LiteralPath $StartPs1 -Algorithm SHA256).Hash
+        $zipWanted['start.bat'] = (Get-FileHash -LiteralPath $StartBat -Algorithm SHA256).Hash
 
         Add-Type -AssemblyName System.IO.Compression.FileSystem
         $found = @{}
@@ -182,12 +197,16 @@ try {
                 $key = $entry.FullName.ToLowerInvariant()
                 # Compress-Archive writes a member for every directory as well as every file, so a
                 # member is judged by the path it maps back to: the directory rows are not files,
-                # and anything that maps outside these four roots stays in the comparison and is
+                # and anything that maps outside these roots stays in the comparison and is
                 # reported as a member the export never produced.
                 $onDisk = $null
                 if ($key -eq 'sliceforge.exe') { $onDisk = Join-Path $LaunchDir 'SliceForge.exe' }
                 elseif ($key -eq 'install.txt') { $onDisk = $InstallNote }
                 elseif ($key -eq 'readme.md') { $onDisk = $ReadmeSrc }
+                elseif ($key -eq 'license') { $onDisk = $LicenceSrc }
+                elseif ($key -eq 'third-party-notices.txt') { $onDisk = $NoticesSrc }
+                elseif ($key -eq 'start.ps1') { $onDisk = $StartPs1 }
+                elseif ($key -eq 'start.bat') { $onDisk = $StartBat }
                 elseif ($key.StartsWith($BundlePrefix)) {
                     $onDisk = Join-Path $LaunchDir ($key.Replace('/', '\'))
                 }

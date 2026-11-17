@@ -1,14 +1,16 @@
 <#
     SKEER SliceForge launcher.
 
-    1. Refreshes the installed SliceForge.vst3 bundle from launch\ so a new build reaches the DAW.
+    1. Refreshes the installed SliceForge.vst3 bundle from this folder so a new build reaches the DAW.
     2. Starts the standalone instrument.
-    3. Serves the browser edition (reuses a dev server that is already listening) and opens it.
+    3. In a repo checkout only: serves the browser edition (reuses a dev server that is already
+       listening) and opens it. A portable package has no src/, so this step reports that instead of
+       opening a URL nothing is serving.
 
-        launch\start.bat                 all three
-        launch\start.ps1 -DryRun         show the plan, change nothing
-        launch\start.ps1 -InstallOnly    step 1 only, and exit non-zero if it did not land
-        launch\start.ps1 -Vst3Dir "..."  install into a non-default VST3 folder
+        start.bat                            all three
+        start.ps1 -DryRun                    show the plan, change nothing
+        start.ps1 -InstallOnly               step 1 only, and exit non-zero if it did not land
+        start.ps1 -Vst3Dir "..."             install into a non-default VST3 folder
 #>
 [CmdletBinding()]
 param(
@@ -28,6 +30,12 @@ $RepoRoot = Split-Path -Parent $LaunchDir
 $Exe = Join-Path $LaunchDir 'SliceForge.exe'
 $Bundle = Join-Path $LaunchDir 'SliceForge.vst3'
 $Url = 'http://127.0.0.1:5173/'
+
+# Two layouts run this script: launch/ inside a checkout (browser edition available) and the root of
+# an extracted portable package (no src/, no node_modules, and no npm to ask for them). The test is
+# the two things step 3 actually needs, not a marker file that could disagree with them.
+$IsRepoCheckout = (Test-Path -LiteralPath (Join-Path $RepoRoot 'src')) -and
+                  (Test-Path -LiteralPath (Join-Path $RepoRoot 'node_modules'))
 
 function Write-Step([string]$Message) { Write-Host ('>> ' + $Message) -ForegroundColor Cyan }
 function Skip([string]$Message) { if ($DryRun) { Write-Host ('   [dry-run] ' + $Message); return $true } return $false }
@@ -278,8 +286,13 @@ else {
 
 # ---- 3. Browser edition ------------------------------------------------------------
 Write-Step 'Browser edition'
-if (Test-Port 5173) {
+if (-not $IsRepoCheckout) {
+    Say 'not part of this package - the browser edition is the src/ app, and runs from a repo checkout' 'Yellow'
+    Say ("this folder has the VST3 bundle and $((Split-Path -Leaf $Exe)); install and standalone are done")
+}
+elseif (Test-Port 5173) {
     Write-Host "   dev server already listening on 5173"
+    if (-not $DryRun) { Start-Process $Url | Out-Null }
 }
 elseif ($DryRun) {
     Write-Host '   [dry-run] npm run dev in a new window, wait for 5173, open the URL'
@@ -291,8 +304,15 @@ else {
         Start-Sleep -Milliseconds 500
         if (Test-Port 5173) { $ready = $true; break }
     }
-    if (-not $ready) { Write-Host '   dev server did not come up within 20s' -ForegroundColor Yellow }
+    # Opening the URL anyway would hand the browser a connection-refused page and read as "the
+    # plugin is broken", so the tab only opens once something is proven to be listening.
+    if ($ready) { Start-Process $Url | Out-Null }
+    else { Write-Host '   dev server did not come up within 20s - not opening the URL' -ForegroundColor Yellow }
 }
-if (-not $DryRun) { Start-Process $Url | Out-Null }
 
-Write-Host 'Done. In Chrome or Edge, click a pad once to wake the audio engine.' -ForegroundColor Green
+if ($IsRepoCheckout) {
+    Write-Host 'Done. In Chrome or Edge, click a pad once to wake the audio engine.' -ForegroundColor Green
+}
+else {
+    Write-Host 'Done. Rescan VST3 plugins in your DAW and load SliceForge - the standalone needs no rescan.' -ForegroundColor Green
+}
