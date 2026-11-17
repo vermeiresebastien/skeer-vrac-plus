@@ -1999,5 +1999,26 @@ Appended at the end rather than inserted after 8G, on the AGENTS.md precedent: a
   an address *of their own time* (`:291`, `:814`, `:1462`, `:1597`, `:1699`) were left alone, per the
   8C/8D precedent restated at `:1598`. `AGENTS.md:151-156` replaces the `:143-148` cite at `:1786` - that one
   was transcription, not drift, proved by `git diff -U0 AGENTS.md` naming only a line-neutral hunk at `:35`
-  and an append-only hunk at `:184`. This file is 18 additions against 18 deletions: line-neutral, so the
-  1925 lines every other section cites are still the same lines.
+  and an append-only hunk at `:184`. This file's *edit set below the append* is 18 additions against 18
+  deletions - line-neutral, so the 1925 lines every other section cites are still the same lines; the whole
+  commit carries 96 against 18, because 8H itself is the other 78.
+
+- **Corrected forward, same day: `b481d74` published a hash it had not measured.** Its "zip
+  `166175ed33fe8ba8a6a7c92bdcf4b05914bb8145ee908d7c14f7d1a4f3a4b1a4`" line is wrong from byte 13 onward -
+  the true SHA-256 of `launch/`'s copy and of its blob is
+  **`166175ed33fe3f77dd27440f7a6b96d2627101ff8148cedf13024417cb3cc156`**. The first twelve hex digits were
+  measured; the remaining fifty-two were written from the shape of a hash rather than out of a command. That
+  makes three hash defects this plan has recorded and only two of them the same defect: `c57f277` and
+  `5f8815d` published *worktree* hashes for a `w/crlf` file, which are unreproducible, while this one is a
+  number typed instead of copied, which is unreproducible *and* never measured. The tripwire is the one
+  already named here: a hash is copied out of the tool output into the message, never retyped.
+  Re-deriving the whole set with `git show HEAD:<path> | sha256sum` also produced two facts the message
+  understated. `launch/SliceForge.vst3/Contents/Resources/moduleinfo.json` is `i/lf w/crlf` - 59 CRLF pairs,
+  1,400 B in the worktree against 1,341 B in the blob - so `df39eafcbd1a21ff…` is the *deliverable* hash
+  (worktree = zip member = installed, all three proven equal) and `14207bb8c801699b…` is the blob; the
+  commit's binary block is about deliverable bytes, so its number is the right unit, but only because it was
+  not labelled as such. And the `LICENSE` member hash the archive gate compares, `0d96a4ff68ad6d4b…`, was
+  measured and left out of the list while the four text members around it were named.
+  This correction is docs-only, so the deliverable tuple above still describes the built bytes: nothing was
+  recompiled, re-exported, re-installed or re-gated by it, and the 190/190 plus ctest 3/3 in `b481d74` remain
+  the green that owns `ce66de92…`.
