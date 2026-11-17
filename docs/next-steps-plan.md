@@ -49,7 +49,7 @@ Five findings drove the ranking. All four code ones are verified defects, not op
    `native/Source/UI/SequencerPanel.cpp:922-931` already warns may fail in the host you are in.
    There is no MIDI clip, no Ableton session-browser content, no effect on the DAW's own meters.
    Round 2 named both mechanisms, because fixing one without the other does nothing: the bundle
-   declares `NEEDS_MIDI_OUTPUT FALSE` (`native/CMakeLists.txt:113`) *and* `processBlock` ends with
+   declares `NEEDS_MIDI_OUTPUT FALSE` (`native/CMakeLists.txt:116`) *and* `processBlock` ends with
    `midiMessages.clear()` (`PluginProcessor.cpp:390`), after every other stage has run.
 4. **Native writes no audio at all.** `SampleData::writeStereoWav` (`native/Source/Engine/SampleData.cpp:163`)
    has exactly zero callers in the source tree — it is declared, compiled and unused. The web
@@ -83,7 +83,7 @@ Five findings drove the ranking. All four code ones are verified defects, not op
   onnxruntime, librosa, madmom or essentia is installed here), not because a headless tool exists.
 - *"The slicer's failure mode is that it is time-domain rather than spectral."* Half true, stated
   wrongly. There is no FFT — verified, `grep` for `juce::dsp::FFT` / `performFFT` under
-  `native/Source/` is empty in a repo that links `juce_dsp` (`native/CMakeLists.txt:129`) — but what
+  `native/Source/` is empty in a repo that links `juce_dsp` (`native/CMakeLists.txt:132`) — but what
   `Slicer.cpp:16-44` actually runs is a **broadband RMS-envelope first difference**, which is not
   the same thing as spectral flux and will not become it by renaming. Calling it spectral cost the
   plan a step that assumed the gap was only the missing FFT. It is not: see Step 25 for the three
@@ -113,7 +113,7 @@ Five findings drove the ranking. All four code ones are verified defects, not op
   **unverified** — check it before any public release, not before a personal build).
 
 `AGENTS.md`'s frozen-identifier anchors were corrected with Step 30 (section 8B) on 2026-11-16: the codes are
-`native/CMakeLists.txt:106-107` (Erwm at 106, Vrac at 107), the four `VRAC_EXTRA` sites are
+`native/CMakeLists.txt:109-110` (Erwm at 109, Vrac at 110), the four `VRAC_EXTRA` sites are
 `PluginProcessor.cpp:974`, `:978`, `:1036`, `:1041`, and the preset folder sits at
 `PluginEditor.cpp:461` and `:491` rather than `:446` and `:476`. Read those numbers as a snapshot, not
 as an address: this paragraph recommended `:956`, `:960`, `:1018` and `:1023` for `VRAC_EXTRA`, and they
@@ -231,7 +231,7 @@ two are refuted, and the refutations are why this entry now carries evidence in 
 
 - **Correct the four `AGENTS.md` line references — measured, there are none.** Every `file:line`
   citation in `AGENTS.md` (lines 61, 67, 99, 101, 102, 104, 108, 109, 112, 113 and 136 — seventeen:
-  `native/CMakeLists.txt:106-107`, `:116`, `:49`, `:127`, `PluginProcessor.cpp:23`, `:974`, `:978`,
+  `native/CMakeLists.txt:109-110`, `:119`, `:49`, `:130`, `PluginProcessor.cpp:23`, `:974`, `:978`,
   `:1036`, `:1041`, `Sequencer.cpp:12`, `Source/UI/Theme.cpp:75`, `Source/PluginEditor.cpp:461`, `:491`,
   `Source/VaultLibrary.cpp:143`, `src/state/storage.ts:5-7`, `src/state/sampleStore.ts:7`,
   `Tests/HostTest.cpp:68`) was opened and read at HEAD `4abe4b0` on 2026-11-16, and each line says what
@@ -284,7 +284,7 @@ two are refuted, and the refutations are why this entry now carries evidence in 
   One runner fact worth recording here: a standalone `SliceForgeHostTest.exe` prints its `parameters:` line and
   exits 0 only when started from the repo root; from `native/` it prints `FAIL bundle not found` and exits 1.
   It links no shared code and loads the built VST3 at runtime, and it is the ctest `WORKING_DIRECTORY`
-  (`native/CMakeLists.txt:180-181`) that supplies the root for the suite. As of this commit that line prints
+  (`native/CMakeLists.txt:183-184`) that supplies the root for the suite. As of this commit that line prints
   `parameters: 350 = 348 layout + Bypass + Program`; the count is stated as of the commit, not as a literal.
 
 Round 2's headline for this step — "347 not 349" — is **retracted on measurement**: `SliceForgeHostTest.exe`
@@ -377,7 +377,7 @@ Step 25, which builds the measurement first. Do not start it until the fixture e
 
 Verified state: the detector is time-domain only — `grep` for `juce::dsp::FFT`, `performFFT` or any
 `juce_dsp` include under `native/Source/` returns **nothing**, in a repo that already links `juce_dsp`
-(`native/CMakeLists.txt:129`). `Slicer.cpp:8-96` is mono-summed RMS, 128-sample hop (±2.7 ms),
+(`native/CMakeLists.txt:132`). `Slicer.cpp:8-96` is mono-summed RMS, 128-sample hop (±2.7 ms),
 rectified first difference, 5-tap local maxima, fixed floor `0.012 × max`, fixed −6 ms pre-shift,
 115 ms minimum gap. It is *line-for-line the same algorithm* as `src/audio/slicer.ts` (same `HOP = 128`
 / `WINDOW = 512`, same −6 ms pull-back, same `0.07` s dedup, same `8 + 46 × sens` target), which is
@@ -532,13 +532,13 @@ lock *automation lanes* (6 d, large UI, and it is SKULPT's modulation matrix); b
 
 ## 8. Phase 6 — the boring parts that gate any public build
 
-**Step 16 — Licence floor (1 d).** DONE on 2026-11-17 except one string. `LICENSE` (AGPL-3.0) was
+**Step 16 — Licence floor (1 d).** DONE on 2026-11-17, including the string 8I landed. `LICENSE` (AGPL-3.0) was
 already tracked; what was missing was conveyance **in the package**, and it is there now:
 `native/Package/THIRD-PARTY-NOTICES.txt` names JUCE 8.0.4 at revision 51d11a2b, the Steinberg VST3
 headers, the codecs with a symbol census that proves which are compiled in and which are not, the six
 OFL fonts with each `.ttf`'s own copyright line and the licence text copied byte-identically, and the
 factory WAVs as in-repo synthesis. The zip carries `LICENSE` and the notices; the About box cites both.
-Still open: JUCE's CMake path has no `LegalCopyright` field — only its Projucer `.rc` examples do.
+Closed by 8I, which refutes this line's own reason: `COMPANY_COPYRIGHT` is a `juce_add_plugin` argument (`CMakeLists.txt:105`).
 
 **Step 17 — Make the zip reproducible and take the binaries out of git (0.5 d, owner decision).**
 Measured: `.git` is 205 MB, 318 loose objects, **zero packs**; `launch/` is 76.5 MB in HEAD; the zip is
@@ -934,7 +934,7 @@ owner decisions, and the exported clip always says "pass 2" until then.
 **Step 28 — Send the sequencer to the host as MIDI (2 d), or delete the implication that it does.**
 
 Verified state: two independent blockers, both named in item 3 above — `NEEDS_MIDI_OUTPUT FALSE`
-(`native/CMakeLists.txt:113`) and `midiMessages.clear()` at the bottom of `processBlock`
+(`native/CMakeLists.txt:116`) and `midiMessages.clear()` at the bottom of `processBlock`
 (`PluginProcessor.cpp:390`). The triggers already exist as `(sampleOffset, pad, velocity)` pairs in
 `sequenceOutput` before that clear (`:310-314`), so the data is present and thrown away.
 
@@ -962,7 +962,7 @@ gate [0 events: ]`, `FAIL  MIDI out notes are all on channel 10 [0 off-channel o
 `FAIL  MIDI out velocity uses the exporter's round(velocity x 127) mapping [0 note-ons: ]` (exit 1), and the
 host test exited 1 on `FAIL hosted plugin advertises no MIDI output bus (producesMidi() is false)` with
 `buses: 1 in / 8 out` still on the line above it — the audio layout is unchanged; what was missing is the
-event bus. The change is `NEEDS_MIDI_OUTPUT TRUE` (`native/CMakeLists.txt:113`, plus a re-configure: the
+event bus. The change is `NEEDS_MIDI_OUTPUT TRUE` (`native/CMakeLists.txt:116`, plus a re-configure: the
 macro is generated into `Defs.txt`, so without one the flag is a no-op), one shared drum-channel constant
 (`Params.h:19`), a `producesMidi()` that follows the build's own answer and survives targets where the
 macro does not exist (`PluginProcessor.h:43-50`), and `emitSequencerMidi` (`PluginProcessor.cpp:12-61`)
@@ -1375,7 +1375,7 @@ test their own names (2026-11-16)
   name the property they compare. The split is the honest one, and it is the reason both programs are needed.
 - **`NEEDS_MIDI_OUTPUT` is a configure-time macro, and the console targets define no `JucePlugin_*` at all.**
   The flag reaches the code through `…_artefacts/JuceLibraryCode/Release/Defs.txt`, so flipping it in
-  `native/CMakeLists.txt:113` does nothing until CMake is re-configured; `SliceForge_artefacts` reads
+  `native/CMakeLists.txt:116` does nothing until CMake is re-configured; `SliceForge_artefacts` reads
   `JucePlugin_ProducesMidiOutput=1` and `SliceForgeHostTest`/`SmokeTest`/`LayoutTest` carry *zero*
   `JucePlugin_` defines, because `juce_add_console_app` has no plugin to describe. That rules out a bare
   `return JucePlugin_ProducesMidiOutput;` in `PluginProcessor.h:43-50` (it would not compile in three of the
@@ -1968,7 +1968,7 @@ Appended at the end rather than inserted after 8G, on the AGENTS.md precedent: a
   `C:\Program Files\Common Files\VST3`; standalone `a2b6c9013ba33c13c8ab3605d0458d5e699e7ba7731f8323a0f64c08ba746760`
   (24,220,160 B); `moduleinfo.json` `df39eafcbd1a21ff5e4e9fa1f32b3d97c514d93a34ec6c071c393049119572da`.
   The 10:07 `1a0747b8e6ca…` module that 8E recorded is superseded, and with it 8E's "differs in exactly four
-  bytes": `launch/`, the zip and the installed copy are now one artifact, not two that a `cmp -l` reconciles.
+  bytes": `launch/`, the zip and the installed copy are now one artifact, not two that a `cmp -l` reconciles; 8I supersedes this tuple.
 - **Text members, as worktree hashes** (`INSTALL.txt` `db6a85d58fa4a738…`, notices `3acf5e7d39f8b01f…`,
   `README.md` `14c83acb121f4d23…`, `LICENSE` `0d96a4ff68ad6d4b…`, `start.ps1` `7938fe08558d170f…`,
   `start.bat` `0366b728d29b4465…`). These are *worktree* hashes and they are the right unit here, because
@@ -1987,8 +1987,8 @@ Appended at the end rather than inserted after 8G, on the AGENTS.md precedent: a
   was written except the system VST3 folder.
 - **What this does not prove.** No real DAW has loaded these bytes - `SliceForgeHostTest` is JUCE's headless
   host path and it opens the *build* copy, so the install is proven by hash equality, not by a host sighting,
-  and Ableton acceptance is still the owner's step. `LegalCopyright` is still absent (JUCE's CMake path has
-  no such field, only its Projucer `.rc` examples), so Step 16 is done except that one string. The census
+  and Ableton acceptance is still the owner's step. `LegalCopyright` was absent here, and the reason this
+  record gave for it was wrong - the CMake path does have the field, and 8I landed it. The census
   above is a property of this target selection: enabling AAX or LV2 later makes the "absent" rows false and
   the notices file has to be re-measured, not edited. And the archive's web-edition claim was fixed by
   scoping the docs to what ships - the browser edition is still repo-checkout-only, which is a product
@@ -2022,3 +2022,70 @@ Appended at the end rather than inserted after 8G, on the AGENTS.md precedent: a
   This correction is docs-only, so the deliverable tuple above still describes the built bytes: nothing was
   recompiled, re-exported, re-installed or re-gated by it, and the 190/190 plus ctest 3/3 in `b481d74` remain
   the green that owns `ce66de92…`.
+
+---
+
+## 8I. LegalCopyright landed, and the .rc that hides it is not dependency-tracked (recorded 2026-11-17)
+
+Appended at the end for the 8H reason: inserted anywhere else it would shift every cite below it, and this
+file cites its own line numbers.
+
+- **The string Step 16 left open is in the deliverable.** `native/CMakeLists.txt` is +3/-0 against `3b70d7d`
+  (181 -> 184 lines): one `COMPANY_COPYRIGHT` argument inside `juce_add_plugin` (`:105`) and the
+  two comment lines above it. Read back out of the PE, its value is `SliceForge 1.0.0 - licensed under the
+  GNU Affero General Public License v3.0 - Corresponding Source:
+  https://github.com/vermeiresebastien/skeer-vrac-plus`. `${PROJECT_VERSION}` expands at configure time, so
+  the field cannot drift from `FileVersion`. It names the licence and the source location, not a holder,
+  because nothing in this tree asserts one.
+- **Two published sentences were wrong, and both were mine.** 8H's "JUCE's CMake path has no `LegalCopyright`
+  field — only its Projucer `.rc` examples do" is refuted by the vendored source: `COMPANY_COPYRIGHT` sits in
+  `_juce_initialise_target`'s `one_value_args` (`JUCEUtils.cmake:1993`), is copied to the INHERITED
+  `JUCE_COMPANY_COPYRIGHT` property at `:2096`, and that property is exactly what the manifest writer reads
+  (`:363`). The second wrong sentence was the premise of my first attempt: a `set_property(TARGET SliceForge
+  PROPERTY JUCE_COMPANY_COPYRIGHT …)` at the bottom of the file re-configures, builds and exits 0 while
+  emitting nothing - `juce_add_plugin` calls `_juce_initialise_target` and then
+  `_juce_configure_plugin_targets` (`:2189-2190`), and the manifest is written inside the second, so a write
+  after the call has been read too late.
+- **The second trap, now an `AGENTS.md` rule: the generated `.rc` is not dependency-tracked against the
+  manifest.** `JUCEUtils.cmake:823-826` declares it as a custom-command OUTPUT whose only `DEPENDS` is the
+  icon, so even the correct argument ships nothing on the build immediately after the edit. Ordered evidence:
+  build exit 0 with the generated rc holding its five version strings and a `Translation`, none of them
+  `LegalCopyright`; then the rc and `SliceForge_resources.res` were deleted, the whole project built again
+  (exit 0), and the regenerated rc carries the new line at `:19`.
+- **Read back out of the PE**, by `[System.Diagnostics.FileVersionInfo]` rather than out of the `.rc`: the
+  string is present in the build module, the build standalone, the `launch/` module, the `launch/` exe and the
+  installed module - five copies, one value. The three test executables report `LegalCopyright=[]`, which is
+  the wanted outcome: the property is per-target, so the plugin's argument did not leak sideways into
+  `SliceForgeSmokeTest.exe` and its siblings. Their `CompanyName` is JUCE's `yourcompany` placeholder -
+  unsightly, and no test binary is a deliverable.
+- **Tuple, superseding 8H's.** module `b15476669eb2b5f3ff960d8cd09fce4df242c3144f2236541e6a27b3a239470d` (24,530,944 B - 512 B more than the `ce66de92…` 8H
+  recorded, which is the entire cost of the added resource string) identical in `native/build/…/VST3`, in
+  `launch/`, as the zip member, and in `C:\Program Files\Common Files\VST3`; standalone `c5478449cc40b07f7171416b2ca611cabcf5e8ba6b2a77701b1f8b95f1c1da97`
+  (24,220,672 B, also +512 over its `a2b6c901…`); `moduleinfo.json` `df39eafcbd1a21ff5e4e9fa1f32b3d97c514d93a34ec6c071c393049119572da`, unchanged, as it must be -
+  it is not the version resource. `THIRD-PARTY-NOTICES.txt` moved to `ff6e1227bbca1195721059f9a2df1cb2c6b511980d30f1f0214ad524d42f8efe` at the same 15,448 B, and the
+  zip to `4b98b27299654e4d960413cbc35caa086998b7e2d0ade4a35acb7edc5735ebd0` (27,787,968 B) because that member sits inside it: 9 members, 0 backslash separators, 0
+  mismatches against the files it claims. `start.ps1`, `start.bat`, `LICENSE`, `INSTALL.txt` and
+  `native/README.md` are byte-for-byte what 8H measured, so the extracted-package proof - no repo, no Node,
+  `-DryRun` 0 and `-InstallOnly -Vst3Dir <scratch>` 0 with the hash matching `launch/` - still describes the
+  archive as shipped. `start.bat` stays the member whose two hashes differ by layout: `0366b728d29b4465…` as worktree
+  and as zip member, `b831971f35d1ce53…` as blob (`i/lf w/crlf`).
+- **Every gate reported from its own exit status:** `cmake --build native/build --config Release` 0 on the
+  stale-rc pass and 0 on the regenerated pass; `--target launch` 0 twice; `ctest -C Release` 3/3 0 twice, the
+  second taken after the final export; `SliceForgeSmokeTest.exe` `PASS - 190/190 checks passed` 0, CPU printed
+  4.38 % and asserted by nothing; `start.ps1 -DryRun` 0; `start.ps1 -InstallOnly` 0 with one UAC prompt, an
+  elevated child and its own file-for-file check against `launch/`. `git status -- src` is empty, so 8H's web
+  gates (`npm run build` 0, `vitest run` 0, 5 files) still hold for this tree and were not re-run.
+- **Cite state after this pass.** Three inserted lines move every `native/CMakeLists.txt` cite at or past
+  `:101` by exactly +3, and no shifted number crosses a digit-width boundary, so each fix is byte-neutral:
+  `:106-107`->`:109-110`, `:113`->`:116`, `:116`->`:119`, `:127`->`:130`, `:128-129`->`:131-132`,
+  `:129`->`:132`, `:180-181`->`:183-184`. Thirteen sites: `AGENTS.md:61`, `:67`, `:99`;
+  `native/Package/THIRD-PARTY-NOTICES.txt:91`; and this file's `:52`, `:86`, `:116` (whose prose "Erwm at 106,
+  Vrac at 107" moved with it), `:234`, `:287`, `:380`, `:937`, `:965`, `:1378`. A validator printed the source
+  line each cite now lands on, and all thirteen name the construct they always named. `AGENTS.md:184` also
+  claimed "Five text files are now archive members" while `native/package-launch.ps1:146` stages
+  `native/README.md` as a sixth - now six, and "the other four" is "the other five".
+- **What this does not prove.** No real DAW has loaded these bytes: `SliceForgeHostTest` is JUCE's headless
+  path and it opens the *build* copy, so the installed module is proven by hash equality and the About-box
+  sighting in Ableton is still the owner's step. And a `LegalCopyright` that names no holder is a choice, not
+  a finished job - AGPL section 5 is satisfied by a pointer to the Corresponding Source, but if SKEER or a
+  person is to be named, that sentence is the owner's to write.

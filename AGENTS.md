@@ -58,13 +58,13 @@ launch/start.bat / start.ps1                install + standalone + browser editi
   and there is no `.gitattributes`, so Git LFS is configured but inactive.
 - There is no Inno Setup installer in this repo (verified 2026-11-15: no `*.iss` anywhere). The
   things that can place a bundle are `launch/start.ps1` and, for the repo folder only,
-  `native/package-launch.ps1`; `COPY_PLUGIN_AFTER_BUILD` is `FALSE` (`native/CMakeLists.txt:116`)
+  `native/package-launch.ps1`; `COPY_PLUGIN_AFTER_BUILD` is `FALSE` (`native/CMakeLists.txt:119`)
   so the build never writes to a scan folder. If an installer is ever added, the grep-smell for a
   second destination is `{userdocs}\VST3`, `{localappdata}\Programs\Common\VST3`, a `Check=`/`Tasks=`
   on the `[Files]` line, and `PrivilegesRequired=lowest` or
   `PrivilegesRequiredOverridesAllowed` — all four mean the fallback copy is still being offered.
 - The bundle is self-contained: factory audio and brand assets are compiled in as the
-  `SliceForgeAssets` binary-data target (`native/CMakeLists.txt:49`, linked at `:127`), so the
+  `SliceForgeAssets` binary-data target (`native/CMakeLists.txt:49`, linked at `:130`), so the
   module needs **nothing** next to it. This is what makes a machine-wide install safe. Do not add
   a payload file that is discovered relative to the module: for the VST3 that path is the *host's*
   folder, so it would work in the standalone and silently fail in every DAW. Anything shipped with
@@ -96,7 +96,7 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
 - `COPY_PLUGIN_AFTER_BUILD` stays `FALSE`; installing is an explicit step.
 - Product name is SliceForge, but these identifiers are frozen and must never be renamed — they
   are data keys, not branding:
-  - `PLUGIN_CODE Vrac` and `PLUGIN_MANUFACTURER_CODE Erwm` (`native/CMakeLists.txt:106-107`): the
+  - `PLUGIN_CODE Vrac` and `PLUGIN_MANUFACTURER_CODE Erwm` (`native/CMakeLists.txt:109-110`): the
     pair is the VST3 module identity in the host session; changing either orphans every saved set.
   - `"VRACPlus"` (the APVTS ValueTree type, `native/Source/PluginProcessor.cpp:75`) and
     `"VRAC_EXTRA"` (`:1043`, `:1047`, `:1116`, `:1121`): the host-state XML the plugin reads back.
@@ -181,12 +181,19 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
   `node_modules\.vite`, reconfigures, rebuilds, runs ctest, re-exports and hash-checks `launch/`).
 - `origin` is `https://github.com/vermeiresebastien/skeer-vrac-plus.git`. Renaming that is a
   GitHub-side change that moves the public URL, so it is separate from the local rename.
-- Five text files are now archive members, so their bytes are what a customer receives and
+- Six text files are now archive members, so their bytes are what a customer receives and
   `package-launch.ps1` hashes each one back: `launch/start.ps1`, `launch/start.bat`, `LICENSE`,
-  `native/Package/INSTALL.txt` and `native/Package/THIRD-PARTY-NOTICES.txt`. That makes line endings
-  a shipping property. Measured here: `core.autocrlf=true` with no `.gitattributes`, `start.bat` is
-  `i/lf w/crlf` and the other four are `i/lf w/lf` — so Git will hand a fresh checkout CRLF versions
+  `native/Package/INSTALL.txt`, `native/Package/THIRD-PARTY-NOTICES.txt` and `native/README.md`. That makes
+  line endings a shipping property. Measured here: `core.autocrlf=true` with no `.gitattributes`, `start.bat`
+  is `i/lf w/crlf` and the other five are `i/lf w/lf` — so Git will hand a fresh checkout CRLF versions
   of files this worktree holds as LF, and a zip member hash quoted from one layout is not
   reproducible from the other. Run `git ls-files --eol` before quoting a packaged file's hash, and
   settle it properly with the Step 17 `.gitattributes`/LFS decision rather than by normalising
   anything quietly.
+- A JUCE plugin's Windows version resource is generated from a configure-time manifest: `juce_add_plugin`
+  writes `native/build/SliceForge_artefacts/JuceLibraryCode/Info.txt` inside its own call, and `juceaide`
+  turns that into `SliceForge_resources.rc` at build time with no declared dependency on the manifest. So a
+  metadata field added to `juce_add_plugin` needs BOTH a re-configure *and* a deleted `..._resources.rc`
+  (plus its `SliceForge_resources.res`) before it reaches the module: the build right after such an edit
+  exits 0 and ships the old resource. `LegalCopyright` is the `COMPANY_COPYRIGHT` argument
+  (`native/CMakeLists.txt:105`); an empty value omits the field from the .rc entirely.

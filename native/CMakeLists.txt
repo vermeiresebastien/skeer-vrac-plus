@@ -100,6 +100,9 @@ set(SLICEFORGE_SOURCES
 
 juce_add_plugin(SliceForge
     COMPANY_NAME              "SKEER"
+    # Must be an argument here, not a property set later: juce_add_plugin writes the Info.txt manifest that
+    # juceaide turns into this .rc, and it writes it inside this call. An empty value omits the field entirely.
+    COMPANY_COPYRIGHT         "SliceForge ${PROJECT_VERSION} - licensed under the GNU Affero General Public License v3.0 - Corresponding Source: https://github.com/vermeiresebastien/skeer-vrac-plus"
     BUNDLE_ID                 "com.skeer.sliceforge"
     # The VST3 manufacturer/plugin code pair is the plugin's session identity.
     # Keep the original pair so existing host sessions resolve to this build.

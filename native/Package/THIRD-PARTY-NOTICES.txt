@@ -88,7 +88,7 @@ carries. [native/external/JUCE/LICENSE.md:38-54, at the 8.0.4 revision above]
 
 What this product actually conveys is bounded by its own build, not by the list
 above. The target links juce::juce_audio_utils and juce::juce_dsp
-(native/CMakeLists.txt:128-129) with JUCE_WEB_BROWSER=0 and JUCE_USE_CURL=0
+(native/CMakeLists.txt:131-132) with JUCE_WEB_BROWSER=0 and JUCE_USE_CURL=0
 (:41-42) and declares FORMATS VST3 Standalone (:110). That bound was then
 measured rather than assumed: every object file of the three SliceForge targets
 (SliceForge.dir, SliceForge_VST3.dir, SliceForge_Standalone.dir, Release) was
