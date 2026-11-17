@@ -2065,10 +2065,14 @@ file cites its own line numbers.
   it is not the version resource. `THIRD-PARTY-NOTICES.txt` moved to `ff6e1227bbca1195721059f9a2df1cb2c6b511980d30f1f0214ad524d42f8efe` at the same 15,448 B, and the
   zip to `4b98b27299654e4d960413cbc35caa086998b7e2d0ade4a35acb7edc5735ebd0` (27,787,968 B) because that member sits inside it: 9 members, 0 backslash separators, 0
   mismatches against the files it claims. `start.ps1`, `start.bat`, `LICENSE`, `INSTALL.txt` and
-  `native/README.md` are byte-for-byte what 8H measured, so the extracted-package proof - no repo, no Node,
-  `-DryRun` 0 and `-InstallOnly -Vst3Dir <scratch>` 0 with the hash matching `launch/` - still describes the
-  archive as shipped. `start.bat` stays the member whose two hashes differ by layout: `0366b728d29b4465…` as worktree
-  and as zip member, `b831971f35d1ce53…` as blob (`i/lf w/crlf`).
+  `native/README.md` are byte-for-byte what 8H measured - and 8H's extracted-package rehearsal was re-run on
+  this archive rather than inherited, because "the mechanism did not change" is a reasoning step and this
+  repository does not gate on those. From a folder with no `src/` and no `node_modules`: `-DryRun` 0 printing
+  the browser-edition refusal, `-InstallOnly -Vst3Dir <scratch>` 0 with the scratch module hashing
+  `b1547666…` file for file against `launch/`, and the module read straight out of the archive reporting the
+  `LegalCopyright` string. The scratch folder and the extraction were then deleted. `start.bat` stays the
+  member whose two hashes differ by layout: `0366b728d29b4465…` as worktree and zip member, `b831971f35d1ce53…`
+  as blob (`i/lf w/crlf`).
 - **Every gate reported from its own exit status:** `cmake --build native/build --config Release` 0 on the
   stale-rc pass and 0 on the regenerated pass; `--target launch` 0 twice; `ctest -C Release` 3/3 0 twice, the
   second taken after the final export; `SliceForgeSmokeTest.exe` `PASS - 190/190 checks passed` 0, CPU printed
