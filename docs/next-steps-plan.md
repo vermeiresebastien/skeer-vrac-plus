@@ -100,8 +100,8 @@ Five findings drove the ranking. All four code ones are verified defects, not op
   whatever the processor exposes. Round 2 of this plan read the 347 it had derived from the layout, saw the 349 the
   test printed, and concluded the README was wrong by two; it was the reading that was wrong. Nothing
   used to catch a disagreement between them: `HostTest.cpp` only *printed* the count and asserted
-  `< 300`, which 347, 349 and 345 all satisfy. `native/Tests/HostTest.cpp:69` now asserts exactly
-  350 and `native/Tests/SmokeTest.cpp:171` asserts the 348 the layout builds - one more than the
+  `< 300`, which 347, 349 and 345 all satisfy. `native/Tests/HostTest.cpp:110` now asserts exactly
+  350 and `native/Tests/SmokeTest.cpp:181` asserts the 348 the layout builds - one more than the
   derivation above, because Step 26 appended `seq.pattern` - so the composition in the README is a
   test result rather than a claim.
 - **The naming risk the market lane flagged is mostly already retired.** The installed bundle is
@@ -241,10 +241,10 @@ two are refuted, and the refutations are why this entry now carries evidence in 
   paragraph is *not* a line reference: `AGENTS.md:99` names `PLUGIN_CODE` before
   `PLUGIN_MANUFACTURER_CODE`, while `native/CMakeLists.txt` puts the manufacturer at `:106` and the
   plugin code at `:107`. That is a wording fix and belongs to the stage that already edits `AGENTS.md`.
-- **Machine-hold the exact parameter count - built, and not by this step.** `native/Tests/HostTest.cpp:69`
+- **Machine-hold the exact parameter count - built, and not by this step.** `native/Tests/HostTest.cpp:110`
   reads `if (instance->getParameters().size() != 350)` - a literal, so it reddens when the layout
-  changes - and `:107` prints the composition (`parameters: 350 = 348 layout + Bypass + Program`), with
-  `:102` printing the pattern control's host index. The bare-processor view is 348; the two differ by the
+  changes - and `:148` prints the composition (`parameters: 350 = 348 layout + Bypass + Program`), with
+  `:143` printing the pattern control's host index. The bare-processor view is 348; the two differ by the
   wrapper's pair, and both numbers are current.
 - **Retire or scope the "no audio-thread allocation" sentence — refuted, so the sentence stays.**
   `native/README.md:446` ("32 fixed voices; no audio-thread allocation or locking") is accurate, and
@@ -813,7 +813,7 @@ defect entry in 8C.
 Side effects, all swept in this commit: the layout is 348 parameters and a host sees 350, so `AGENTS.md:136-142`,
 `native/README.md:48`, `:154-161`, `:199-204` and `:405` moved off 347/349 - and 348 (bare) and 350 (host) are
 both current, not a typo for each other, because the wrapper appends `Bypass` and `Program` after the
-layout. `SmokeTest.cpp:171` asserts 348 and `HostTest.cpp:69` asserts 350, each anchored to the previously
+layout. `SmokeTest.cpp:181` asserts 348 and `HostTest.cpp:110` asserts 350, each anchored to the previously
 measured value in its own view rather than re-derived.
 
 **Step 27 — Make the exported MIDI file the pattern you heard (0.5 d).**
@@ -1332,7 +1332,7 @@ test their own names (2026-11-16)
   occurrences in this file are the record, not the residue, and their count is deliberately not stated -
   any number written here would be one more thing this file has to re-measure just to stay true.
 - **348 and 350 are two views of one surface, and the position under them is not a split.** The bare
-  processor asserts 348 (`SmokeTest.cpp:177`) and the loaded VST3 asserts 350 (`HostTest.cpp:110`); the
+  processor asserts 348 (`SmokeTest.cpp:181`) and the loaded VST3 asserts 350 (`HostTest.cpp:110`); the
   difference is exactly the wrapper's `Bypass` and `Program`, and both numbers are current - 347 and 349
   were the same two views before `seq.pattern`. That sentence already exists in `AGENTS.md`, in
   `native/README.md` and in `c57f277`'s own message, so no historical commit needed rewriting. What was
@@ -1794,11 +1794,11 @@ Round 1's sequence is superseded. It put the slicer rewrite (Step 7) and an offl
 ahead of any measurement, gated the bounce on a property it cannot have, and led into a parity harness
 whose answer is a design decision rather than a fixture. Round 2's sequence, with each link justified:
 
-**1. Close out Phase 0 first — 1.5 d, now 1.25 d.** Step 29 (0.25) is built, and it had to come first
-because everything below is judged by `ctest`. Then Step 23 (0.25) before Step 22 (0.5), which is the
-order round 2's own verification forced: Step 22 keys its pass counter on the reset that Step 23's
-tolerance decides, so landing the tolerance first is what makes "pass" mean a pass. Step 5 (0.5) is the
-only item left in that block that has no dependency on anything else here.
+**1. Close out Phase 0 first — done, 1.5 d.** Step 29 (0.25) landed first, because everything below is
+judged by `ctest`; Steps 23 (0.25) and 22 (0.5) then landed together in `4abe4b0` on 2026-11-16, in the
+order that forced the tolerance before the pass counter. Step 5 (0.5) closed as *evidence* rather than
+code: its three sub-deliverables were one already built (`HostTest.cpp:110`'s exact 350-parameter
+literal), one measured to not exist (the "stale" `AGENTS.md` references), and one refuted by JUCE itself.
 
 **2. Make the host able to see the instrument — 4 d.** Step 26 (1.5), Step 28 (2), Step 27 (0.5) in that
 order: the pattern parameter first, because MIDI out is useless if every clip plays pattern 0; then
@@ -1821,13 +1821,13 @@ Step 16 is one day and is the only item here that blocks *conveying* a build to 
 forward the moment a public release is actually on the table — it does not need to wait behind Phase 5.
 
 Steps 1-19 and 22-29 add up to **41.75 dev-days** at midpoint (the ranges in Steps 7, 8, 11, 18, 19, 24
-and 26 widen that to ~38-45 d), so "roughly 40" is the honest headline. Eight days are banked — Steps 1-4
-(2.75 d), Step 29 (0.25 d), Step 16 (1 d), Steps 26/27/28 (`c57f277`, `16258b3`, `5f8815d`) and Step 17's
-determinism half (0.25 d) — 8.0 d, so **~33.75 d remain**, plus Step 20 (macOS 3-5 d), Step 21 (a decision,
-not code) and the Ableton listening pass, which banks nothing by itself. Round 1 printed "~31 d" on
-unchecked arithmetic and its correction went stale the same way: "~38.75" was true the day it was written
-and had three landed steps behind it when this pass read it. What is left that changes what you can claim in
-Ableton: Step 5 (0.5) + Step 23 (0.25) + Step 22 (0.5) = **1.25 d**, and the rest is depth and drift control.
+and 26 widen that to ~38-45 d), so "roughly 40" is the honest headline. **9.25 d are banked** — Steps 1-4
+(2.75), Step 29 (0.25), Step 16 (1), Step 5 (0.5), Steps 22 (0.5) and 23 (0.25), Steps 26/27/28 at 3.75
+(`c57f277`, `16258b3`, `5f8815d`) and Step 17's determinism half (0.25) — so **~32.5 d remain**, plus Step
+20 (macOS 3-5 d), Step 21 (a decision, not code) and the Ableton listening pass, which banks nothing by
+itself. This paragraph's own "8.0 d / ~33.75 d" went stale exactly the way Round 1's "~31 d" did: true the
+day it was written, three landed steps behind when this pass read it. What is left that changes what you
+can claim in Ableton is Step 24 (1.5-2 d) then Step 25 (1); the rest is depth and drift control.
 
 Per phase: build, run `ctest` *after* building the test targets, then judge the audio in Ableton
 level-matched against the previous build. A phase is done when the check that describes the old
@@ -2000,8 +2000,8 @@ Appended at the end rather than inserted after 8G, on the AGENTS.md precedent: a
   8C/8D precedent restated at `:1598`. `AGENTS.md:151-156` replaces the `:143-148` cite at `:1786` - that one
   was transcription, not drift, proved by `git diff -U0 AGENTS.md` naming only a line-neutral hunk at `:35`
   and an append-only hunk at `:184`. This file's *edit set below the append* is 18 additions against 18
-  deletions - line-neutral, so the 1925 lines every other section cites are still the same lines; the whole
-  commit carries 96 against 18, because 8H itself is the other 78.
+  deletions - line-neutral against the 1925-line file that every cite in it addressed, and that number is
+  of-then (this file is 2476 lines today); the whole commit carries 96 against 18, because 8H itself is 78.
 
 - **Corrected forward, same day: `b481d74` published a hash it had not measured.** Its "zip
   `166175ed33fe8ba8a6a7c92bdcf4b05914bb8145ee908d7c14f7d1a4f3a4b1a4`" line is wrong from byte 13 onward -
@@ -2474,3 +2474,44 @@ not (recorded 2026-11-17, closing after midnight)
   file is **truncated** by the native door and **refused** with a message by the browser door. Both are defensible
   and they are not the same product behavior; choosing between them is an owner call, and §8M's numbers do not
   depend on which way it goes.
+
+## 8N. Docs only: the plan's own cites and totals caught up with the tree (recorded 2026-11-18)
+
+The owner asked for the installer recompiled, committed and pushed. The recompile is the interesting half:
+`cmake --build native/build --config Release --target launch` exited 0 and changed nothing, because the
+pinned 1980 entry clock makes an unchanged payload produce a byte-identical archive. Measured on this
+machine, after the export, against `launch/`: zip
+`f6e0e29b3c6c44bef1f7281845eabf75ddcd8295da298800f53cd47edd4e33dc`, `SliceForge.exe`
+`b3537ecadaae81d3fdf59f209989fcf5957ce5d4ab0d9b4757bcb1202b7f4c69`, the VST3 module
+`e3346f4dbc2a0273eab184ef717601162ea31962dd37db90958aaf3d600afb31`, `start.ps1`
+`c9000294ffe22b007bca2bc4f574f9d800dbc1abdbc082cfb8c1f8286397c70f` — all four equal to what §8L and §8M
+recorded. `ctest` re-run beside it: 3/3, exit 0, smoke `PASS - 206/206 checks passed`, host
+`parameters: 350 = 348 layout + Bypass + Program`. There was therefore nothing to commit from the build,
+and the only honest diff left in the tree was this file describing itself wrongly.
+
+- **Four test cites re-read rather than re-derived.** `native/Tests/HostTest.cpp:69` → `:110` (the
+  `!= 350` literal), its composition print `:107` → `:148`, the pattern-index print `:102` → `:143`, and
+  `SmokeTest.cpp:171`/`:177` → `:181` (the `== 348` check). One was deliberately left alone: `:237` quotes
+  the string `AGENTS.md` held when Step 5 audited it at `4abe4b0` — a record of its own time, per the
+  precedent at `:1999`. `AGENTS.md:143` already cites `:110`, so nothing live disagrees any more.
+- **§11's arithmetic was the actual defect, and it was a present-tense claim.** It said "Eight days are
+  banked … ~33.75 d remain" and named Steps 5 + 23 + 22 as the Ableton-visible remainder, all three of
+  which have since landed. Banked is **9.25 d** (2.75 + 0.25 + 1 + 0.5 + 0.5 + 0.25 + 3.75 + 0.25, the
+  last of which is Step 17's determinism half), remaining **~32.5 d**, and what is left that changes what
+  you can claim in a host is Step 24 (1.5-2 d) then Step 25 (1). The stale pair stays named inside the
+  corrected sentence, the way Round 1's "~31 d" is named, because the recurrence is the lesson: a total in
+  prose is a claim with an expiry date, and the steps that expire it are the ones that land.
+- **Line-neutral where it had to be: 21 against 21 below the append.** Item 1 of §11 had grown to seven
+  lines from five earlier in this session — two lines is enough to move every address below it — so it is
+  compressed back inside its original five, and `git diff --numstat` printing equal additions and
+  deletions is the check. It is the only one that catches a tidy whole-line rewrite that shifts the file;
+  this section then appends 41 lines of its own, blank separator included, which is why the commit carries
+  62 against 21. What the two-line shift would have cost: the *live* cites into this file all address
+  `:38`, `:138`, `:434`, `:543-551`, `:985`, `:1069` or `:1094` - found with a grep for "plan `:" - and
+  every one of them sits above the edit, so none of them moved. The two that sit below it are `:1924-1925`
+  and the `:1925` pointer, and both are §8H's and §8L's records of their own commits: exempt, per the
+  precedent named at `:1999`.
+- **Push discharged, install still open.** `git push` was authorised in the same instruction, so §8M's
+  "the push [is an] owner action" is closed by this commit for the repository. The install is not: `%ProgramFiles%\Common
+  Files\VST3` still holds the pre-§8M bundle — a different artifact from the one that printed 206/206 —
+  and the Ableton listening pass remains the gate nothing in this document can stand in for.
