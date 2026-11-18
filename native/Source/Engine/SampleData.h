@@ -1,6 +1,7 @@
 #pragma once
 
 #include <JuceHeader.h>
+#include "ImportLimits.h"
 #include <memory>
 #include <vector>
 

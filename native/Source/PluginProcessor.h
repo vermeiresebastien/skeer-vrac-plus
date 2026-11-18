@@ -118,6 +118,10 @@ public:
     bool isRecording() const noexcept { return recordingActive.load (std::memory_order_relaxed); }
     bool isRecordingTakeReady() const noexcept { return recordingTakeReady.load (std::memory_order_relaxed); }
     double getRecordingSeconds() const;
+    /** Seconds a take may hold at the host's current sample rate - the ceiling of Engine/ImportLimits.h
+        as the clamp actually lands, so the REC tooltip can state it instead of promising five minutes
+        at a rate where the byte ceiling bites first. */
+    double getRecordingLimitSeconds() const noexcept;
     void adoptRecordingTake();
     void discardRecordingTake();
 

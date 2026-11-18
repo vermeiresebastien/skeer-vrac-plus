@@ -1,6 +1,7 @@
 import { useCallback, useEffect, useRef, useState } from 'react';
 import type { SourceSample } from '../types';
 import { decodeAudioBlob } from '../lib/audioFiles';
+import { takeIsFull, takeLimitLabel } from '../lib/importLimits';
 import { Modal } from './Modal';
 import { Icon } from './Icons';
 import { Waveform } from './Waveform';
@@ -176,7 +177,7 @@ export function RecordModal({
     timerRef.current = window.setInterval(() => {
       const elapsed = (performance.now() - startedAtRef.current) / 1000;
       setSeconds(elapsed);
-      if (elapsed >= 120) stopRecording();
+      if (takeIsFull(elapsed)) stopRecording();
     }, 100);
   };
 
@@ -207,7 +208,7 @@ export function RecordModal({
       title="Capture an input"
       footer={
         <>
-          <span className="modal-foot-note">Up to 2 minutes · recorded and decoded locally</span>
+          <span className="modal-foot-note">{takeLimitLabel} · recorded and decoded locally</span>
           <button type="button" className="button button--ghost" onClick={close}>
             CANCEL
           </button>
@@ -330,8 +331,11 @@ export function RecordModal({
   );
 }
 
-function formatTimer(seconds: number): string {
+export function formatTimer(seconds: number): string {
   const whole = Math.floor(seconds);
   const tenths = Math.floor((seconds - whole) * 10);
-  return `00:${String(whole).padStart(2, '0')}.${tenths}`;
+  // Minutes belong in the minutes field: a readout that counted past 59 seconds was written
+  // against a two-minute cap and would show "00:119.9" for 1 minute 59.
+  const minutes = Math.floor(whole / 60);
+  return `${String(minutes).padStart(2, '0')}:${String(whole % 60).padStart(2, '0')}.${tenths}`;
 }

@@ -289,7 +289,8 @@ The browser test depends on `fixtures/user-groove.wav`; the ZIP it produces is w
   frequency shifter. It is intended as a character control, not a laboratory spectrum
   shifter.
 - **Browser memory limits apply.** Source files are capped at 10 minutes / 160 MB before
-  decoding. Recording is capped at 2 minutes.
+  decoding. Recording is capped at 5 minutes. Both numbers come from `src/lib/importLimits.ts`,
+  which mirrors `native/Source/Engine/ImportLimits.h`.
 - **Saved kits with a custom sample depend on this browser's IndexedDB.** Export the WAVs if
   you need a portable archive; the JSON preset stores the kit parameters and source
   reference, not the audio itself.

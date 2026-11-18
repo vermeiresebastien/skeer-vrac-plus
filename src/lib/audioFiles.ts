@@ -1,4 +1,5 @@
 import { makeUserSample } from '../audio/sampleLibrary';
+import { MAX_FILE_BYTES, MAX_FILE_SECONDS, MIN_FILE_SECONDS } from './importLimits';
 import type { SourceSample } from '../types';
 
 let decodeContext: AudioContext | null = null;
@@ -13,14 +14,19 @@ function getDecodeContext(): AudioContext {
 }
 
 export async function decodeAudioBlob(blob: Blob, name: string): Promise<SourceSample> {
-  if (blob.size > 160 * 1024 * 1024) {
-    throw new Error('That file is larger than the 160 MB browser limit. Try a shorter excerpt.');
+  // Three refusals, all of them stated by the ceiling's own number, so a message cannot describe
+  // a limit that the code no longer has. See lib/importLimits.ts for why these are the values.
+  const megabytes = Math.round(MAX_FILE_BYTES / (1024 * 1024));
+  if (blob.size > MAX_FILE_BYTES) {
+    throw new Error(`That file is larger than the ${megabytes} MB browser limit. Try a shorter excerpt.`);
   }
   const ctx = getDecodeContext();
   const data = await blob.arrayBuffer();
   const buffer = await ctx.decodeAudioData(data.slice(0));
-  if (buffer.duration < 0.05) throw new Error('That file is too short to slice.');
-  if (buffer.duration > 10 * 60) throw new Error('That file is longer than the 10 minute browser limit.');
+  if (buffer.duration < MIN_FILE_SECONDS) throw new Error('That file is too short to slice.');
+  if (buffer.duration > MAX_FILE_SECONDS) {
+    throw new Error(`That file is longer than the ${MAX_FILE_SECONDS / 60} minute browser limit.`);
+  }
 
   const left = new Float32Array(buffer.length);
   const right = new Float32Array(buffer.length);

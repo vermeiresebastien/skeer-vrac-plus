@@ -540,15 +540,15 @@ OFL fonts with each `.ttf`'s own copyright line and the licence text copied byte
 factory WAVs as in-repo synthesis. The zip carries `LICENSE` and the notices; the About box cites both.
 Closed by 8I, which refutes this line's own reason: `COMPANY_COPYRIGHT` is a `juce_add_plugin` argument (`CMakeLists.txt:105`).
 
-**Step 17 — Make the zip reproducible and take the binaries out of git (0.5 d, owner decision).**
-Measured: `.git` is 205 MB, 318 loose objects, **zero packs**; `launch/` is 76.5 MB in HEAD; the zip is
-27,750,643 B and the exe 24,210,944 B as plain blobs. The restamp in `92336b5` added a fresh 27.75 MB
-blob for a payload-identical zip — two objects of 27,709,732 B with different hashes — because
-`native/package-launch.ps1` embeds entry mtimes (`ZipArchive` has stamped them since Step 16 replaced `Compress-Archive`; §8J measured the 68 differing bytes of an otherwise identical re-export). So every export costs
-about +28 MB forever. Git LFS is configured but genuinely inactive (no `.gitattributes`, no
-`pre-push` hook), so it currently manages nothing. Fixing the determinism is half a day; moving
-`launch/` to release assets reverses a recorded owner decision from 2026-11-14, so it is yours to make,
-with the measured cost in front of you rather than a preference.
+**Step 17 — Make the zip reproducible and take the binaries out of git (0.5 d, owner decision).** DONE on
+its determinism half, 2026-11-17 (§8L); the git half is still yours. Measured when this was first written:
+`.git` was 205 MB, 318 loose objects, **zero packs**; `launch/` was 76.5 MB in HEAD; the zip and the exe were
+plain blobs, and the restamp in `92336b5` added a fresh 27.75 MB blob for a payload-identical archive - two
+objects of 27,709,732 B with different hashes - because `native/package-launch.ps1` let `ZipArchive` stamp
+each entry with the clock it was running on (§8J measured 68 differing bytes of an otherwise identical re-export).
+So every export cost about +28 MB forever, and it no longer does: the entry clock is pinned, and two exports
+seven minutes apart are now one object. What is left is the decision - keep `launch/` in git (a recorded owner
+call from 2026-11-14; Git LFS stays genuinely inactive, no `.gitattributes` and no `pre-push` hook), or move it.
 
 **Step 18 — Minimum useful CI (2-3 d).** One Windows job: configure, build **sequentially** (dodges
 the known `D8040` / bogus `C1001` parallel flake), `ctest`, upload the zip. Caveat that must be
@@ -1821,13 +1821,13 @@ Step 16 is one day and is the only item here that blocks *conveying* a build to 
 forward the moment a public release is actually on the table — it does not need to wait behind Phase 5.
 
 Steps 1-19 and 22-29 add up to **41.75 dev-days** at midpoint (the ranges in Steps 7, 8, 11, 18, 19, 24
-and 26 widen that to ~38-45 d), so "roughly 40" is the honest headline. Three days are banked — Steps 1-4
-(2.75 d) and Step 29 (0.25 d) — so **~38.75 d remain**, plus Step 20 (macOS, 3-5 d) and Step 21 (a
-decision, not code) outside the total. Round 1 of this document said "~31 d remain" against the same
-step list; that number was arithmetic I did not check, and it is the reason the estimates are now summed
-in the open here. What is left of the work that changes what you can claim in Ableton is exactly: Step 5
-(0.5) + Step 23 (0.25) + Step 22 (0.5) + Steps 26/27/28 (3.75) = **5 d**. The rest is depth and drift
-control.
+and 26 widen that to ~38-45 d), so "roughly 40" is the honest headline. Eight days are banked — Steps 1-4
+(2.75 d), Step 29 (0.25 d), Step 16 (1 d), Steps 26/27/28 (`c57f277`, `16258b3`, `5f8815d`) and Step 17's
+determinism half (0.25 d) — 8.0 d, so **~33.75 d remain**, plus Step 20 (macOS 3-5 d), Step 21 (a decision,
+not code) and the Ableton listening pass, which banks nothing by itself. Round 1 printed "~31 d" on
+unchecked arithmetic and its correction went stale the same way: "~38.75" was true the day it was written
+and had three landed steps behind it when this pass read it. What is left that changes what you can claim in
+Ableton: Step 5 (0.5) + Step 23 (0.25) + Step 22 (0.5) = **1.25 d**, and the rest is depth and drift control.
 
 Per phase: build, run `ctest` *after* building the test targets, then judge the audio in Ableton
 level-matched against the previous build. A phase is done when the check that describes the old
@@ -2158,8 +2158,9 @@ Appended rather than inserted, on the 8H/8I precedent: anything placed before `:
   *nothing* changed in the tree then measured the archive's own reproducibility: same 17 names, **0** member
   hash mismatches, same 28,584,705 B - and 68 bytes different, in 34 runs of exactly 2 bytes, which are the 17
   local headers and the 17 central-directory records at their DOS time field. So the zip is `d69b1f52…` where
-  the export twenty-one minutes earlier was `5be46f61…`, and Step 17's "every export costs about +28 MB
-  forever" survives the rewrite of its mechanism (`:547`). The extracted-package rehearsal ran on the
+  the export twenty-one minutes earlier was `5be46f61…` — and the "+28 MB per export" that `:547` drew from this
+  was true of its own present tense only: §8L pins the clock, so the cost is history now, not a rule. The
+  extracted-package rehearsal ran on the
   `5be46f61…` archive; every member of `d69b1f52…` hashes identical to it, so that rehearsal does describe the
   bytes being committed. Archive shape: 0 backslash separators, 0 directory rows, 8 `shots/` members totalling
   838,303 B.
@@ -2286,3 +2287,190 @@ Appended rather than inserted, on the 8H/8I precedent: anything placed before `:
   `PLUGIN_MANUFACTURER_CODE Erwm`, `"VRACPlus"`, `"VRAC_EXTRA"`, `0x56524143` and the `.vracpreset`/
   `.vracpattern` extensions are session and file data keys, and a naming risk in the market does not make it
   safe to orphan a user's saved sets.
+
+## 8L. Step 17's determinism half: the archive clock is pinned, and the date that reaches a scan folder is
+not (recorded 2026-11-17, closing after midnight)
+
+- **Two files, and who wrote which half.** `native/package-launch.ps1` gained 11 lines and lost none
+  (`git diff --numstat` 11/0, 303 lines): `$ZipFixedStamp` at `:201-202` and
+  `$entry.LastWriteTime = $ZipFixedStamp` at `:218`, assigned **before** `entry.Open()` - and that order is not
+  a style choice. A probe that sets it after `Open()` throws `Cannot modify entry in Create mode after entry has
+  been opened for writing.`, so the packer would have died at the first member; the same run measured the pinned
+  write producing `time=0x0000 date=0x0021` and an unstamped header `0x016F/0x5D72`, i.e. the live clock on
+  2026-11-18: a local wall clock with no zone stored anywhere, which is why the pinned pair is zone-independent
+  rather than merely constant. That hunk arrived in this working copy at 23:38:14, from the
+  other lane working the same step, before this lane's first export - recorded here as their edit independently
+  verified rather than as mine. `launch/start.ps1` gained 8 and lost none (326 lines): the install restamp at
+  `:156-163`, which is the consequence measured below. Both are `i/lf w/lf`, and the equality with what Git will
+  store was proven without touching the shared index - a temporary `GIT_INDEX_FILE` over `read-tree HEAD` +
+  `git add` was used to read the would-be blob, and the real index held 0 staged paths afterwards. (Not
+  `git hash-object`: that prints a SHA-1 blob *id*, which is not the SHA-256 of the bytes and never was.)
+  `native/package-launch.ps1` `8ddad5dfa78f2822a9695de1c2b5917952f8207b04471f9c3b6ebe8a23c60690`,
+  `launch/start.ps1` `c9000294ffe22b007bca2bc4f574f9d800dbc1abdbc082cfb8c1f8286397c70f`.
+- **The mechanism, re-measured on the two archives that still exist.** The committed archive
+  `d69b1f523d8811d7c009a442d05ef2a9e60057b6144a7b08d296705ac44b20bf` (28,584,705 B, re-read from
+  `git show HEAD:launch/SliceForge-1.0.0-Windows-x64.zip` so the comparison is against the object, not a copy)
+  carries **two different stamps inside one export**: `time=0xB389 date=0x5D71` on the first member and
+  `0xB38A/0x5D71` on the other sixteen - 22:28:18 then 22:28:20, because the clock was never even constant
+  within an archive. The current archive carries one value on all 17: `time=0x0000 date=0x0021`, which decodes
+  to 1980-01-01 00:00:00. Walking the central directory by hand instead of through a library: for the five
+  members whose payloads did not move between the two archives, the only differing bytes are local header
+  `+10..+13` and central record `+12..+15` - four bytes in each of two structures per member, so **34 runs of 4
+  = 136 bytes** separates a pinned from an unpinned export of the same content. §8J's 68 bytes in 34 runs of 2
+  is that same layout with the date already equal: only the two time bytes move. Extra fields are 0 bytes long
+  in both structures and no local/central pair disagrees, so there is no extended timestamp left to pin.
+- **What the pin buys, and the one thing it does not.** Measured live, not inherited: export H at 23:47:55 and
+  export I at 23:56:35, with an edit to this file at 23:52 between them. `cmake --build native/build --config
+  Release --target launch` run unpiped, `EXIT=0` in each log next to its own banner
+  `launch/ refreshed (Release, v1.0.0)`, and the SHA-256 census of all six files under `launch/` identical
+  before and after - the archive is `9589ff5541949d4441caf497d816d37c6235ddf9c8690a001e3e13a852a279cf`,
+  28,585,011 B. Log I contains zero `cl.exe` and zero `link.exe` lines, so the export compiled nothing and the
+  bytes it shipped are the 17:49 build; no file under `native/Source` moved in this change, so this section
+  claims no engine re-gate and needs none. What determinism does *not* buy: a different .NET is free to choose
+  different deflate output or version bytes, so the proof is "re-exports on this machine are one object", and
+  cross-toolchain byte-identity belongs to Step 18.
+- **The consequence nobody had measured: a pinned archive installs at 1980.** All 17 members unpack dated
+  1980-01-01 (`EXTRACTED_DISTINCT_DATES=1980-01-01 DISTINCT=1` over `EXTRACTED_FILE_COUNT=17`) and `Copy-Item`
+  carries that onto every installed file. The red leg is real, not hypothetical - the same rehearsal against the
+  pre-fix installer printed `INSTALLED_MODULE=24,530,944 B mtime=1980-01-01 00:00:00`, hash `B1547666…`,
+  `CHILD_EXIT=0`: the installer reported success and handed the host a plug-in that looks forty-six years older
+  than the one it replaced. A host that decides whether to re-read a cached plug-in from the file's mtime - the
+  exact cue this repo uses elsewhere, size:mtime pairs in Live's rescan evidence - would read a new build as no
+  change at all. Green, same probe after `:156-163`: `mtime=2026-11-18 00:01:45`,
+  `INSTALLED_MODULE_SHA=B1547666…`, `INSTALLED_DISTINCT_DATES=2026-11-18`, `CHILD_EXIT=0`, and the script's own
+  `matches launch/ file for file`. Both rehearsals ran with `PATH` trimmed to `System32;Windows` on a child
+  launched by absolute path from the extracted archive, so they describe what a customer's machine does.
+- **Where the restamp stops, on purpose.** The extracted `SliceForge.exe` still reads 1980-01-01
+  (`INSTALLED_STANDALONE_MTIME`): it is the user's file in the user's folder, no host scans it, and silently
+  redating files outside the install path is a worse surprise than a date that looks old. Stated as a boundary
+  rather than coded, and the stamp itself sits after *both* bundle hash checks - the bytes are the proof of what
+  was installed, the date is only a scan cue.
+- **Tuple, superseding 8K's.** HEAD's zip is `d69b1f52…` at 28,584,705 B; the working tree's is `9589ff55…` at
+  28,585,011 B, and the +306 closes member by member with no residue: 16 of 17 payloads byte-identical, one
+  changed (`start.ps1` 16,397 → 17,143 raw, deflated 5,656 → 5,962 = +306), and member count and name order are
+  unchanged. So apart from the 34 stamp fields, the only bytes that differ are that member's own CRC and sizes
+  plus the stored local-header offsets of the eleven members written after it - two bytes each of `+42..+45`,
+  because a 306-byte shift fits in the low half. All 17 members were re-hashed out of the archive stream
+  against the file each claims: `TREE_COMPARE_FAILURES=0`. Module
+  `b15476669eb2b5f3ff960d8cd09fce4df242c3144f2236541e6a27b3a239470d` (24,530,944 B) unchanged in build,
+  `launch/`, zip member and `C:\Program Files\Common Files\VST3` - and the installed copy there is dated
+  2026-11-17 17:49:58, which predates the pin, so the machine-wide install is already correctly stamped and this
+  change asks for no re-install. Standalone `c5478449cc40b07f7171416b2ca611cabcf5e8ba6b2a77701b1f8b95f1c1da97`,
+  `moduleinfo.json` `df39eafcbd1a21ff5e4e9fa1f32b3d97c514d93a34ec6c071c393049119572da`, `start.bat` as a member
+  `0366b728d29b4465…` against blob `b831971f35d1ce53…` - still the `i/lf w/crlf` exception. Two numbers 8K
+  published are now only true of HEAD: `28,584,705 B` and `start.ps1 7938fe08…`. And one number this section
+  refuses to publish: the pin-only intermediate export measured earlier this evening is not quoted, because the
+  next export overwrote its bytes and no witness is left to re-derive it from; the layout claim it carried is
+  derived above from archives that still exist on disk.
+- **Three artefacts of my own probes, recorded so the next reader does not repeat them.** `FILES=10` in the
+  first two rehearsal logs was Windows PowerShell 5.1 resolving `.Count` on a single string to its `Length` -
+  `"1980-01-01"` is ten characters - so the probe now prints `DISTINCT=1` beside the real file count. The
+  `EXTRACT_EXIT=` line was deleted: `Expand-Archive` has no exit code, and a line that reports one narrates a
+  fact that does not exist. Logs F and G captured `EXIT_F` / `EXIT_G` after a pipe, which is `tail`'s status and
+  not cmake's, so the reproducibility claim rests on H and I alone.
+- **Doc surface, held line-neutral where it had to be.** Step 17's paragraph at `:543-551` was rewritten inside
+  its own 9 lines, so `:556`, `:774`, `:1131`, `:1582`, `:1685`, `:1916-1925`, `:1929` and `:2061` did not move;
+  §8J's sentence that asserted the +28 MB cost in the present tense now points here, inside its own line; §11's
+  banking arithmetic was re-derived in place (8.0 d banked, so ~33.75 d remain, and the Ableton-visible remainder
+  is 1.25 d); `AGENTS.md` gained its 8-line rule at EOF (199 → 207 lines), below `:184` - the highest line any
+  cite into it names - so all twelve of the `AGENTS.md:` cites in this file still land. `native/README.md` was
+  deliberately not touched: it makes no timestamp claim, and editing a member would buy nothing the archive does
+  not already prove.
+- **What Step 17 still owes, and it is not code.** The git half is unchanged by any of this - `launch/` stays
+  tracked, Git LFS is still genuinely inactive (no `.gitattributes`, no non-sample hook in `.git/hooks`,
+  re-checked while writing this), and the pin only removes the *accidental* blob. Every real payload change
+  still costs ~28 MB, which is the decision `:543` hands back. Owner-side, in order: commit this, decide the git
+  half, then the install (bytes already equal, mtime already correct) and the push. Ableton acceptance is still
+  the gate that no headroom in this document can substitute for.
+
+## 8M. The import length became one promise per edition, and the smoke suite's stack was already spent (recorded 2026-11-18)
+
+- **What was asked, and what the tree admits.** "make sure the midi slice import function works like a charm and
+  implement that system in a more clear way. max length of the import also up that to 5min of audio." Neither
+  edition imports MIDI: the only `.mid` sites under `native/Source` are the two *export* doors
+  (`SequencerPanel.cpp:933`, `:951`), the editor's drop gate accepts audio extensions only
+  (`PluginEditor.cpp:407-413`, so a dropped `.mid` is declined rather than half-read), and the web edition's MIDI is
+  a WebMIDI device with no file reader. "5 min of **audio**" therefore binds on the recorded take, which was 120 s;
+  the file doors were already at 600 s. What was reviewed is the real path the words describe - import → AUTO SLICE →
+  pads → sequencer/MIDI out - and this section is explicit that no MIDI ingest exists to review.
+
+- **One statement per edition.** `native/Source/Engine/ImportLimits.h` (new) holds `kMaxTakeSeconds = 300.0` (`:17`),
+  `kMaxFileSeconds = 600.0` (`:21`), `kMaxRecordBytes = 256 * 1024 * 1024` (`:28`) and the three capacity functions
+  (`:31`, `:41`, `:47`); `src/lib/importLimits.ts` (new) holds the browser's four numbers and `takeIsFull`. Before
+  this, the native take was `currentSampleRate * 120.0` samples under a 48 MiB ceiling while the native file cut at
+  `48000.0 * 60.0 * 10.0` samples whatever its rate was, and the browser spread the same policy over three files as
+  five literals - `elapsed >= 120` and "Up to 2 minutes" in `RecordModal.tsx`, "up to 2 minutes" in `HelpModal.tsx`,
+  and `160 * 1024 * 1024`, `10 * 60` and `0.05` in `audioFiles.ts`. Every door now calls one of two functions: the
+  take at `PluginProcessor.cpp:983`, the file at `SampleData.cpp:61-62`, and both browser refusals build their
+  message out of the constants - same words as before, now derived: the 160 MB and 10-minute texts the suite quotes.
+
+- **The trap, and why the byte clamp had to move with the seconds.** The promise is a duration; a duration at a
+  sample rate is a byte count. Raising the take to 300 s and leaving the 48 MiB clamp would have *shortened* the
+  take it promises to lengthen: measured under that mutation (red leg 2 below) the take stopped at 131.07 s at
+  48 kHz, 32.8 s at 192 kHz, and every rate in between was the clamp rather than the promise. At the chosen
+  256 MiB the duration binds first at every rate a drum instrument runs at - 300 s at 96 kHz is 28,800,000 frames,
+  inside the clamp - and only 192 kHz sees the clamp, where five minutes would be 460 MB behind a REC button. The
+  button states what actually applies there: `getRecordingLimitSeconds()` (`PluginProcessor.cpp:998`,
+  `PluginProcessor.h:124`) feeds the tooltip at `SourcePanel.cpp:111-114`, so 192 kHz reads 175 s, not "5 minutes".
+
+- **Two latent defects the subsystem was carrying.** The web record readout counted seconds past 59 - it printed
+  `00:119.9` for 1 minute 59, because `formatTimer` was written against the two-minute cap (`RecordModal.tsx:334-341`
+  now rolls the minutes field). And the slicer's ceiling existed twice in one file: `MAX_SLICES` was imported and
+  unused while the detector's own break said `64` (`src/audio/slicer.ts:9`, `:79`).
+
+- **The smoke suite was dying before any assertion could fail, and no log had recorded it.** `SliceForgeSmokeTest.exe`
+  exited `0xC00000FD` - STATUS_STACK_OVERFLOW - inside the Step-27/28 migration block. The death was first mislocated
+  three hundred lines earlier because stdout is a 4 KB full buffer on Windows, so the log ended at a buffer boundary;
+  flushing per check moved the truth, and a stack census then measured **1,004,448 bytes consumed at the suite's first
+  check** against the 1,048,576-byte reserve the PE header declares. The harness is one 2,950-line `main()` that holds
+  its engine objects by value - 21 processors at 16,240 B each, 11 `SeqBlockOutput` at 10,264 B, a `SeqPattern` at
+  24,672 B - and MSVC gives each block its own slot, so the frame is ~1 MB before any of it runs. That is a property of
+  the harness, not of the engine, so the fix is split: the smoke exe links `/STACK:16777216` (`CMakeLists.txt:144-151`,
+  MSVC-only) and the two production sites that put a 96 KB `SequencerData` on a *host* thread's stack moved to the heap
+  (`Sequencer.cpp:848` in `serialisePattern`, `SequencerPanel.cpp:972` in `writeMidiToFile`). `make_shared` value-
+  initialises exactly as the locals did - every `SequencerData` member has a default initialiser - so the bytes a
+  `.vracpattern` carries are unchanged, and the suite proves it. The per-check flush stays with the reason attached.
+
+- **A new gate that read the wrong bytes, caught by itself.** The disk round-trip block (`SmokeTest.cpp:1918-1974`)
+  writes the clip the way the UI does and reads it back the way a host does. Its first draft parsed MThd bytes 10..11
+  as the tick unit and printed `[1]`: in a 4-byte-tag header those bytes are the *track count* (0..3 "MThd", 4..7
+  header length, 8..9 format, 10..11 tracks, 12..13 time format - `juce_MidiFile.cpp:498-503`). The division is now
+  read at 12..13. `juce::MidiFile` has a `setTicksPerQuarterNote` and no getter, which is why the check reads the
+  file's own bytes at all: that is stronger than asking the object what it thinks it wrote.
+
+- **Gates, and the red legs that measure them.** Green: native smoke **206/206** (`final-smoke.log`, exit 0), ctest
+  **3/3**, `npm run build` exit 0 (the only type gate - it is what caught this test's `node:fs` import; the header is
+  now read with Vite's `?raw`), vitest **53/53**, and the browser suite **27/27** against a real Chrome with fake
+  media/MIDI devices - which is the gate that actually walks both import doors (`setInputFiles` then decode+slice, and
+  record → take → source) and ends with `no page errors` / `no console errors`. Two mutations of `ImportLimits.h`, each restored and the restore
+  proven by `sha256sum 0539080bba11e2f1a6efecc1098861a58597e8e673d95600c685b25b06c270cc` equality:
+  - `kMaxTakeSeconds = 120.0` → native 7 FAILs (four rate capacities, `the take promise is what the clamp allows`,
+    `a rate the host has not given is the promise`, `REC offers five minutes at this rate [120]`), 0 file-door FAILs;
+    web 1 FAIL - `match the native edition, ceiling for ceiling`, the cross-language gate doing its one job.
+  - `kMaxRecordBytes = 48 MiB` → native 6 FAILs (three capacities, `the byte clamp binds at 192 kHz [32.8 s]`, the
+    promise-vs-clamp equality, `REC offers five minutes at this rate [131.072]`), and the by-construction green legs
+    stayed green: `a rate the host has not given is the promise` (no clamp to bite) and both ten-minute file checks.
+    Web 1 FAIL - `leaves the native byte clamp wider than five minutes at 96 kHz`, which is the arithmetic that the
+    owner's "up to 5 min" request silently breaks if the clamp is not moved.
+
+- **Tuple after the re-export, and what the archive proves.** `launch` target exit 0 with `SliceForge.exe` not running.
+  The module is one artifact at three addresses: build `e3346f4dbc2a0273eab184ef717601162ea31962dd37db90958aaf3d600afb31`
+  == `launch/SliceForge.vst3/Contents/x86_64-win/SliceForge.vst3` == the same member extracted from the zip.
+  `launch/SliceForge.exe` `b3537ecadaae81d3fdf59f209989fcf5957ce5d4ab0d9b4757bcb1202b7f4c69` == the zip's member;
+  `start.ps1` `c9000294ffe22b007bca2bc4f574f9d800dbc1abdbc082cfb8c1f8286397c70f` == the zip's member; and because
+  `native/README.md` is one of the six text files a customer receives, so its tree bytes
+  `241f137990325e409a8775e4854b175a5988cff6613ec54b9e4d95d451c3d615` are the member's - the five-minute REC text
+  ships. The archive is 27.3 MB, `f6e0e29b3c6c44bef1f7281845eabf75ddcd8295da298800f53cd47edd4e33dc`,
+  17 members, `unzip -t` exit 0, and - re-checked here because §8L recorded a backslash defect - **0 of 17 member
+  names contain `\`** (read with `System.IO.Compression`, not `grep`, which mangles the pattern under Git Bash).
+  A second `launch` export after the doc edits produced the *same* zip hash and the same module hash, and
+  `SliceForgeSmokeTest.exe` is byte-identical before and after (`057d32073601bc9765d9e699ba10051dc97e97d15e03760ceb5fee0a7179fd67`),
+  so the binary that printed 206/206 is the binary still in the tree. The stamp census backs the green:
+  `ImportLimits.h` restored 00:44:46, `SampleData.obj` 00:46:15, `SmokeTest.obj` 00:46:37, exe 00:46:41.
+
+- **Still open, and not code.** The install into `%ProgramFiles%\Common Files\VST3` and the push are owner actions;
+  the installed module is still the pre-§8M build, so no green test in this section describes what his DAW loads.
+  Ableton acceptance remains the gate nothing here substitutes for. One drift is named, not fixed: an over-length
+  file is **truncated** by the native door and **refused** with a message by the browser door. Both are defensible
+  and they are not the same product behavior; choosing between them is an owner call, and §8M's numbers do not
+  depend on which way it goes.

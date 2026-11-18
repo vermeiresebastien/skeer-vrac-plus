@@ -197,3 +197,29 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
   (plus its `SliceForge_resources.res`) before it reaches the module: the build right after such an edit
   exits 0 and ships the old resource. `LegalCopyright` is the `COMPANY_COPYRIGHT` argument
   (`native/CMakeLists.txt:105`); an empty value omits the field from the .rc entirely.
+- The archive is written with a pinned entry clock: one `DateTimeOffset(1980, 1, 1, 0, 0, 0, local base offset)`
+  stamped on all 17 members before `entry.Open()` (`native/package-launch.ps1:201-218`), because an unpinned
+  clock made every export a different ~28 MB tracked blob for identical payload. The cost of pinning is that
+  every extracted file is dated 1980-01-01 and `Copy-Item` carries that date onto the install, so
+  `Install-Vst3Bundle` restamps the landed bundle *after* both hash checks (`launch/start.ps1:156-163`): a host
+  that decides whether to re-read a cached plug-in from the file's mtime must see a new build as new. Never move
+  that restamp above the checks — bytes are the proof, the date is only a scan cue — and never extend it outside
+  the scan folder: files in the user's own download folder are not ours to redate.
+
+## Import ceilings are one number per edition
+
+`native/Source/Engine/ImportLimits.h` and `src/lib/importLimits.ts` are the only places the take length (300 s), the
+file length (600 s) and the browser byte cap are stated. Change them there and nowhere else: every door calls the
+capacity function or imports the constant (`PluginProcessor::toggleRecording`, `SampleData.cpp`'s `decodeReader`,
+`src/lib/audioFiles.ts`, `RecordModal.tsx`), and `src/lib/__tests__/importLimits.test.ts` parses the C++ header — so a
+native-only edit reddens `npm test`. The byte clamp is not a second promise, it is what stops a duration becoming a
+giant allocation, so raising the seconds while leaving the clamp *shortens* the take (48 MiB with a 300 s promise is
+131 s at 48 kHz and 33 s at 192 kHz). At 192 kHz the clamp does bind, and the REC tooltip states what that rate
+actually allows; keep the tooltip honest instead of printing "5 minutes".
+
+`SliceForgeSmokeTest` links `/STACK:16777216` (`native/CMakeLists.txt:144-151`). Its `main()` holds roughly 1 MB of
+engine objects by value in one frame — 21 processors at 16,240 B, 11 `SeqBlockOutput` at 10,264 B — so an exit of
+`0xC00000FD` is the harness frame, not the engine; check the frame before suspecting a change. Production threads are
+the ones that must not carry a 96 KB `SequencerData` on the stack: `serialisePattern` and
+`SequencerPanel::writeMidiToFile` are heap copies for that reason. The suite flushes stdout inside `check()` because a
+4 KB full buffer truncates a crashing run at a buffer boundary and names a check that never ran as the last one.

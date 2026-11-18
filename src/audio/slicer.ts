@@ -6,7 +6,7 @@
  * fixed threshold. The result is a list of times in seconds, ascending. */
 
 import type { PadParams } from '../types';
-import { PAD_COUNT, clamp } from '../types';
+import { MAX_SLICES, PAD_COUNT, clamp } from '../types';
 
 export interface Slice {
   time: number;
@@ -76,7 +76,7 @@ export function detectSlices(
   const chosen: number[] = [];
   const minGapHops = minGap * (sampleRate / HOP);
   for (const c of candidates) {
-    if (chosen.length >= Math.min(target, 64)) break;
+    if (chosen.length >= Math.min(target, MAX_SLICES)) break;
     const h = c.index;
     let conflict = false;
     for (const other of chosen) {

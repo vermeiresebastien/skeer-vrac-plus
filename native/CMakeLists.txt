@@ -141,6 +141,14 @@ target_include_directories(SliceForgeSmokeTest PRIVATE Source)
 target_compile_definitions(SliceForgeSmokeTest PUBLIC ${SLICEFORGE_DEFINES})
 juce_generate_juce_header(SliceForgeSmokeTest)
 target_link_libraries(SliceForgeSmokeTest PRIVATE SliceForgeAssets juce::juce_audio_utils juce::juce_dsp PUBLIC juce::juce_recommended_config_flags juce::juce_recommended_warning_flags)
+if (MSVC)
+    # The suite holds its engine objects by value inside one main(): measured 1,004,448 bytes of
+    # stack already consumed at the FIRST check against the 1,048,576-byte reserve this exe linked
+    # with, so the newest block overflowed it (0xC00000FD) before any assertion could fail. The
+    # frame is a property of a 2,950-line harness, not of the engine; the product threads are the
+    # ones that must not carry a 96 KB SequencerData, and they no longer do.
+    target_link_options(SliceForgeSmokeTest PRIVATE "/STACK:16777216")
+endif()
 
 juce_add_console_app(SliceForgeLayoutTest PRODUCT_NAME "SliceForgeLayoutTest")
 target_sources(SliceForgeLayoutTest PRIVATE ${SLICEFORGE_SOURCES} Tests/LayoutTest.cpp)

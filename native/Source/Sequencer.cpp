@@ -842,10 +842,13 @@ namespace sliceforge
 
     juce::MemoryBlock serialisePattern (const SeqPattern& pattern)
     {
-        SequencerData wrapper;
-        wrapper.patterns[0] = pattern;
-        wrapper.activePattern = 0;
-        return serialiseSequencer (wrapper);
+        // Heap: a SequencerData is 96 KB and this runs on the message thread, whose stack is the
+        // host's. make_shared default-initialises, exactly as the stack local did, so the bytes a
+        // .vracpattern carries are unchanged.
+        auto wrapper = std::make_shared<SequencerData>();
+        wrapper->patterns[0] = pattern;
+        wrapper->activePattern = 0;
+        return serialiseSequencer (*wrapper);
     }
 
     std::shared_ptr<SeqPattern> deserialisePattern (const juce::MemoryBlock& data)

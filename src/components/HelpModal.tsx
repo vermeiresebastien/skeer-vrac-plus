@@ -1,6 +1,7 @@
 import { useState } from 'react';
 import { Modal } from './Modal';
 import { Icon } from './Icons';
+import { MAX_TAKE_SECONDS } from '../lib/importLimits';
 
 export function HelpModal({ open, onClose }: { open: boolean; onClose: () => void }) {
   const [tab, setTab] = useState<'load' | 'shape' | 'mix' | 'keys'>('load');
@@ -52,7 +53,7 @@ export function HelpModal({ open, onClose }: { open: boolean; onClose: () => voi
             <div>
               <Icon name="record" />
               <strong>RECORD IN</strong>
-              <p>Open REC to capture an input for up to two minutes. Nothing leaves your machine.</p>
+              <p>Open REC to capture an input for up to {MAX_TAKE_SECONDS / 60} minutes. Nothing leaves your machine.</p>
             </div>
             <div>
               <Icon name="folder" />

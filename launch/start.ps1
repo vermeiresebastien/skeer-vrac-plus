@@ -153,6 +153,14 @@ function Install-Vst3Bundle([string]$SourceBundle, [string]$Destination) {
     if (-not (Test-SameBundle $wanted (Get-BundleHashMap $dest))) {
         throw "the bundle in $dest does not match the one that was staged"
     }
+    # The package pins its DOS entry clock so a re-export of an unchanged build is byte-identical, and
+    # the cost of that is measured here: all 17 members of the shipped archive unpack dated 1980-01-01,
+    # and Copy-Item carries that date onto every installed file. A host that decides whether to re-read a
+    # cached plug-in from the file's modification time would see a new build as no change at all, so what
+    # lands in a scan folder is stamped now. This runs after the hash check on purpose: the bytes are the
+    # proof of what was installed, and the date is only a scan cue for the host.
+    $installedAt = Get-Date
+    Get-ChildItem -LiteralPath $dest -Recurse -File -Force | ForEach-Object { $_.LastWriteTime = $installedAt }
     return $wanted
 }
 

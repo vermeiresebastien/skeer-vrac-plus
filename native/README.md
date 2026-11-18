@@ -241,9 +241,11 @@ a wall-clock bound that measured the machine rather than the engine.
   anywhere onto the plugin window.
 - **LIBRARY** — six embedded factory worlds: Foley Trash, Night Kitchen, Body Talk, Iron Works,
   Short Circuit and Dust Loop.
-- **REC** — records the optional sidechain input bus (up to two minutes at 48 kHz; the cap is a
-  48 MB stereo buffer). Enable the sidechain input bus in your host to use this. Stop recording
-  and the take is adopted automatically as the new source.
+- **REC** — records the optional sidechain input bus for up to five minutes of audio. The buffer is
+  also capped at 256 MB, so at 192 kHz the take stops at 175 seconds instead; the button's tooltip
+  states the limit that actually applies at the host's current sample rate. Enable the sidechain
+  input bus in your host to use this. Stop recording and the take is adopted automatically as the
+  new source.
 - Waveform — drag the orange marker to set the selected pad's start position.
 - **AUTO SLICE** — transient detection sensitivity. **HITS** shows the detected count.
 - **< > RND** — step to the previous, next or a random detected hit.

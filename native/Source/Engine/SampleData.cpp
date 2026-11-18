@@ -57,7 +57,9 @@ namespace sliceforge
         {
             if (reader == nullptr || reader->lengthInSamples <= 0)
                 return {};
-            const auto numSamples = (int) juce::jmin (reader->lengthInSamples, (juce::int64) (48000.0 * 60.0 * 10.0));
+            // The file door: kMaxFileSeconds of audio, measured at the file's own rate.
+            const auto numSamples = (int) juce::jmin (reader->lengthInSamples,
+                                                      (juce::int64) fileCapacitySamples (reader->sampleRate));
             const auto numChannels = juce::jlimit (1, 2, (int) reader->numChannels);
             auto data = std::make_shared<SampleData>();
             data->name = name;

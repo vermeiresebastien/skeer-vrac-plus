@@ -109,7 +109,8 @@ namespace sliceforge::ui
             styleChip (recordButton, false);
             recordButton.setEnabled (inputActive);
             recordButton.setTooltip (inputActive
-                                         ? "Record the sidechain input as a new source"
+                                         ? "Record the sidechain input as a new source - up to "
+                                           + formatTime (processorRef.getRecordingLimitSeconds(), false)
                                          : "Enable the sidechain input bus in your host to record");
         }
         discardTakeButton.setVisible (takeReady);

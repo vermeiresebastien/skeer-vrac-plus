@@ -198,6 +198,8 @@ try {
             $members += @{ Name = ('SliceForge.vst3/' + $rel); Path = $_.FullName }
         }
         $zipFs = [System.IO.File]::Open($ZipStaging, [System.IO.FileMode]::Create)
+        $ZipFixedStamp = New-Object System.DateTimeOffset(1980, 1, 1, 0, 0, 0,
+            [System.TimeZoneInfo]::Local.BaseUtcOffset)
         try {
             $archiveWriter = New-Object System.IO.Compression.ZipArchive(
                 $zipFs, [System.IO.Compression.ZipArchiveMode]::Create)
@@ -205,6 +207,15 @@ try {
                 foreach ($member in $members) {
                     $entry = $archiveWriter.CreateEntry($member.Name,
                         [System.IO.Compression.CompressionLevel]::Optimal)
+                    # Pinned, not left to the clock. DOS stores wall-clock local time with no zone and
+                    # no sub-second resolution, so an unpinned entry made every export a different
+                    # archive: §8J measured the 68 differing bytes of an otherwise identical re-export
+                    # as 34 runs of 2 - the local headers and central records of the members. `launch/`
+                    # is tracked, so those 68 bytes cost a fresh ~28 MB blob per export. Constructing the
+                    # offset from THIS machine's base offset is what makes the pinned value zone-proof:
+                    # the stored wall clock is 1980-01-01 00:00:00 wherever the export runs, so a CI
+                    # runner in any timezone writes the same bytes as this one.
+                    $entry.LastWriteTime = $ZipFixedStamp
                     $src = [System.IO.File]::OpenRead($member.Path)
                     try {
                         $dst = $entry.Open()

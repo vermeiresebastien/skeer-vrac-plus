@@ -966,12 +966,15 @@ namespace sliceforge::ui
         if (data == nullptr || ! file.getFullPathName().isNotEmpty())
             return;
         auto target = file.hasFileExtension ("mid") ? file : file.withFileExtension ("mid");
-        auto exportData = *data;
+        // Heap, not stack: a SequencerData is 96 KB and this runs on the message thread, whose
+        // stack is the host's. The copy itself is what the render path's parameter has to be
+        // folded into, so it stays a copy rather than a reference to the live document.
+        auto exportData = std::make_shared<sliceforge::SequencerData> (*data);
         // The parameter is what the render path plays, so it is what the file has to describe.
-        exportData.activePattern = processorRef.getPatternParameter();
-        if (exportData.hostSync)
-            exportData.bpm = processorRef.getSequencerHostBpm();
-        const auto block = sliceforge::makePatternMidiFile (exportData);
+        exportData->activePattern = processorRef.getPatternParameter();
+        if (exportData->hostSync)
+            exportData->bpm = processorRef.getSequencerHostBpm();
+        const auto block = sliceforge::makePatternMidiFile (*exportData);
         if (! target.replaceWithData (block.getData(), block.getSize()))
             juce::AlertWindow::showMessageBoxAsync (juce::MessageBoxIconType::WarningIcon,
                                                     "SliceForge MIDI",

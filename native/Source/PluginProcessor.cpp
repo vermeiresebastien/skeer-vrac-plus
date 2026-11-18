@@ -6,8 +6,6 @@
 
 namespace
 {
-    constexpr int kMaxRecordBytes = 48 * 1024 * 1024;
-
     /*  How long a live MIDI-out gate stays down, in samples.
 
         The exporter has the other seam for this: a gate in *ticks* (Sequencer.cpp's addNote), because
@@ -980,9 +978,9 @@ void SliceForgeAudioProcessor::toggleRecording()
         return;
     }
 
-    const auto maxSamples = juce::jmax (1, kMaxRecordBytes / (2 * (int) sizeof (float)));
-    const auto wanted = juce::jmax (1, (int) std::round (currentSampleRate * 120.0));
-    recordBuffer.setSize (2, juce::jmin (maxSamples, wanted), false, true, false);
+    // One call, two ceilings: see Engine/ImportLimits.h for why the byte clamp has to move with
+    // the promised duration rather than quietly cutting the take short.
+    recordBuffer.setSize (2, sliceforge::takeCapacitySamples (currentSampleRate), false, true, false);
     recordBuffer.clear();
     recordedSamples.store (0, std::memory_order_relaxed);
     recordingTakeReady.store (false, std::memory_order_relaxed);
@@ -995,6 +993,11 @@ void SliceForgeAudioProcessor::toggleRecording()
 double SliceForgeAudioProcessor::getRecordingSeconds() const
 {
     return recordSampleRate > 0 ? (double) recordedSamples.load (std::memory_order_relaxed) / (double) recordSampleRate : 0.0;
+}
+
+double SliceForgeAudioProcessor::getRecordingLimitSeconds() const noexcept
+{
+    return sliceforge::takeCapacitySeconds (currentSampleRate);
 }
 
 void SliceForgeAudioProcessor::adoptRecordingTake()

@@ -45,6 +45,10 @@ namespace
             std::cout << '\n';
             ++failures;
         }
+        // Not line-buffered enough: Windows gives stdout a 4 KB full buffer, so a run that dies
+        // mid-suite truncates at a buffer boundary and names a check that never ran as the last
+        // one. The flush makes the final line of the log the truth about where it ended.
+        std::cout.flush();
     }
 
     void setParam (SliceForgeAudioProcessor& processor, const juce::String& id, float value)
@@ -1911,6 +1915,64 @@ int main()
                    "exported MIDI file can be parsed again");
         }
 
+        /*  The clip a host imports is the one on disk, not the one in memory. Every check above
+            parses the bytes makePatternMidiFile returned, while the two doors a user can reach -
+            SequencerPanel::exportMidiFile and dragMidiFile - hand a .mid file to the world through
+            replaceWithData. So write it the way the UI does and read it back the way a host does,
+            then require the clip a host would actually play: the same bytes, the same one hit, the
+            plugin's tempo and the pass caption. A truncated write or a meta event that does not
+            survive the file is invisible to every in-memory check. */
+        {
+            auto onDisk = *makeFeatureSequence();
+            auto& firstHit = onDisk.patterns[0].rows[0][0];
+            firstHit.on = true;
+            firstHit.velocity = 0.75f;
+            const auto midi = sliceforge::makePatternMidiFile (onDisk, 3);
+            const auto clipFile = juce::File (juce::File::getSpecialLocation (juce::File::tempDirectory)
+                                                 .getChildFile ("SliceForgeSmfRoundTrip.mid"));
+            clipFile.deleteFile();
+            check (clipFile.replaceWithData (midi.getData(), midi.getSize()), "the clip writes to a file");
+            juce::MemoryBlock fromDisk;
+            check (clipFile.loadFileAsData (fromDisk) && fromDisk == midi,
+                   "the file holds every byte the exporter produced",
+                   juce::String ((juce::int64) fromDisk.getSize()));
+            juce::MemoryInputStream stream (fromDisk.getData(), fromDisk.getSize(), false);
+            juce::MidiFile imported;
+            check (imported.readFrom (stream) && imported.getNumTracks() == 1,
+                   "a host can parse the file as one track");
+            // MidiFile has no getter for the header's division, so read the two big-endian bytes
+            // a host reads. In the 4-byte-tag header they are at 12..13: 0..3 "MThd", 4..7 the
+            // header length, 8..9 the format, 10..11 the track count and 12..13 the time format
+            // (juce_MidiFile.cpp:498-503). Reading 10..11 here asserted the track count, not the
+            // unit - which is exactly why it came back 1.
+            const auto* header = static_cast<const juce::uint8*> (fromDisk.getData());
+            const auto division = fromDisk.getSize() >= 14 ? ((header[12] << 8) | header[13]) : -1;
+            check (division == 960, "the clip states its tick unit", juce::String (division));
+            double tempoSeconds = 0.0;
+            juce::String caption;
+            juce::String hits;
+            int notes = 0;
+            if (auto* track = imported.getTrack (0))
+                for (int i = 0; i < track->getNumEvents(); ++i)
+                {
+                    const auto& message = track->getEventPointer (i)->message;
+                    if (message.isTempoMetaEvent())
+                        tempoSeconds = message.getTempoSecondsPerQuarterNote();
+                    else if (message.isTrackNameEvent())
+                        caption = message.getTextFromTextMetaEvent();
+                    else if (message.isNoteOn())
+                    {
+                        hits << (int) std::llround (message.getTimeStamp()) << ':' << message.getNoteNumber()
+                             << ':' << message.getChannel() << ':' << (int) message.getVelocity() << ' ';
+                        ++notes;
+                    }
+                }
+            check (notes == 1 && hits == "0:36:10:95 ", "the file carries the one hit the pattern had", hits);
+            check (tempoSeconds == 0.5, "the clip carries the plugin tempo", juce::String (tempoSeconds));
+            check (caption.contains ("pass 3"), "the clip says which probability pass it is", caption);
+            clipFile.deleteFile();
+        }
+
         {
             /*  Step 27: the printed clip has to be the pattern you heard.
 
@@ -2344,6 +2406,26 @@ int main()
         }
     }
 
+    /*  How much audio an import may hold. Engine/ImportLimits.h is the one statement of it and
+        both doors read it, so these are the numbers the READMEs promise out loud - and the reason
+        the byte clamp lives beside the seconds instead of in another file: raising the duration
+        alone would have *shortened* a 44.1 kHz take from 120 s to 62 s, quietly. */
+    {
+        check (sliceforge::takeCapacitySamples (48000.0) == 14400000, "a take holds five minutes at 48 kHz");
+        check (sliceforge::takeCapacitySamples (44100.0) == 13230000, "a take holds five minutes at 44.1 kHz");
+        check (sliceforge::takeCapacitySamples (96000.0) == 28800000, "a take holds five minutes at 96 kHz");
+        // Above 96 kHz the clamp, not the promise, is the ceiling: 256 MB of stereo float32 is
+        // 174 s at 192 kHz, and the instrument does not reserve 460 MB behind a button press.
+        check (sliceforge::takeCapacitySamples (192000.0) == 33554432, "the byte clamp binds at 192 kHz",
+               juce::String (sliceforge::takeCapacitySeconds (192000.0), 1) + " s");
+        check (sliceforge::takeCapacitySeconds (48000.0) == 300.0, "the take promise is what the clamp allows");
+        check (sliceforge::takeCapacitySeconds (0.0) == 300.0, "a rate the host has not given is the promise");
+        check (sliceforge::fileCapacitySamples (48000.0) == 28800000, "a file import holds ten minutes at 48 kHz");
+        // The old cap counted 48 kHz samples whatever the file's rate was, so at 44.1 kHz it let
+        // through 10.9 minutes. Measuring the promise in seconds makes it ten minutes everywhere.
+        check (sliceforge::fileCapacitySamples (44100.0) == 26460000, "a file import is timed at its own rate");
+    }
+
     // Sidechain recording.
     {
         SliceForgeAudioProcessor recorder;
@@ -2373,17 +2455,23 @@ int main()
             recorder.processBlock (buffer, midi);
         }
         check (recorder.isRecordingTakeReady(), "recording take is ready");
+        // 24 blocks of 512 at the 48 kHz this processor was prepared with: the ceiling is nowhere
+        // near binding, so anything but the exact count is the buffer being mis-sized.
+        check (recorder.getRecordingLimitSeconds() == 300.0, "REC offers five minutes at this rate",
+               juce::String (recorder.getRecordingLimitSeconds()));
         recorder.adoptRecordingTake();
         check (recorder.getSourceName() == "RECORDED INPUT", "recorded take becomes the source");
-        check (recorder.getSamplePtr() != nullptr && recorder.getSamplePtr()->getDurationSeconds() > 0.15,
-               "recorded sample has the expected length");
+        const auto takeSamples = recorder.getSamplePtr() != nullptr ? recorder.getSamplePtr()->getNumSamples() : -1;
+        check (takeSamples == 24 * 512, "recorded take keeps every block it was given",
+               juce::String (takeSamples) + " samples");
         juce::MemoryBlock customState;
         recorder.getStateInformation (customState);
         SliceForgeAudioProcessor restored;
         restored.setStateInformation (customState.getData(), (int) customState.getSize());
         check (restored.getSourceName() == "RECORDED INPUT", "custom sample survives state round trip");
-        check (restored.getSamplePtr() != nullptr && restored.getSamplePtr()->getDurationSeconds() > 0.15,
-               "custom sample audio survives state round trip");
+        const auto restoredSamples = restored.getSamplePtr() != nullptr ? restored.getSamplePtr()->getNumSamples() : -1;
+        check (restoredSamples == 24 * 512, "custom sample audio survives state round trip",
+               juce::String (restoredSamples) + " samples");
     }
 
     // Vault audition: deterministic decode, one-shot end, loop wrap, rate conversion, the
