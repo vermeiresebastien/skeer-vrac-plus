@@ -269,9 +269,18 @@ commercial packs) cannot be added to the committed table without publishing deri
 audio into a public repo — decide that before rendering, not after. Tier 1 is therefore synthetic and
 byte-reproducible: `node fixtures/tools/synth-takes.cjs --check` re-renders both wavs and both marks
 files and exits non-zero on any drift, which is the same standard `marks-src/*.mid` holds a rendered
-take to. Second, `capped` is a per-take rule and must stay that way. A take denser than the 17 slices
-`targetAt` asks for at 0.20 is a normal drum line, and gating per row would have banned eight of the nine takes the
-plan intends to render; what reddens, and what `--bless-slicer-baseline` refuses with the same words so
-it cannot be stepped around, is a take no sensitivity in the grid covers (`refN > 49` — which is why
-`hat-16th`, at 51 notes, has to be thinned before it can ever be a fixture). Read a capped row as the
-ceiling, never as a miss: the log names every one of them.
+take to; `python fixtures/tools/make-takes.py --check` holds the nine authored grids to it, and its
+`--publish` refuses to write a marks file for a take whose wav is not on disk. Both checks compare the
+binary payload byte-exact and the LF text payload after undoing one thing: `core.autocrlf=true` with no
+`.gitattributes` hands a fresh checkout those same JSON files with CRLF pairs (measured with
+`git checkout-index`), so a byte-exact text comparison describes this worktree, not the repo. Second,
+`capped` is a per-take rule and must stay that way. A take denser than the 17 slices
+`targetAt` asks for at 0.20 is a normal drum line, and gating per row would have banned most of the
+corpus; what reddens, and what `--bless-slicer-baseline` refuses with the same words so
+it cannot be stepped around, is a take no sensitivity in the grid covers (`refN > 49`). Measured off the
+nine authored tier-2 grids (`python fixtures/tools/make-takes.py --check` prints them): reference counts
+9, 16, 20, 32, 32, 32, 34, 34 and 48 — seven are capped at 0.20, none is uncoverable, none needs thinning.
+Count the onsets, not the notes: `hat-16th` is 51 notes but 48 references, because two instruments struck
+on one beat are one onset to a detector. `48` against a ceiling of `49` is admissible by one slice, so a
+future cut to `kTargetSpan` or `kMaxSlices` reddens that take by name — which is the gate working. Read a
+capped row as the ceiling, never as a miss: the log names every one of them.

@@ -120,9 +120,14 @@ for (const take of takes)
     {
         const onDisk = fs.readFileSync (wavPath);
         const same = onDisk.equals (bytes);
-        const marksSame = fs.readFileSync (marksPath, 'utf8') === body;
-        console.log (`${same && marksSame ? 'ok  ' : 'DIFF'} ${take.name}.wav sha256 ${digest.slice (0, 16)} bytes ${bytes.length} marks ${marksSame ? 'match' : 'differ'}`);
-        if (! same || ! marksSame)
+        // The wav is binary to Git, so its bytes are the bytes a clone gets. The marks file is LF text
+        // with no .gitattributes, and core.autocrlf=true hands a checkout the same file with CRLF pairs -
+        // so that one translation is admitted, named in the output, and nothing else is.
+        const raw = fs.readFileSync (marksPath, 'utf8');
+        const marksSame = raw === body ? 'exact'
+                        : (raw.replace (/\r\n/g, '\n') === body ? 'crlf-checkout' : 'differ');
+        console.log (`${same && marksSame !== 'differ' ? 'ok  ' : 'DIFF'} ${take.name}.wav sha256 ${digest.slice (0, 16)} bytes ${bytes.length} marks ${marksSame}`);
+        if (! same || marksSame === 'differ')
             ++bad;
         continue;
     }

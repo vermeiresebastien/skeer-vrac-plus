@@ -238,7 +238,7 @@ plan and missed this file, which is the sweep defect recorded in `docs/next-step
 groove bank then moved the total again, and the arithmetic reconciles both stamps:
 **217 − 2 + 22 = 237**, and the slicer scorer then made it **237 + 21 = 258** - eight checks on the
 fixture state (directory, marks, baseline presence, readability, the tuning it was blessed under,
-inventory parity, the band, and no capped row) plus eleven controls that score the scorer itself. The
+inventory parity, the band, and every take coverable by some sensitivity in the grid) plus thirteen controls that score the scorer itself. The
 twenty-one do not vary with how many takes are on disk, so adding the ninth rendered take does not
 restamp this number. The two that went were the checks on the six-preset `PatternPreset` API that the
 sixty-row bank replaced; the twenty-two come from nineteen check sites in `Tests/GrooveBankTest.cpp`,
@@ -285,13 +285,23 @@ The detector used to be judged by ear, and the only number attached to it was a 
   because a capped recall is the ceiling being read, not the detector missing.
 - **Current state.** The committed corpus is tier 1: two synthetic takes (`synth-clean`, twelve hits
   at 500 ms; `synth-16ths`, thirty hits at 200 ms) and their six blessed rows. Both wavs and both
-  marks files are re-derived byte for byte by `node fixtures/tools/synth-takes.cjs --check`, which is
-  the synthetic answer to the same question `marks-src/*.mid` answers for a rendered take: the bytes
-  have to be reproducible from something in the repo, not asserted by whoever made them.
+  marks files are re-derived by `node fixtures/tools/synth-takes.cjs --check`, which is the synthetic
+  answer to the same question `marks-src/*.mid` answers for a rendered take: the bytes have to be
+  reproducible from something in the repo, not asserted by whoever made them. The wavs and the `.mid`
+  files are binary to Git and compare byte for byte; the JSON payloads compare after one translation is
+  undone, because `core.autocrlf=true` with no `.gitattributes` gives a fresh checkout CRLF line pairs
+  in them (`--check` prints how many files needed it, so a clone is not mistaken for drift).
   Tier 2 - the renders out of real kits - is still owed, and it is now a publishing decision rather
   than a chore: a marks file whose wav is missing is a named red, so committing a reference means
   committing that audio, and the audio of a commercial pack is derivative third-party material in a
   public repo. Either the wavs ship, or those takes stay out of the committed table.
+  The authorship half of tier 2 is already committed: `fixtures/tools/make-takes.py` writes the nine
+  note grids (`fixtures/tools/notes/*.notes.json`, what gets drawn into the DAW clip) and their nine
+  `fixtures/marks-src/*.mid` sidecars, and `python fixtures/tools/make-takes.py --check` re-derives all
+  eighteen under the same rule as above (the nine `.mid` files byte for byte, the nine JSON grids after
+  the checkout's CRLF is undone). Their marks JSONs are deliberately not on disk - `--publish` refuses to write
+  one for a take whose wav is missing, so the red that would come from a reference without audio cannot
+  be authored in by accident.
   The twenty-one slicer checks in the total are eight fixture-state gates and thirteen controls;
   each of the ones that guard something was driven red on purpose, and the two new ones are reported
   in `docs/next-steps-plan.md` 8Q with the log they came from.

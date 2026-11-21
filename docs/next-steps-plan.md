@@ -3074,13 +3074,18 @@ was eight greens that had nothing to compare.
   and the two wav digests it prints are the blob digests above, so the audio is reproducible from the
   repo rather than asserted by whoever generated it.
 - **One rule changed, on purpose.** `capped` used to be a per-row failure in both the check and the
-  bless. Measured against the plan's own material that rule bans the corpus: of the nine authored
-  patterns the note counts are 9, 18, 20, 32, 32, 36, 44, 44 and 51 against a 0.20 ceiling of 17 slices,
-  so eight of nine would have been refused for being dense. The gate is now per take - `uncoverableTakes`
+  bless. Measured against the plan's own material that rule bans most of the corpus: of the nine authored
+  patterns the *reference* counts are 9, 16, 20, 32, 32, 32, 34, 34 and 48 against a 0.20 ceiling of 17 slices,
+  so seven of nine would have been refused for being dense. The gate is now per take - `uncoverableTakes`
   in `SlicerScoreTest.cpp` (blob `4a0bd20fafe1ba05`), called by the check *and* by `writeSlicerBaseline`
   so blessing cannot step around it - and a capped row is logged by name as a ceiling rather than a miss.
-  `hat-16th`, at 51 events, is still beyond every knob and must be thinned before it can be a fixture;
-  finding that out before a render session is the point of writing the generator first.
+  No take is uncoverable: the densest, `hat-16th`, is 48 references against the grid's 49-slice ceiling at
+  0.90, so it is admissible by one slice and needs no thinning.
+  *(Corrected 2026-11-21, same day. The first version of this bullet counted **notes** - 9, 18, 20, 32, 32,
+  36, 44, 44, 51 - and concluded "eight of nine refused" and "`hat-16th`, at 51 events, is beyond every knob
+  and must be thinned". `onsets_seconds()` dedupes note *starts*, and two instruments struck on one beat are
+  one onset to a detector, so 51 notes are 48 references and 44 are 34. Nothing was thinned; the mistake was
+  reading the generator's `notes=` column as `refN`, and commit `1669a6d` published it in its message.)*
 - **Falsifiers, both run against these bytes.** *wk-f1*: `kOnsetBiasSeconds` 0.006 → 0.020 (header
   `583caff534cc026705fbb32358dfde116a6c9ac8e8f91c1a81e64d92cae97e44` before, `193f31b3803ef8a77063aeb1a5710e31df15a4f91dd92fbe95ea6e6379104bf4`
   during) gave `FAIL - 255/258`: the tuning-stamp check named the constant, the band check caught all six
@@ -3100,6 +3105,50 @@ was eight greens that had nothing to compare.
   about clicks, and the question the whole phase exists to answer - does the 6 ms pull-back help a kit
   hit whose attack takes milliseconds - is still unanswered. Do not read the table as a verdict.
 
+### Tier 2's authorship moves into the tree, and its reproducibility check turns out to be worktree-local (2026-11-21 17:10)
+
+- **What landed.** `fixtures/tools/make-takes.py` - the generator that had been scratch in
+  `native/build/s25-take-src/`, i.e. one `git clean -xfd` away from deleting the tier-2 corpus - plus its
+  two tracked output sets: the nine `fixtures/marks-src/<take>.mid` sidecars and the nine
+  `fixtures/tools/notes/<take>.notes.json` clip grids. It also gains `--publish`, which writes the marks
+  JSONs into `fixtures/marks/` and **refuses, atomically, for any take whose wav is not on disk**: with
+  eight of nine stand-in wavs present it exited 1 naming `swing-16ths` and wrote nothing at all, and with
+  nine it wrote 27 files. Nothing about the audio is automated - `fixtures/*.wav` is the owner's call.
+- **The relocation is proved by outputs, not by reading the diff.** All nine `.mid` files re-derived by the
+  new script are byte-identical to the scratch generator's, all nine marks JSONs are byte-identical when
+  published against stand-in wavs, and the nine notes grids match the scratch bytes plus one trailing LF
+  (added deliberately: these are text files now). `python fixtures/tools/make-takes.py --check` exits 0.
+- **A stray sidecar gates nothing, measured.** The suite ran with all nine `.mid` files in the tree and
+  zero corresponding marks files: `PASS - 258/258`, exit 0. The scorer walks `fixtures/marks/` and only
+  then looks for the `.mid` beside a take, so committing authorship ahead of audio is safe in exactly the
+  direction that matters - the reverse (a reference without audio) is the named red that `--publish` now
+  refuses to create.
+- **The defect this found is in my own previous commit.** `1669a6d` published `synth-takes.cjs --check` as
+  proof that tier 1 is "byte-reproducible", and both that check and the new one compared the LF text
+  payloads byte for byte. That is a property of this worktree, not of the repo: `git checkout-index
+  --prefix=<temp>` reproduces what a clone gets, and `fixtures/marks/synth-clean.marks.json` comes out
+  `{\r\n` where the blob is `{\n` - `core.autocrlf=true`, no `.gitattributes`, and the Step 17 decision that
+  would settle it is still deferred. Falsifier: the nine notes grids and two marks files were rewritten with
+  CRLF pairs, and the pre-fix raw comparison returned *not equal* on all eleven (4216 bytes on disk against
+  4215 re-derived). With the tolerance in, both checks exit 0 and say what they did - "18 files: 9 byte-exact,
+  9 identical once the checkout's LF->CRLF is undone" and `marks crlf-checkout` - so a clone reads as a clone
+  and drift still reddens. Restored by re-running the generators; every restored file hash-equals its
+  `HEAD`/index blob (`ea50752182f719b7`, `56135f34e30a9963`).
+- **The gate was never layout-sensitive, which is why this stayed a tooling bug.** With the tree in its CRLF
+  state the suite still printed `PASS - 258/258` exit 0: JUCE's JSON reader treats `\r` as whitespace, so a
+  checkout-translated marks file parses to the same onsets. Only the reproducibility scripts disagreed with
+  themselves. The tolerance is not a substitute for `.gitattributes` - it is the honest version of a claim
+  that was previously overstated, and both checks now report how many files needed it.
+- **Doc sweep, one number found wrong.** `native/README.md:241` split the twenty-one slicer checks as
+  "eight fixture-state gates plus eleven controls" - 8 + 11 = 19, contradicting `:295`'s eight and thirteen
+  in the same file. Thirteen is right: `grep -c "report (" Tests/SlicerScoreTest.cpp` is 21, and the run's
+  `ok` lines divide into the eight fixture-state gates and thirteen controls that score the scorer. The same
+  line still named the retired rule ("no capped row"), so it now names the one in force.
+- **Gate for this change.** `PASS - 258/258` exit 0 on the LF tree and again on the CRLF tree, `ctest` 3/3
+  exit 0 (`Total Test time 10.86 s`), `npm test` 68/68 in eight files, both generators re-run after the
+  edits, and `native/shots/` unmodified by the ctest run. No plugin source touched, so the shipped tuple
+  still describes the module - and nothing here is rebuilt, re-exported, installed or pushed.
+
 ### Still owed by Step 25
 
 - **Phase 3, and only the owner can do it:** render nine 4-bar takes from real kits in Live (44.1 kHz / 24-bit / stereo,
@@ -3107,9 +3156,14 @@ was eight greens that had nothing to compare.
   note times - each one needing its `fixtures/marks-src/<take>.mid` beside it, since the scorer now refuses a `midi-note-times`
   marks file it cannot re-derive. Everything downstream is ready: the scorer, the schemas, the bless, the gate. When the wavs
   land it is one bless and one commit, and findings 2 and 3 above get their real measurements.
-  **One edit first:** `hat-16th` carries 51 notes, which is more than the grid's ceiling of 49, so it is beyond every sensitivity
-  and both the check and the bless refuse it by name. Thin it to 48 events in the generator before the render session, not after -
-  and the other eight are only admissible under the per-take `capped` rule described above, which is what let them in at all.
+  **No edit needed, contrary to what this bullet said first:** it claimed `hat-16th` carries 51 notes and so
+  outruns the grid's 49-slice ceiling, and told the next reader to thin it to 48 events before the render session.
+  The ceiling is compared against `refN`, and `refN` is the count of distinct note **starts** - `hat-16th` has 51
+  notes but 48 references, because the kick and the hat share beats 0, 4 and 8. Nine of nine takes are coverable
+  at 0.90 and seven are capped at 0.20; all nine are admissible under the per-take `capped` rule described above,
+  which is what let them in at all. The nine `.mid` files and note grids now live in the tree
+  (`fixtures/marks-src/`, `fixtures/tools/notes/`, generated by `fixtures/tools/make-takes.py`), so the render
+  session starts from committed authorship instead of gitignored scratch.
 - **Phase 3 render decisions, taken 2026-11-21.** The nine tracks and clips are built in the owner's current Live set through
   abletonmcp from his own commercial sample packs, and abletonmcp's dataset-training consent was opted in for that session. One
   deviation from the recipe above is deliberate: a single global tempo of 200 BPM for all nine takes, because the render is one
