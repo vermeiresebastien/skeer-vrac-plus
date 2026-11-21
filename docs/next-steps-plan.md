@@ -3159,7 +3159,7 @@ was eight greens that had nothing to compare.
   AGENTS.md `fdff18beaa30f41b`, native/README.md `7c13326803f6ef89`. These are blob digests, deliberately -
   the finding above is why a worktree digest is not the reproducible one.
 
-### The re-gate before the push found the screenshots could not be trusted (2026-11-21 18:20-18:45)
+### The re-gate before the push found the screenshots could not be trusted (2026-11-21 18:20-18:40)
 
 Four commits had landed on top of the last shipped tuple without a native build behind them, and the branch
 carries the owner's standing "do these" for push, so the first job was to prove HEAD rather than assume it.
@@ -3181,11 +3181,15 @@ carries the owner's standing "do these" for push, so the first job was to prove 
   already records (`:2720` "was 28"); the older 28s are dated run records, not claims about now.
 - **`launch/` does describe the tested code, and it is now proved byte-wise.** The build tree's module had been
   relinked at 16:38 after the launch export at 14:38, so the two hashes differed (`81c540543a3249f6` vs the
-  launch and installed `641cde970ba49a5e`, standalone `25ca095cce9f792a` in both). `cmp -l` on the module pair
+  launch and installed `641cde970ba49a5e`, standalone `25ca095cce9f792a` in both - the export described below
+  did relink that standalone, whose hash is now `75eaf3e3829fc230`). `cmp -l` on the module pair
   returns **four bytes**, at 305-306 and 23137941-23137942, which is the same pair of sites 8E recorded at
   `:1485` as "the two PE `TimeDateStamp` copies" (there 305-306 and 23107221-23107222; the second moved because
   the file grew). Same size, same code. So the install is not a fifth artifact and the green host
-  run does speak for what the DAW loads; no re-export was needed, and none was done.
+  run does speak for what the DAW loads. **Superseded six minutes later, and only partly:** a re-export was in
+  fact done (`7ada9e5`), but not for these binaries - the archive's `README.md` was found stale. What this
+  bullet established survives it: the exported module is still the 16:38 link, now proved `cmp`-equal to the
+  build copy at zero differing bytes rather than four.
 - **The real finding: `native/shots/sequencer-large.png` has two states for one unchanged binary.** The first
   layout run after the build dirtied it (`git status` said `M`), and the run inside `ctest` wrote a second
   variant - `f847391743dd894a`, 140 428 B against the committed `0ca0385a86706075`, 140 451 B. Ten further
@@ -3206,9 +3210,18 @@ carries the owner's standing "do these" for push, so the first job was to prove 
   `AGENTS.md`'s drift list so nobody re-pins on a single run again. It also reaches the archive: the zip carries
   these pictures, which is a second route by which a re-export changes hash for identical code, alongside the
   one the pinned entry clock already closed.
-- **Logs.** The six files behind this section are in `native/build/regate/` (`build.log`, `smoke.log`,
-  `layout.log`, `host.log`, `ctest.log`, `npm.log`), each ending in its own `*_EXIT=` line. That directory is
-  gitignored and dies on `git clean -xfd`; the numbers above, not the files, are the record.
+- **Logs and tools.** Behind this section, in `native/build/regate/`: `build.log`, `smoke.log`, `layout.log`,
+  `layout2.log`, `host.log`, `ctest.log`, `npm.log` from the re-gate, then `export.log`, `smoke2.log`,
+  `host2.log`, `zipcheck.log` from the export, plus the two throwaway tools that produced the findings here -
+  `pngdiff.py` (inflate both IDAT streams, undo the row filters, print the differing rows) and `zipcheck.py`
+  (each zip member against the file it claims, non-zero exit if any differ). That directory is gitignored and
+  dies on `git clean -xfd`; the numbers above, not the files, are the record.
+- **One transcription slip, published and left published.** Commit `7ada9e5`'s message opens a bullet with
+  "`SliceForge.exe` in `launch/` is `75e8af...`-no: `75eaf3e3829fc230`" - a half-deleted keystroke that
+  survived into the text. `75eaf3e3829fc230` is the hash; nothing else in that message was affected, and every
+  figure in it was re-taken from its own command. Corrected here rather than by amending, the same way
+  `a116532`'s stale `:304` was handled, because the convention this branch has settled on is that the record
+  keeps its mistakes where they were made and says so.
 
 ### Still owed by Step 25
 
