@@ -247,7 +247,7 @@ two are refuted, and the refutations are why this entry now carries evidence in 
   `:143` printing the pattern control's host index. The bare-processor view is 348; the two differ by the
   wrapper's pair, and both numbers are current.
 - **Retire or scope the "no audio-thread allocation" sentence — refuted, so the sentence stays.**
-  `native/README.md:446` ("32 fixed voices; no audio-thread allocation or locking") is accurate, and
+  `native/README.md:461` ("32 fixed voices; no audio-thread allocation or locking") is accurate, and
   adding the caveat asked for here would have injected a false claim into a correct document. The cited
   site was wrong twice over: `PluginProcessor.cpp:223-227` is the tail of `buildRuntime`
   (`runtime.padStarts[…]` at `:223`, `engine.setRuntime (runtime)` at `:226`, `}` at `:227`, and
@@ -368,7 +368,7 @@ A/B a pitched kit against the old build and judge it by ear.
 ## 4. Phase 2 — the slicer, which is the first impression
 
 Round 2 split this phase. The step written here is the *detector*, and it is no longer first: Step 24
-(slices have no end) is the part of "kit from one recording" that a listener actually hears, it is a
+(slice ends - built, 8O) is the part of "kit from one recording" that a listener actually hears, it is a
 length computation rather than an algorithm, and Step 25 builds the scorer that makes any detector work
 decidable. Step 7 now runs after both.
 
@@ -389,10 +389,10 @@ an optional "snap to host grid" toggle for the last 10%. Zero new binary bytes, 
 absent toolchain, and it lands in the existing message-thread seam at `resliceAndAssignStarts`.
 Reject a learned onset detector: it is the same 20% of benefit for an order of magnitude more cost.
 
-Also in this step: native has no fallback when zero onsets are found — `Slicer.cpp:99-102` leaves all
-sixteen pads at start 0, while the web edition has `evenStarts` (`slicer.ts:129`). Port it. And
-`SliceMapping` (`Slicer.h:19-24`) is dead code; either wire it to the pad reassignment the UI needs or
-delete it.
+Also in this step: native has no fallback when zero onsets are found — `Slicer.cpp:113-117` yields an
+all-zero map and `padStartsFromSlices` (`:146-153`) therefore hands sixteen pads start 0, while the web
+edition has `evenStarts` (`slicer.ts:169`). Port it. `SliceMapping` was dead code when this was written;
+Step 24 wired it (`PluginProcessor.cpp:805`, asserted at `SmokeTest.cpp:2913-2942`), so that half closed.
 
 Gate: a fixture of 8-10 known takes with hand-marked hit times, asserting median onset error drops
 against the current detector on the *same* files. Keep it level-matched, and keep slice→pad assignment
@@ -676,9 +676,10 @@ not play one hit twice  [fires at 64000 = 2 expected=1 clears=60]`, then both gr
 pair: `PASS - 148/148 checks passed`, `ctest -C Release` 100% out of 3, `npm test` 43 passed / 5 files,
 `npx tsc -b` exit 0.
 
-**Step 24 — Give every slice an end (1.5-2 d).** The single most audible step in this document.
+**Step 24 — Give every slice an end (1.5-2 d).** DONE on 2026-11-18 in both editions - recorded in 8O.
+The single most audible step in this document.
 
-Verified state: `Slice` is `{ double time; float strength; }` (`Slicer.h:10-14`). There is no end, no
+Verified state when this was written: `Slice` is `{ double time; float strength; }` (`Slicer.h:10-14`). There is no end, no
 duration, nothing downstream that knows the distance to the next onset. `resliceAndAssignStarts`
 (`PluginProcessor.cpp:686-726`) publishes only start seconds; the voice length comes from
 `lengthSeconds = pad.length × global.length × velocityLength` (`VoiceEngine.cpp:149`) and is otherwise
@@ -709,14 +710,17 @@ eight separate hits instead of eight overlapping copies of the whole file. This 
 today's build; on today's build every pad's length is whatever the kit default was.
 
 **Step 25 — Build the slicer's ground truth before touching the slicer (1 d).** This is Step 7's
-precondition, promoted to its own step because round 1 buried it in a gate.
+precondition, promoted to its own step because round 1 buried it in a gate. **Status 2026-11-21: the
+ruler is built and falsified - phases 1, 2 and 4 landed, see 8Q; what remains is phase 3's nine
+rendered takes, which only the owner can press Export for, and the bless-plus-commit that follows.**
 
-Verified state, none of it spectral: `floor = maxFlux × 0.012f` (`Slicer.cpp:49`) is relative to the
-*single loudest* rise in the file, so one crash buries every hi-hat in the same take; `minGapSeconds =
-0.115` (`:48`) is hard-fused in seconds, so a 1/16 hat run at 200 BPM — 75 ms apart — cannot be sliced
-at any sensitivity; and `target = round(8 + 46 × sens)` (`:47`) means the knob labelled "Auto Slice
+Verified state, none of it spectral: `kFloorRatio = 0.012f` (`Engine/SlicerTuning.h`, was inlined at
+`Slicer.cpp:49`) is relative to the
+*single loudest* rise in the file, so one crash buries every hi-hat in the same take; `kMinGapSeconds =
+0.115` (same header, was `:48`) is hard-fused in seconds, so a 1/16 hat run at 200 BPM — 75 ms apart — cannot be sliced
+at any sensitivity; and `target = round(kTargetBase + kTargetSpan × sens)` (was `:47`) means the knob labelled "Auto Slice
 Sensitivity" changes only *how many* slices you get, never *where* they land or how weak a hit has to
-be to qualify. The web edition has the same three constants (`src/audio/slicer.ts`), so this is one
+be to qualify. The web edition has the same three constants (`src/audio/slicerTuning.ts`), so this is one
 decision to fix in two places, not two.
 
 Decision: make a fixture and a scorer first. Eight to ten real takes committed under `fixtures/` — a
@@ -1074,7 +1078,7 @@ What the pass changed, re-verified in the current tree:
   (`exportKit.ts:88-89`). A non-finite output becomes silence in the browser too
   (`outputStage.ts:49`, mirroring `Dsp.h:287`). State read back from local storage or a dropped JSON
   file is rebuilt field by field through the same ranges `createParameterLayout` declares
-  (`types.ts:426-537`, wired at `useKit.ts:341-355`). A persistence write that did not stick is
+  (`types.ts:426-537`, wired at `useKit.ts:335-368`). A persistence write that did not stick is
   reported instead of assumed (`storage.ts:33-52`, `:54-74`, `sampleStore.ts:39`, `:67`,
   `App.tsx:127`, `:276-278`, `:300-302`). The bundled worklet was regenerated, and the modal's
   autofocus effect no longer re-fires on every keystroke (`Modal.tsx:18-25`).
@@ -1762,8 +1766,8 @@ Three forks worth naming explicitly:
   changed one half of that sentence and strengthened the other. Changed: "no adjacent tool pairs a
   kit-builder with a sequencer this deep" is no longer safe inside the family either — `redrum` has an
   internal sample-accurate pattern transport and auto-slicing in the same product. Strengthened: the
-  Step 29 finding is that competitor's bug reproduced *here*, in the same place, and Step 24 is the
-  fix; and the one combination nothing in the field or the family does is **chop → sequence → hand the
+  Step 29 finding is that competitor's bug reproduced *here*, in the same place, and Step 24 was the
+  fix (built, 8O); and the one combination nothing in the field or the family does is **chop → sequence → hand the
   sequence to the host**, which is exactly Steps 24, 26, 27 and 28 lined up. That is the defensible
   claim, and it is worth more than any new voice-adding feature. The realistic models stay
   free/open-source with a hosted browser demo, or personal portfolio; the prerequisites you do not have
@@ -1778,8 +1782,8 @@ Three forks worth naming explicitly:
   found-sound worlds, recorded as recipes", `src/components/LibraryModal.tsx:74`), and it is
   metronomic by construction. The cheapest honest fix is real recordings — yours, or Vault-sourced —
   not better synthesis. Note the tension with Step 24: real recordings are also the first material
-  where the no-slice-end defect becomes obvious, so the content fix and Step 24 should land in the
-  same week or the demo will show the wrong thing.
+  where the no-slice-end defect was obvious. Step 24 has landed and the content fix has not, so the
+  demo still shows the wrong thing.
 
 Built 2026-11-16 as a boundary rule, not as code: the owner resolved it (SliceForge owns one
 continuous recording becoming a playable 16-pad kit; redrum owns a folder of already-made kit pieces;
@@ -1808,11 +1812,11 @@ should land after Step 22 rather than before it. This block is why the sequencer
 All three landed in that order on 2026-11-16, so the block is closed; what is left of it is acceptance
 in a real host, which no check in this repo can do.
 
-**3. Make the kit-from-one-file work — 2.5 d, after Step 21.** Step 24 (2) then Step 25 (1). Step 24 is
-the highest-value step in the document on pure listening grounds, and it is a length computation, not
-an algorithm — which is why it moves ahead of Step 7. Step 25 is the fixture that makes any detector
-work decidable. Both sit behind the boundary decision because `redrum` is already in this lane;
-starting them before answering "who owns the chop" is how the family builds the same feature twice.
+**3. Make the kit-from-one-file work — 2.5 d, after Step 21.** Step 24 is built (8O, 1.5 d banked of
+its 2); it was the highest-value step in the document on pure listening grounds, and it is a length
+computation, not an algorithm — which is why it moved ahead of Step 7. What is left in this item is
+Step 25 (1 d): the fixture that makes any detector work decidable. It sits behind the boundary
+decision because `redrum` is already in this lane, and starting it before that is answered builds it twice.
 
 **4. Then, and only then, the heavier things.** Step 6 Rate (3 d) → Step 7 detector (4-6 d, now
 measured) → Step 10 topology (2 d) → Step 8 bounce (3-4 d, gate corrected) → Step 9 contract (0.5 d) +
@@ -1821,13 +1825,14 @@ Step 16 is one day and is the only item here that blocks *conveying* a build to 
 forward the moment a public release is actually on the table — it does not need to wait behind Phase 5.
 
 Steps 1-19 and 22-29 add up to **41.75 dev-days** at midpoint (the ranges in Steps 7, 8, 11, 18, 19, 24
-and 26 widen that to ~38-45 d), so "roughly 40" is the honest headline. **9.25 d are banked** — Steps 1-4
+and 26 widen that to ~38-45 d), so "roughly 40" is the honest headline. **10.75 d are banked** — Steps 1-4
 (2.75), Step 29 (0.25), Step 16 (1), Step 5 (0.5), Steps 22 (0.5) and 23 (0.25), Steps 26/27/28 at 3.75
-(`c57f277`, `16258b3`, `5f8815d`) and Step 17's determinism half (0.25) — so **~32.5 d remain**, plus Step
-20 (macOS 3-5 d), Step 21 (a decision, not code) and the Ableton listening pass, which banks nothing by
-itself. This paragraph's own "8.0 d / ~33.75 d" went stale exactly the way Round 1's "~31 d" did: true the
-day it was written, three landed steps behind when this pass read it. What is left that changes what you
-can claim in Ableton is Step 24 (1.5-2 d) then Step 25 (1); the rest is depth and drift control.
+(`c57f277`, `16258b3`, `5f8815d`), Step 17's determinism half (0.25) and Step 24 (1.5, recorded in 8O) — so
+**~31 d remain**, plus Step 20 (macOS 3-5 d), Step 21 (a decision, not code) and the Ableton listening
+pass, which banks nothing by itself. Round 1's "~31 d", then "8.0 d / ~33.75 d", then "9.25 d / ~32.5 d"
+are the three stale pairs this paragraph has printed: true the day they were written, a landed step behind
+by the time the next pass read them. What is left that changes what you can claim in Ableton is Step 25 (1) - and from
+2026-11-21 that is only Step 25's phase 3: the scorer exists and is falsified (8Q), the renders it has to score do not yet.
 
 Per phase: build, run `ctest` *after* building the test targets, then judge the audio in Ableton
 level-matched against the previous build. A phase is done when the check that describes the old
@@ -2001,7 +2006,7 @@ Appended at the end rather than inserted after 8G, on the AGENTS.md precedent: a
   was transcription, not drift, proved by `git diff -U0 AGENTS.md` naming only a line-neutral hunk at `:35`
   and an append-only hunk at `:184`. This file's *edit set below the append* is 18 additions against 18
   deletions - line-neutral against the 1925-line file that every cite in it addressed, and that number is
-  of-then (this file is 2476 lines today); the whole commit carries 96 against 18, because 8H itself is 78.
+  of-then (this file was 2476 lines that day, 2943 at the 8Q renumber); the whole commit carries 96 against 18, because 8H itself is 78.
 
 - **Corrected forward, same day: `b481d74` published a hash it had not measured.** Its "zip
   `166175ed33fe8ba8a6a7c92bdcf4b05914bb8145ee908d7c14f7d1a4f3a4b1a4`" line is wrong from byte 13 onward -
@@ -2401,7 +2406,7 @@ not (recorded 2026-11-17, closing after midnight)
   `48000.0 * 60.0 * 10.0` samples whatever its rate was, and the browser spread the same policy over three files as
   five literals - `elapsed >= 120` and "Up to 2 minutes" in `RecordModal.tsx`, "up to 2 minutes" in `HelpModal.tsx`,
   and `160 * 1024 * 1024`, `10 * 60` and `0.05` in `audioFiles.ts`. Every door now calls one of two functions: the
-  take at `PluginProcessor.cpp:983`, the file at `SampleData.cpp:61-62`, and both browser refusals build their
+  take at `PluginProcessor.cpp:1003`, the file at `SampleData.cpp:61-62`, and both browser refusals build their
   message out of the constants - same words as before, now derived: the 160 MB and 10-minute texts the suite quotes.
 
 - **The trap, and why the byte clamp had to move with the seconds.** The promise is a duration; a duration at a
@@ -2410,7 +2415,7 @@ not (recorded 2026-11-17, closing after midnight)
   48 kHz, 32.8 s at 192 kHz, and every rate in between was the clamp rather than the promise. At the chosen
   256 MiB the duration binds first at every rate a drum instrument runs at - 300 s at 96 kHz is 28,800,000 frames,
   inside the clamp - and only 192 kHz sees the clamp, where five minutes would be 460 MB behind a REC button. The
-  button states what actually applies there: `getRecordingLimitSeconds()` (`PluginProcessor.cpp:998`,
+  button states what actually applies there: `getRecordingLimitSeconds()` (`PluginProcessor.cpp:1018`,
   `PluginProcessor.h:124`) feeds the tooltip at `SourcePanel.cpp:111-114`, so 192 kHz reads 175 s, not "5 minutes".
 
 - **Two latent defects the subsystem was carrying.** The web record readout counted seconds past 59 - it printed
@@ -2515,3 +2520,424 @@ and the only honest diff left in the tree was this file describing itself wrongl
   "the push [is an] owner action" is closed by this commit for the repository. The install is not: `%ProgramFiles%\Common
   Files\VST3` still holds the pre-§8M bundle — a different artifact from the one that printed 206/206 —
   and the Ableton listening pass remains the gate nothing in this document can stand in for.
+
+## 8O. Step 24: every slice got an end, in both editions, and the native README was sixteen checks
+stale (recorded 2026-11-18)
+
+The defect the plan had carried since round 1 was that an onset is a start and nothing else. A dropped
+take therefore became sixteen overlapping copies of itself: each pad played from its own onset to the end
+of the file, so eight hits on one recording sounded like eight whole recordings stacked on each other.
+The fix gives every slice an end — the distance to the onset that follows it, and to the end of the
+material for the last one — and writes it into the pad's existing LENGTH parameter. Both editions, one
+design each: `sliceGapSeconds` at `native/Source/Engine/Slicer.cpp:98-109` and `src/audio/slicer.ts:112-117`.
+
+- **The parameter choice was the decision, and it cost nothing.** LENGTH already existed, already gets
+  multiplied back by the global in `VoiceEngine.cpp:149` and `engineCore.ts:280`, and is already saved
+  with the set, automatable, host-visible, undone by the existing snapshot path and grabbable afterwards.
+  So the derivation divides the seconds by `jmax (0.25, global.length)` and by nothing else: no per-voice
+  correction, and velocity's own length influence stays the player's rather than a thing the engine
+  quietly compensates. No parameter was added, which is why the host census is still
+  `350 = 348 layout + Bypass + Program` — measured in the same run as the gate below, not carried.
+- **One statement of the gap per edition, and a mutation forced it.** `sliceMapFromSlices` fills
+  `mapping.padLengths[pad]` from the same helper (`Slicer.cpp:141`) and the processor's LENGTH write calls
+  that helper too (`PluginProcessor.cpp:827-828`), so the map and the knob are one computation rather than
+  two copies of it — and `SmokeTest.cpp:2925` compares the map against a gap stated independently, so a
+  drift cannot pass silently. The
+  `jmax (start, …)` inside the helper is not decoration: a slice can be placed past the end of the
+  material from the pad editor, and without it that slice's length goes negative and clamps to the floor.
+  The forward-walk distribution rule that mutation C re-broke lives at `Slicer.cpp:119-141` and its web
+  twin at `slicer.ts:132-146`.
+- **Native gate.** `217/217 checks passed`, exit 0, on a full rebuild (exit 0) whose object stamps close
+  the loop at seconds: `Slicer.obj` 15:55:00 ≥ `Slicer.cpp` 15:54:28, `PluginProcessor.obj` 15:53:47 ≥
+  15:53:24, `SmokeTest.obj` 15:28:24 ≥ 15:24:17, exe linked 15:55:01, printed 15:55:50. Five clean runs
+  of these bytes printed CPU 4.52 / 4.56 / 4.86 / 5.04 / 5.75 % of one core. `ctest` 3/3 exit 0 (smoke
+  1.61 s, layout 29.33 s, host 0.71 s), host `parameters: 350 = 348 layout + Bypass + Program`,
+  `PASS VST3 host test`. The step added eleven check sites — 201 → 212 by the `^ *check (` census, which
+  excludes the `void check (…)` definition that a looser grep counts and makes 213 — and each new site
+  runs once, so the runtime total moved 206 → 217.
+- **Native falsifiers, three, on the gated bytes.** A deleted the LENGTH write from
+  `resliceAndAssignStarts` → 2 FAILs, `215/217`, pad 0 came back at its 0.4600 default where 0.8987 was
+  expected. B made `sliceGapSeconds` ignore `durationSeconds` → 3 FAILs, `214/217`, pad 3 at the 0.0200
+  clamp floor, and MSVC's `C4100: 'durationSeconds': unreferenced parameter` in the build log is a free
+  second witness that the mutation was really compiled. C put the `pad % n` wrap back → 1 FAIL,
+  `216/217`, `[110, last pad on slice 3]`. An earlier cycle, on a tree that was still being built, had
+  run the same three plus a gap-forced-to-zero probe at 215 / 216 / 214 / 212 — and the log named
+  `s24-smoke-green.log` printed **FAIL - 213/217**: the filename asserts a verdict its content denies, so
+  the content is what this section records.
+- **Web gate.** `npm test` exit 0, `Tests 65 passed (65)` across 7 files; `npm run build` exit 0, which
+  is the only type gate. The census re-derived from the sources rather than remembered: 53 → 65 tests,
+  6 → 7 files, `audio.test.ts` 13 → 21 `it`s and `sliceEnds.test.ts` new with 4.
+- **Web falsifiers, five, each restored by SHA-256 against the bytes read at the top of the run.**
+  W-A a slice's end forced to the end of the file (the bug itself) → 6 red; W-B the knob given raw
+  seconds, global division gone → 3; W-C `t = i % n` → 2; W-D the drop-a-take door in
+  `factoryPresets.ts:253` stopped assigning → 2; W-E the SENSITIVITY door at `useKit.ts:140` stopped
+  assigning → 1. Every probe printed `restored against baseline: MATCH` and the restored tree re-ran
+  green. The pre-mutation hashes are the ones in the bullet on bytes below.
+- **Two test-shape lessons, both paid for.** The first W-B run left the session test green because the
+  expectation called the same helper as the code under test — a shared oracle is not a check; restating
+  the gap independently from the raw slice array made it red, and the native check was then re-read for
+  the same tautology. And the forward-walk test reddened *correct* code at first: it compared the
+  legitimate restart step (pad 3 → pad 4). The rule is `indices[n] === 0`, monotonic from `n + 1` on. W-C
+  is the reason that test exists at all — the four distinctness checks are blind to a wrap, on both sides.
+- **One test seam, and it is a seam only.** `reducer`, `HistoryState` and `Action` are now exported from
+  `src/state/useKit.ts` because SENSITIVITY is the live reslice door in the browser and a function call
+  is the only way to reach it without a renderer. Nothing about the reducer's behavior changed; `useKit`
+  still owns the dispatch.
+- **Deliberate non-derivation, and the residual that comes with it.** `buildPresetSession`
+  (`factoryPresets.ts:213`) does not re-derive, so the factory programs keep the override lengths they
+  ship with, and a test pins that rather than leaving it to reading. The host-state read-back path
+  likewise. What is *not* re-derived is the hand-edit doors: `addSliceAt` and `deleteNearestSlice`
+  (`PluginProcessor.cpp:833-862`) edit the slice list and call `postUiChange()` without touching LENGTH,
+  and `assignSliceLengths` appears exactly once in `useKit.ts` (:140), so the web `addSlice`/`deleteSlice`
+  cases do the same. Place a slice by hand and that pad keeps the length it had. Recorded as a named
+  residual in both READMEs, not smoothed over — it is why the AUTO SLICE text says the knob stays
+  grabbable. The other residual is upstream of this step: `minGapSeconds = 0.115` (`Slicer.cpp:48`,
+  `slicer.ts:63`) still fuses a fast hat run into one slice, and that is Step 25's work, not this one's.
+- **The native README was sixteen checks stale, and the restamp was wrong once before it was right.**
+  `cc971bb` raised the suite 190 → 206 and restamped this document while missing `native/README.md`, so
+  the file that ships inside the zip was describing a build three commits old. Fixing it then produced a
+  second defect: the CPU sentence was written from memory of writing it and printed 4.34 / 4.72 / 5.00 —
+  none of which appears in a clean 217/217 log — while the runs at 4.56 and 4.86 went unquoted. The draft
+  was not confined to a scratch file, because `native/README.md` is an archive member: the first export
+  packed it, and that archive's `README.md` hashed `ed0cf4d1488eb0f6f111b7c880f2ceae683a1c75a47827d5ce10605c27167627`
+  until the second export replaced it. Neither archive was installed or pushed, so the un-measured figures
+  reached shipped-shaped bytes but never an artifact anyone else can reach. Both are now re-derived from
+  the log census, and the band tightened from 4.3-5.8 to 4.5-5.8 to match the five figures beside it. The
+  root cause is the one §8N named: a number in prose is a claim with an expiry date, and re-measuring means
+  running the command, not re-reading the sentence. The root README's
+  "(43 tests, 5 files)" was stale the same way before this step even started — HEAD was already 53 in 6.
+- **§8N's banking pair is superseded by this step**, per its own note: 9.25 d / ~32.5 d described `05b85ef`;
+  §11 now says 10.75 d banked and ~31 d remain, with Step 24's 1.5 d of its 1.5-2 d estimate banked here.
+- **Deliverables re-exported from the gated tree, and the tuple agrees.** Two exports (both exit 0): the
+  first because `native/README.md` is one of the six text members, the second because the CPU sentence
+  above changed after it. Final: `SliceForge.exe` `83745c09b1cb3c0ce986b69f6efdce6acad79c3fb474b138736ec319652f065e`
+  identical in build, `launch/` and as a zip member; the VST3 module
+  `9f74b739600a474a19612d7adc8fa120de0f1be376088b9a5ff5da85a779b2d7` identical in all three; zip member
+  `README.md` `b1f36d416c2126c9843c79aae6a7999de3e98a6d53a2213919b508a55632669a` equal to the file on disk;
+  archive `a2cba3f37b3b5f2b4cda7b727198f773e2181589b425691d12edbe9d30b3d072`, 28,586,060 bytes, 17 members,
+  **0 members containing a backslash** — §8L's separator defect re-checked on these bytes rather than
+  assumed. That closes the three-way divergence §8M left open for the repo copies; the *installed* module
+  is still a different artifact, because installing is an owner action.
+- **Those text-member hashes are layout-dependent, and it is now measured rather than warned about.**
+  `git checkout-index -f` against this index — `core.autocrlf=true`, no `.gitattributes`, confirmed empty
+  `attr/` column — returned every packaged text member that this worktree holds as LF with exactly one CR
+  per LF: `launch/start.ps1` 17,143 → 17,469 bytes (CR 326), `LICENSE` 34,523 → 35,184 (661),
+  `native/Package/INSTALL.txt` 6,642 → 6,757 (115) and `THIRD-PARTY-NOTICES.txt` 15,448 → 15,729 (281),
+  each one `bytes + LF` exactly. Those four are files this step does not modify, so content is constant by
+  construction and the only variable is the smudge; `launch/start.bat`, the one member already `w/crlf`,
+  checked out byte-identical at `0366b728d29b4465…`, which is the control that settles the difference as
+  layout and not a stale index. The archive is written from the worktree, so a customer who extracts it
+  gets the LF bytes and the published member hash matches; only someone checking a member against a
+  *cloned* repo sees a different hash, and that is Step 17's `.gitattributes` decision rather than a defect
+  in this tuple.
+- **The bytes this step leaves.** Worktree SHA-256, and for the one `i/lf w/crlf` file the `git
+  hash-object` blob id beside it, because a checkout under `core.autocrlf=true` cannot reproduce a CRLF
+  worktree hash: `Slicer.cpp 1c628a3ed9afb2a09ca7ab2338838ea87bad6dad4b111383fc7757bab945895a`,
+  `Slicer.h 029c1f18fc0f3fdd860e356f5bf98caf0da1c11d018a768213f09dd620df0a2a`, `PluginProcessor.cpp
+  73e3eb24f7b8d591adb37abcb3aead420fe3bfced1b16c9d2017abf69156f0f6` (1278 lines, 1278 CR bytes) whose
+  `git hash-object` is `cdfd6fb275fe4d787346e68b289777021954ac9e` — a SHA-1 blob id, not a SHA-256, and
+  labelled as such; `SmokeTest.cpp 1bc9acc46a55e7ae723b1480ae3158abec40beab277cc6ba563fcb97f3cb6657`,
+  `slicer.ts 82b1bbf9903c4b466e2225a79e87da5c339a73dbbdd718a68f1c370cde202385`, `factoryPresets.ts
+  d5c21fc4a2160f77a3042724a921e20d8219887591fd75cb373ae8fc7ae500e3`, `useKit.ts
+  6a2c1249c68eb3694e34bd843b78600072e8df437b29b3778c94a28720a9e3ba`, `audio.test.ts
+  2a79ace1278ec60227565eb36ecf90324903c7ac030d5ed54fac97442183dfa1`, and `sliceEnds.test.ts
+  c0472e5c4a7f406169d0f9b2c0dc87b401ddf6372f16811843d3b817170b4c88`, new and untracked until this commit.
+- **Five live cites moved, re-pointed from the tree rather than guessed.** A script printed, for every
+  cite into the eight files this step touched, what the address lands on in the worktree and what it lands
+  on at HEAD, so each one could be judged on content instead of arithmetic: `AGENTS.md:101-102` (the frozen
+  `VRAC_EXTRA` sites, `:1043/:1047/:1116/:1121` → `:1066/:1070/:1139/:1144`, and `"VRACPlus"` `:75` → `:73`,
+  already off by two before this step), `:2405`'s take door `:983` → `:1003`, `:2414`'s
+  `getRecordingLimitSeconds()` `:998` → `:1018`, `:393`'s zero-onset path `Slicer.cpp:99-102` → `:113-117`
+  with `evenStarts` `slicer.ts:129` → `:169`, and §8B's `useKit.ts:341-355` → `:335-368` (the whole
+  `loadSavedKit` callback, which is what that sentence was reaching for). Same edit re-pointed `:394`: it
+  called `SliceMapping` dead code and asked for it to be wired — Step 24 wired it, so the sentence now says
+  so. What was deliberately left alone: Step 4's `PluginProcessor.cpp:920` and `PluginProcessor.h:70`,
+  which describe the tree as that step found it on 2026-11-14 and are followed by their own "Built" note —
+  exempt on the precedent §8N cites at `:1999`.
+- **Still owed on Step 24, and none of it is code.** The commit and push of it, the install into
+  `%ProgramFiles%\Common Files\VST3`, and the listening pass that is the actual point: eight separate hits
+  instead of eight overlapping copies of the whole take. The checks prove the lengths are right and the
+  rendering is finite and in the ceiling; they cannot prove the hit reads as one hit.
+
+## 8P. The groove bank: sixty named patterns, and the grid write that makes a two-bar groove audible
+(recorded 2026-11-19)
+
+The ask was three things at once — every preset pattern must span all 32 steps, add a lot more genres,
+and let the player click through named variations inside a genre. It became one native-only feature: the
+six factory presets are gone and a 60-row bank stands in their place. There is no web mirror because
+`src/` has no sequencer at all, which `AGENTS.md` calls out as the exception to the both-editions rule.
+Four owner decisions fixed the shape before any code: a groove writes **pattern + length + feel** (not
+just the grid), navigation is **genre submenus plus a cycle item** (no new toolbar widget), voicing is
+**separate** — a groove never re-voices the pads unless the player asks — and the bank is **20 genres × 3
+variations**.
+
+- **The data is one new file.** `native/Source/GrooveBank.cpp` (654 lines, untracked until this change):
+  sixty `constexpr GrooveLane[]` tables, twenty `constexpr GrooveVoice[]` tables, and `kGrooves[]` at
+  `:586` behind `grooveBank()` at `:650`. Genre-major and contiguous, three rows per genre, so the menu
+  groups by walking runs instead of re-reading strings: HOUSE, TECHNO, TRAP, BOOM BAP, DRUM & BASS,
+  UK GARAGE, AFRO, DANCEHALL, BREAKS, ELECTRO, REGGAE & DUB, FUNK & SOUL, LO-FI, HARD & CLUB, DISCO,
+  TRIP HOP, POP, ROCK, EBM & INDUSTRIAL, LATIN — named accordingly (`HOUSE CLASSIC / DEEP / DRIVE`,
+  `TRAP DARK / ROLLER / DRILL`, `AFRO 12 / AFRO HOUSE / AMAPIANO`, …). A lane mask is two adjacent
+  16-character literals, which the compiler folds into one 32-character string: the grid is 32 steps, and
+  a literal long enough to hold it is what makes bar two exist at all. The alphabet is documented beside
+  the struct (`Sequencer.h:76-83`) and every character in it is pinned by a check, so a typo fails a test
+  instead of hiding as a rest. Polymeter is per-lane (`GrooveLane::loop`) and the bank keeps short-cycling
+  lanes — AFRO 12's hat on 12 and clap on 6 (`GrooveBank.cpp:193-195`) and AFRO HOUSE's hat on 12 (`:201`) —
+  and "the bank still contains a lane that cycles short of the grid" is a check in its own right. Division is
+  **4 for all sixty rows**, stated in the file's own preamble (`GrooveBank.cpp:5-15`) with the reason:
+  32 steps is exactly two bars only at sixteenths, so a genre whose two bars are not four beats each cannot
+  keep the full-grid promise — and triplet and shuffled feels therefore come from `swing` and the `<`/`>`
+  pushes, not from a division that would move the bar line.
+- **"Spans 32 steps" is two claims, and only one of them is in the data.** `wrapStep` (`Sequencer.cpp:25-30`)
+  folds every step into the lane's loop length, and a lane with no loop of its own takes the document's
+  `length` (`:204` is the call) — so a 32-step mask behind a 16-step grid is inaudible from step 16 on. That
+  makes the promise a *grid* write, not a *pattern* write, and `applyGroove` does it at `Sequencer.cpp:632`
+  (`data.length = kSeqSteps`, in the function at `:623`) together with the genre's tempo, division and
+  swing — BPM clamped into `kSeqMinBpm…kSeqMaxBpm` so a groove can never ask for a value the slider cannot
+  show. `applyGroove`'s declaration comment (`Sequencer.h:126-130`) states the rule where a caller will read
+  it: the four grid fields are what make a genre a genre, and a second bar written behind a 16-step window is
+  data nobody hears.
+- **The API, all in `Sequencer.h`:** `grooveBank()`, `isGrooveStepChar()`, `grooveLabel()`
+  (`Sequencer.cpp:567`), `grooveGenreRun()` (`:540`), `nextGrooveVariation()` (`:572`),
+  `grooveVoicing()` (`:582`), `makeGroovePattern()` (`:596`) and `applyGroove()` (`:623`). The genre run
+  compares with `std::strcmp` on purpose — in JUCE 8.0.4 `juce::CharacterFunctions::compare` is a template
+  over char-pointer types and will not bind two `const char*`, so the claim is not available as a one-liner.
+- **The UI is one button that changed its name.** `PAT PRESET` is now `GROOVES`
+  (`SequencerPanel.cpp:1193` geometry, `:331` click, tooltip `:332-335` states the size and the
+  length/feel behaviour). `showGrooveMenu()` (`:817-871`) adds one submenu per genre run, ticks the row
+  that was last applied, then `Next <GENRE> variation`, `Match <GENRE> sounds`, and the two
+  `.vracpattern` items that used to live on the old menu — save and load are untouched. Cycle (`:892`)
+  and Match SOUNDS (`:903`) are gated on a pick: inventing a genre the player never chose, or moving their
+  sounds because a menu opened, are both the silent-compensation pattern the owner has rejected.
+- **What this deleted, stated plainly.** `PatternPreset` (HEAD `Sequencer.h:70-81`), `patternPresetName`,
+  `makePatternPreset`, `SequencerPanel::showPatternPresetMenu`/`applyPatternPreset` and the two smoke
+  checks that drove them (`factory pattern preset contains polymeter and notes`,
+  `pattern presets save and load correctly`) are gone — the bank replaces them, so `GrooveBankTest.cpp:429`
+  now proves a short-cycling lane exists and `:419` proves every one of the sixty survives a save/reload.
+  The default kit's own opening pattern is `makeDefaultPattern` (`Sequencer.cpp:655`), which never came
+  from the preset system and still produces it byte-identical to HEAD. No parameter was added, so the host
+  census is unchanged and the host test still proves it.
+- **Native gate.** `PASS - 237/237 checks passed`, exit 0; layout `32 checks`, exit 0 (was 28); host
+  `parameters: 350 = 348 layout + Bypass + Program`, `seq.pattern: host id 825878785, index 347, 4 steps`,
+  `PASS VST3 host test`, exit 0; `ctest` `100% tests passed out of 3`, exit 0; build exit 0 run
+  sequentially. The bank contributes **19 check sites** (`^ *check (` census, the same anchor §8O uses)
+  that print **22 rows**: the slot-isolation site runs once per pattern slot. SmokeTest's own sites went
+  212 → 210 (−2 for the preset checks, the hook itself adds none) and LayoutTest 31 → 35. Object stamps
+  close the loop at seconds against the restored sources: `Sequencer.obj` 20:38:42 ≥ 20:38:25,
+  `GrooveBank.obj` 20:43:29 ≥ 20:43:09, `SequencerPanel.obj` 20:41:15 ≥ 20:40:32,
+  `GrooveBankTest.obj` 20:36:55 ≥ 20:36:41, `LayoutTest.obj` 20:28:25 ≥ 20:26:45,
+  `SmokeTest.obj` 20:19:11 ≥ 20:14:33. Gated binaries: Standalone `SliceForge.exe` 24,254,464 B
+  `0e2a0d1bc6f01c01ea7c0ae160409e99eec110b54a898e24afb7375bf4a2127c` and the VST3 module 24,564,736 B
+  `a1828f3eca6e1ad80cf368599b13238dcb77f53da8aec129344fe52a6bb9f1fa`. Worktree SHA-256 of the sources,
+  beside the `git hash-object` blob id, because four of these files are `w/crlf` and a fresh checkout
+  cannot reproduce a worktree hash: `GrooveBank.cpp 32840417ef872d1df267…` (blob `2fa288e8af81d119109e…`),
+  `GrooveBankTest.cpp f9b56d26f9424ae87a2d…`, `GrooveBankTest.h 5856a7e3c2a89207ea93…`,
+  `Sequencer.cpp 1f4c5bc60e491808ee05…`, `Sequencer.h 2c12792bb5843d34ea6f…`,
+  `SequencerPanel.cpp caa40864555ce6d8beae…`, `SequencerPanel.h 8b8d8e94d4e3c0f61d0c…`,
+  `SmokeTest.cpp 0ae458f8a2acb9b1c727…`, `LayoutTest.cpp 1ed0cc5e8ee6b2ed80c7…`,
+  `CMakeLists.txt ac9d8c32e86695c0ae58…`.
+- **Five falsifiers, applied and reverted on the gated bytes**, each count read out of that probe's own log
+  (script in `native/build/`, which is not a proof carrier — that is why this paragraph exists). **A**
+  deleted `data.length = kSeqSteps` → smoke `235/237` exit 1 with the grid write (`:352`) and the audible
+  check (`:535`) both red, plus one layout red (`LayoutTest.cpp:385`, `[slot 0 length 16 pattern=bank]`,
+  exit 1); the length write is therefore covered at the audio seam and not only by the data check. **D**
+  shortened a 32-character mask to 30 → smoke `236/237`, red only on `:163` (`pad 0 mask is 30 steps, want
+  the full 32`). **E** emptied bar two of `houseClassic`: run against the *weak* audible check it reddened
+  `:236` alone and left `:535` green — the false green below — and the same probe re-run after the window
+  fix reddened both, `235/237`. **B** made NEXT VARIATION re-apply the same row → exactly one red, the
+  layout cycle check (`LayoutTest.cpp:409`, `[index 0 same genre pattern=bank]`), with the picker, the
+  menu-to-document and Match SOUNDS checks all still `ok`. **C** relaxed the Match SOUNDS guard so unvoiced
+  pads got written too → exactly one red (`LayoutTest.cpp:456`, `[4 of 4 voiced pads landed, 12 wrong]`).
+  B and C are panel-handler mutations, so only the layout seam reaches them and their probes ran layout
+  alone — neither log is a smoke result, and the smoke voicing checks call `grooveVoicing()` directly and
+  were never under either mutation. All five reverted: each log carries the restored file's SHA-256, and
+  `probeE2-red.log` is the single log that stops before its own revert line, so that one restore is proven
+  by the tree instead — `GrooveBank.cpp 32840417ef872d1d…`, `Sequencer.cpp 1f4c5bc60e491808…` and
+  `SequencerPanel.cpp caa40864555ce6d8…` each still hash to the value every revert line names. The clean
+  re-gate afterwards is the run recorded above.
+- **Two lessons, both paid for in a false green.** The first version of the audible check only asked
+  whether the playhead reached the upper half of the grid, and stayed **green on a bank whose second bar
+  had been emptied by hand**: `scheduleHostBlock` scans two steps past both ends of the block
+  (`Sequencer.cpp:326-327`, and the internal clock repeats the window at `:362-363`) and `wrapStep` folds
+  what it finds back into the pattern, so the block that reports step 31 is the same block that carries the
+  next loop's step 0 hit. A trigger carries no step, so attribution has to be by window, and `>= 16` was not a
+  window. It is now `17…30` with swing and every nudge stripped first, because a swung odd step in bar one
+  also crosses the middle. The census that proved it is in `native/build/`: one boundary block, playhead
+  31, one trigger at offset 462. Second: two of the five checks above were red **before** they were
+  strengthened — `:163` accepted any mask *at most* the grid, so a 30-step lane passed, and `:236` accepted
+  bar two as a byte-for-byte copy of bar one. Both clauses were added, and both probes re-run. The rule is
+  written into `AGENTS.md` as the fourth smoke-suite idiom, because it cost one green run here and will cost
+  the next author one too.
+- **UI leg, and what no test can see.** JUCE exposes no accessor for a `PopupMenu`'s items, so the menu
+  cannot be read back headlessly. The layout test therefore drives the three handlers through the panel
+  (`applyGrooveForTesting`, `cycleGrooveForTesting`, `matchGrooveSoundsForTesting`,
+  `lastGrooveForTesting` in `SequencerPanel.h`) and asserts the result on the processor's own document —
+  which also covers the undo and commit path. It does **not** cover the grouping code in `showGrooveMenu`
+  (`:817-871`: the submenu build at `:827`, the cycle item's label at `:839`, the id dispatch at
+  `:860-862`, item ids `kGrooveIdBase = 1000` with span 512 at `:159-162`): no headless test has ever
+  rendered the menu tree, and the screenshots cannot show it because the menu does not exist until a real
+  click opens it. The layout run that gated this step rewrote the five `native/shots/sequencer*.png`, which
+  now carry the GROOVES label on the toolbar; no new shot was pinned, because a pinned render of a menu
+  nobody drove would prove less than the handler checks.
+- **Docs this step had to catch up.** `README.md:263-268` and `native/README.md`'s sequencer bullets said
+  ten tools ending in `PAT PRESET` with "six built-in pattern presets … FOUR FLOOR, BOOM BAP, HALF TIME,
+  TRAP, AFRO 12, BROKEN"; both now describe GROOVES and the bank, and every 217/28 total in both files is
+  restamped to 237/32 from the run above, including `native/README.md`'s at-a-glance row and its
+  architecture listing (which gained `GrooveBank.cpp` and `GrooveBankTest.*`). The arithmetic is worth
+  stating because it reconciles two numbers: the 217 §8O stamped there is still true of the tree §8O gated,
+  and this step is `217 − 2 + 22 = 237` — the preset checks that died and the rows the bank prints.
+  `AGENTS.md`'s "three idioms of the native smoke suite" became four, with the scheduler-attribution trap as
+  the new one, since it cost a green run here and will cost the next author one too. All four doc files are
+  `i/lf w/lf` and stayed pure LF under the edits (CRLF pairs: 0 in each), which matters because
+  `native/README.md` is one of the six text members of the archive: §8O publishes it as member
+  `b1f36d416c2126c9843c79aae6a7999de3e98a6d53a2213919b508a55632669a`, and after this step it is
+  `1d9c87509c3145d20cc79a8973cadb9cb69aa57eb3de4d9cedb6793c365ec56c` (533 lines) — so the re-export has to
+  restamp that member rather than reuse the Step 24 value. Its siblings from the same edit:
+  `README.md e917618097267c1d26a623d3f574bea7f24e3a46265536845711287e551c2975` (649 lines) and `AGENTS.md
+  6689372ba70ad9561640632abb300d898b5a29b2658dae25b1b6c05dc2470284` (231). Being `w/lf`, all three are
+  reproducible from a fresh clone, unlike the four `w/crlf` sources above; this section deliberately records
+  no hash of its own file, because editing it would invalidate what it says.
+- **Owed after this, none of it code.** The owner's commit and push — this step and Step 24 are both still
+  uncommitted at `c966a71`, 30 dirty paths (26 modified, 4 untracked) — then the `launch/` and zip re-export
+  from the committed tree. Measured now: `launch/` carries the Standalone `83745c09b1cb3c0c…` and the module
+  `9f74b739600a474a…`, while the gated build is `0e2a0d1bc6f01c01…` / `a1828f3eca6e1ad8…`, so the archive in
+  the repo predates this change and no green test has ever described it. Then the install into
+  `%ProgramFiles%\Common Files\VST3`, and the listening pass: sixty rows pass every structural check, and
+  whether HOUSE DEEP reads as house and DILLA reads as Dilla is a judgement no check here makes.
+  One disclosure for whoever reads the diff: the README that `9659b78` committed two steps ago says
+  `217/217` and still names `PAT PRESET` with "six built-in pattern presets", and its own commit subject
+  claims every number on it was re-measured. Both are true of that commit — the bank was not in the tree
+  when it was written — so the `237/32` restamp above is not a correction of the peer's measurement, it is
+  what the tree now needs. It lives only in the working tree: a `git checkout README.md` while cleaning up
+  would silently put `217/217` and `PAT PRESET` back and no test would notice.
+
+## 8Q. Step 25 phases 1, 2 and 4: the auto-slicer gets a ruler before it gets an opinion (2026-11-21)
+
+The detector had no ground truth. Its acceptance was a listening session, and the one number attached to it - "pull the
+reported onset back 6 ms" - was folklore nobody could say yes or no to, because nothing measured the error's *sign*. Phase 7's
+FFT idea was queued behind the same missing ruler: without a before number there is no after number, so the change could not
+be proposed, only tried. Step 25 builds the measurement first and touches the detector not at all.
+
+### What landed
+
+Six tuning literals moved out of the two detectors into one header per edition, mirroring the `ImportLimits` discipline:
+
+| File | sha-256 (16) | provenance |
+| --- | --- | --- |
+| `native/Source/Engine/SlicerTuning.h` | `583caff534cc0267` | worktree LF, 43 lines - the number is reproducible from the commit |
+| `src/audio/slicerTuning.ts` | `7301135a96ab355b` | worktree LF, 24 lines - ditto |
+| `src/lib/__tests__/slicerTuning.test.ts` | `5d591d545a39388c` | worktree LF, 49 lines - ditto |
+| `native/Tests/SlicerScoreTest.h` | `9132642c0da298c4` | worktree LF - ditto |
+| `native/Tests/SlicerScoreTest.cpp` | `2a807803dbfc8bad` | worktree LF, 734 lines - ditto |
+| `src/audio/slicer.ts` | `8f6ff72531ebc651` | worktree LF - ditto |
+| `native/Tests/SmokeTest.cpp` | `dbad628bf5fa5011` | **blob**, from the staged index (`git show HEAD:native/Tests/SmokeTest.cpp \| sha256sum`, 171,613 bytes). The worktree file is `w/crlf` and hashes `0e817bb59c9858a1` - publish the blob, never that one. |
+| `native/CMakeLists.txt` | `acce43ccb3ae0a03` | **blob**, same rule; worktree `2339f75b08c7d807` is the CRLF view (8,104 bytes as a blob). |
+
+`SLICEFORGE_SOURCES` lists `.cpp` files only, so a new header needs no CMake entry; the scorer needed one line at
+`Tests/SlicerScoreTest.cpp` in the smoke target's `target_sources`, one `#include`, one callback next to the groove bank's,
+and `main()` became `main (int argc, char** argv)` to read the bless flag - `argv`, not the environment, so the switch cannot
+be set by an inherited shell variable and `ctest` (which passes no argument) can never reach it.
+
+The extraction was proved behaviour-preserving before anything was built on it: a temporary full-precision probe printed every
+onset and strength of the click fixture, and the 9-decimal witness hashes to the same value on both sides of the edit
+(`d3480b28…`), with the whole smoke log byte-identical apart from the CPU line. Types were held on purpose - `float` for
+base/span/floor, `double` for the gaps and the bias - so the expression trees are unchanged, not merely equal.
+
+### Measured on this tree
+
+`PASS - 253/253 checks passed` exit 0 (`native/build/s25-final-smoke.log`), layout 32 checks, host `350 = 348 layout +
+Bypass + Program`, `ctest` `100% tests passed out of 3` exit 0, `npm test` 68 tests across 8 files exit 0, `npm run build`
+exit 0. CPU printed 4.45% of one core. The suite grew **237 → 253**, and the sixteen are constant: eight fixture-state gates
+plus eight scorer controls, none of which depends on how many takes are on disk, so blessing the real renders will not
+restamp the total again.
+
+### Falsifiers: every one of the sixteen was driven red
+
+Synthetic material, kept entirely in `native/build/s25-synth/` (gitignored) so no generated click track can be committed into
+the folder that ships the factory library: a 12-click 8-second wav plus a marks file whose reference is exact by construction.
+A blessed table was produced from it, then each guard broken in turn. Every leg restored the file it touched and the run
+returned to green at the same baseline hash (`650866e86d5dffbb` before, after).
+
+| Leg | state forced | what reddened |
+| --- | --- | --- |
+| baseline deleted | table absent with rows on disk | `the slicer baseline is present for the takes on disk`, alone |
+| baseline truncated to `{ "schema": ` | unparseable | `…is readable` **and** `…lists exactly the fixture take/sensitivity pairs` - an unreadable table blesses nothing, so both are true |
+| `tunings.kFloorRatio` 0.012000 → 0.012001 | blessed under other tuning | `…blessed under the tuning this binary was built with`, alone |
+| blessed `recall` 1.0000 → 0.9000 | drift down | band, `[synth-clean@0.20 recall 1.000 vs blessed 0.900 (tol 0.020)]` |
+| blessed `biasMs` -10.240 → -30.000 | **improvement** | band - the symmetric rule working: getting better is also a change to read |
+| blessed `fpPerMin` 0.00 → 40.00 | false positives dropped to silence | *green the first time* - see the defect below |
+| a second marks file, not blessed | inventory grew | `…lists exactly the fixture take/sensitivity pairs`, naming all three rows |
+| marks file whose `take` ≠ file name | bad marks | `every slicer marks file parses and every wav it names decodes` + `BLESS REFUSED` |
+| marks file naming a missing wav | bad marks | same check, `wav "synth-ghost.wav" did not decode` + `BLESS REFUSED` |
+| a 20-onset take at sens 0.20 (target 17) | capped | `no fixture take asks for more onsets than its sensitivity can return` **and** `BLESS REFUSED: refusing to bless a table that cannot pass` |
+
+The tuning literals themselves then went through the same treatment end to end, one literal per rebuild, against the blessed
+table - so a red had to come out of the whole chain, tuning → detector → scorer → band:
+
+| Mutation | tuning guard | band | what the numbers said |
+| --- | --- | --- | --- |
+| `kFloorRatio 0.012 → 0.0` | RED | RED | `detN` 17/33/49 = exactly each sensitivity's target, `recall` still 1.000, `fpmin` 37.5/157.5/277.5. **Recall alone calls this perfect.** |
+| `kMinGapSeconds 0.115 → 0.5` | RED | RED | `recall` 0.583 (7 of 12), `fpmin` 0.00. **The false-positive column alone calls this perfect.** The two halves are complementary, which is the argument for keeping both. |
+| `kDedupGateSeconds 0.07 → 0.0` | RED | green | no metric moved - see finding 2 |
+| `kOnsetBiasSeconds 0.006 → 0.0` | RED | RED | `medAbsMs` 10.24 → 4.24, `biasMs` -10.24 → -4.24 - see finding 3 |
+| `kTargetSpan 46 → 20` | RED | green | the 12 clicks still fit under the smaller target; the tuning block in the baseline is what catches this class |
+
+Four pre-existing checks in `SmokeTest.cpp` - `the detector finds the four clicks it was given` and its three companions - went
+red under the floor and min-gap mutations too, so the extraction did not weaken the constraints the suite already carried.
+
+**The defect the matrix caught, in the scorer rather than the engine.** The false-positive band was written as
+`|got - blessed| > max(fpFloor, blessed * (fpRatio - 1))`. With `fpRatio = 2.0` the relative slack equals the blessed value
+itself, and since the metric cannot go below zero, `blessed - got ≤ blessed` - so the lower side of that band is
+arithmetically unreachable and a blessed 40/min against a scored 0/min passed as a 100 percent improvement. The band is now
+asymmetric by construction (`fpViolates`): an absolute `fpFloor` per minute of slack downward, because a bigger drop than
+that is a real change in what fires, and a relative allowance upward, because 40 → 42 on a dense kit is not a finding. The
+rule is pinned in code by an eighth control that asserts all four corners of it, so it cannot silently become one-sided again.
+
+### Three findings, none of them fixed here
+
+1. **`kDedupGateSeconds` cannot bind.** The selection pass keeps accepted onsets `kMinGapSeconds` apart in hops; the bias is a
+   constant and cancels out of a difference; `0.07 < 0.115`. So the dedup test is dominated and unreachable as written, which
+   is why its mutation moved nothing - confirmed by derivation and by measurement, not by a single run. Left in place; the
+   comment in `SlicerTuning.h` now states the relation instead of promising a behaviour that never happens. It becomes the
+   binding constraint the moment it is raised above the min gap, which is a tuning decision for the owner, not a cleanup.
+2. **On clicks the -6 ms correction overshoots.** The corrected detector reports 10.24 ms *early* against a click whose true
+   onset it otherwise finds every time; withdrawing the correction cuts the median absolute error to 4.24 ms. This is not yet
+   a verdict on drums: a click has an instantaneous edge where a kit hit spends milliseconds reaching its peak, and the
+   correction was written for that rise. It is the first signed measurement of a claim that had only ever been asserted, and
+   it says the number is at least 6 ms too strong in the direction it moves.
+3. **`native/shots/*.png` is not a deterministic render.** Two consecutive `SliceForgeLayoutTest.exe` runs of the same binary
+   produced different bytes for `sequencer-large.png` (`b64d206f…` then `95cc8fd8…`) while the other nine reproduced exactly.
+   A shot diff therefore proves nothing about a code change, and any ctest run leaves that one file dirty. Five shot files are
+   dirty against HEAD at the time of writing, from the sequencer work in the tree plus every layout run since.
+
+### Doc carriers and the state of the gate
+
+`AGENTS.md` gained the rule *Auto-slicer tuning is one number per edition*, including both traps above, and
+`native/README.md` gained *Auto-slicer ground truth* plus the restamped totals. Present-tense numbers restamped from the run
+above: `README.md`'s suite table (`253/253`, `68 tests across 8 files`) and `native/README.md`'s at-a-glance row, its
+*Current result* paragraph, its arithmetic sentence (`217 − 2 + 22 = 237`, then `237 + 16 = 253`) and its `Tests/` tree
+listing. Historical run records in earlier sections were left as written, dated, and annotated rather than rewritten -
+including this file's own self-recorded line count at the 8H section, now marked *was 2476 that day*.
+
+Nothing here is neutral about line numbers: the Step 25 entry grew by three lines and the two status annotations by one more,
+so every `:NNNN` cite below roughly `:712` in this file sits four lines lower than the section that printed it. That includes
+the count in the sentence before this one. `docs/next-steps-plan.md` has been declaring its own cites dead for eleven sections
+now; this is one more named shift, not a new class of problem, and it is why the step entries above cite `SlicerTuning.h`
+by symbol rather than `Slicer.cpp:47-49` by number.
+
+The green is on the bytes as they stand: the last native source to move was `SlicerTuning.h` at 11:46:36 (a comment), the
+full build finished after it, and `s25-final-smoke.log` printed `253/253` at 11:48:58. The doc edits after that touch no
+translation unit, so no re-gate is owed by them - but any source edit does owe one, and the number to compare against is in
+that log, not in this paragraph.
+
+### Still owed by Step 25
+
+- **Phase 3, and only the owner can do it:** render nine 4-bar takes from real kits in Live (44.1 kHz / 24-bit / stereo,
+  -6 dBFS, first downbeat at t = 1.0 s, the hat run at 200 BPM, dry), then the marks files whose reference is the clip's own
+  note times. Everything downstream is ready: the scorer, the schemas, the bless, the gate. When the wavs land it is one bless
+  and one commit, and findings 2 and 3 above get their real measurements.
+- **Not built, deliberately:** the browser-side scorer. `slicerTuning.test.ts` pins the constants across the editions, and the
+  native scorer owns the audio; a second scorer would be a second ruler to keep true.
+- The `launch/` archive and zip are unchanged by all of this - no product source moved, only comments and test code - but the
+  module in `native/build` did relink, so the build/launch/installed tuple this plan has been tracking still needs the
+  re-export the owner gated.

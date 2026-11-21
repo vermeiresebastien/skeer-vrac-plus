@@ -98,8 +98,8 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
   are data keys, not branding:
   - `PLUGIN_CODE Vrac` and `PLUGIN_MANUFACTURER_CODE Erwm` (`native/CMakeLists.txt:109-110`): the
     pair is the VST3 module identity in the host session; changing either orphans every saved set.
-  - `"VRACPlus"` (the APVTS ValueTree type, `native/Source/PluginProcessor.cpp:75`) and
-    `"VRAC_EXTRA"` (`:1043`, `:1047`, `:1116`, `:1121`): the host-state XML the plugin reads back.
+  - `"VRACPlus"` (the APVTS ValueTree type, `native/Source/PluginProcessor.cpp:73`) and
+    `"VRAC_EXTRA"` (`:1066`, `:1070`, `:1139`, `:1144`; re-grep): the host-state XML the plugin reads back.
     Renaming them silently drops slices, sequencer and custom-sample data.
   - `0x56524143` / `'VRAC'` in `native/Source/Sequencer.cpp:12`: the magic written into and
     validated on `.vracpattern` files.
@@ -117,13 +117,19 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
 - Modules shared with the tests stay DOM- and Node-free (`src/types.ts`, `src/audio/engineCore.ts`).
 - Report a build or test result from that command's own exit status and log. A piped command
   reports the pipe's status, and a background GUI process exiting 0 means the window closed.
-- Three idioms of the native smoke suite, each found the hard way. `check (cond, name, detail)`
+- Four idioms of the native smoke suite, each found the hard way. `check (cond, name, detail)`
   **evaluates** its detail argument even when the check passes, so a render, a parse or any other work
   belongs in a named local above the check and not inside the string. The suite's list builders append a
   space after *every* element, so an expectation literal is `"36 "` and `"931 960 1080 "`, never `"36"` —
   a missing trailing space makes a correct exporter look broken. And `MidiMessage::getVelocity()` returns
   the raw 0..127 **byte** (`juce_MidiMessage.h:331`), while `getFloatVelocity()` (`:340`) returns 0..1 —
-  multiplying the first by 127 yields 16129.
+  multiplying the first by 127 yields 16129. Fourth: a `SeqBlockOutput` trigger cannot be attributed to a
+  step exactly. `scheduleHostBlock` scans two steps outside the block (`Sequencer.cpp:326-327`, and the
+  internal clock repeats the same window at `:362-363`), so the block that reports
+  `playheadStep == 31` is the same block that carries the next loop's step-0 hit, and a swung odd step in
+  bar one can land in the upper half of the grid. So a check that asks
+  whether anything reached bar two must strip `swing` and every `nudge` first and window the playhead away
+  from both boundaries — `>= 16` stayed green on a bank whose second bar had been emptied by hand.
 
 ## Known drift — do not trust these without re-checking
 
@@ -223,3 +229,27 @@ engine objects by value in one frame — 21 processors at 16,240 B, 11 `SeqBlock
 the ones that must not carry a 96 KB `SequencerData` on the stack: `serialisePattern` and
 `SequencerPanel::writeMidiToFile` are heap copies for that reason. The suite flushes stdout inside `check()` because a
 4 KB full buffer truncates a crashing run at a buffer boundary and names a check that never ran as the last one.
+
+## Auto-slicer tuning is one number per edition
+
+`native/Source/Engine/SlicerTuning.h` and `src/audio/slicerTuning.ts` are the only places the detector's six tuning
+literals live: the slice-count base and span, the minimum gap between accepted onsets, the amplitude floor, the onset
+pull-back, and the dedup gate. Change them there and nowhere else — `src/lib/__tests__/slicerTuning.test.ts` parses the
+C++ header and reddens `npm test` on a native-only edit, exactly like `importLimits.test.ts` does for the ceilings.
+`kMaxSlices` is deliberately **not** in that pair: it is a product ceiling on the kit a host sees, not a tuning of the
+detector, and it stays in `native/Source/Params.h`.
+
+Two traps in that file. `kOnsetBiasSeconds` is stored **positive and subtracted**, because the parity regex
+(`constexpr\s+\S+\s+NAME\s*=\s*([0-9.]+)`) cannot capture a negative literal — writing `-0.006` silently un-gates the
+pair. And `kDedupGateSeconds` cannot bind while it is smaller than `kMinGapSeconds`: the selection pass already forces
+every accepted onset `kMinGapSeconds` apart, the bias is a constant so it cancels out of a difference, and the gate sits
+below that. Measured, not inferred — setting it to `0.0` moved no score on any fixture. Do not "fix" that by deleting
+it; it becomes the binding constraint the moment it is raised above the min gap.
+
+The detector is judged by `native/Tests/SlicerScoreTest.cpp`, not by ear: `fixtures/marks/*.marks.json` holds the
+reference onsets, `fixtures/slicer-baseline.json` holds the blessed table **and the tuning it was blessed under**, and
+the band is symmetric so a regression and an improvement both redden and force an explicit
+`SliceForgeSmokeTest.exe --bless-slicer-baseline`. That bless is argv-gated because ctest never passes an argument: a
+green run must never be able to approve its own behaviour. `docs/next-steps-plan.md` 8Q records why, plus the falsifier
+matrix that proved all sixteen slicer checks can go red. The suite total moves with the scorer, not with the material:
+sixteen slicer checks whether the repo holds zero takes or nine.

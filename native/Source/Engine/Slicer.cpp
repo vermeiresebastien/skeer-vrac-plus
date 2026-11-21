@@ -1,4 +1,5 @@
 #include "Slicer.h"
+#include "SlicerTuning.h"
 #include "Params.h"
 #include <algorithm>
 
@@ -44,9 +45,8 @@ namespace sliceforge
         }
 
         const auto sens = juce::jlimit (0.0f, 1.0f, sensitivity);
-        const int target = (int) std::round (8.0f + 46.0f * sens);
-        const double minGapSeconds = 0.115;
-        const float floor = maxFlux * 0.012f;
+        const int target = (int) std::round (kTargetBase + kTargetSpan * sens);
+        const float floor = maxFlux * kFloorRatio;
 
         struct Candidate { int index; float strength; };
         std::vector<Candidate> candidates;
@@ -65,7 +65,7 @@ namespace sliceforge
                    [] (const Candidate& a, const Candidate& b) { return a.strength > b.strength; });
 
         std::vector<int> chosen;
-        const double minGapHops = minGapSeconds * sampleRate / hop;
+        const double minGapHops = kMinGapSeconds * sampleRate / hop;
         for (const auto& candidate : candidates)
         {
             if ((int) chosen.size() >= juce::jmin (target, kMaxSlices))
@@ -86,8 +86,8 @@ namespace sliceforge
         double last = -1.0;
         for (int h : chosen)
         {
-            const auto time = juce::jmax (0.0, (h * hop) / sampleRate - 0.006);
-            if (time - last < 0.07)
+            const auto time = juce::jmax (0.0, (h * hop) / sampleRate - kOnsetBiasSeconds);
+            if (time - last < kDedupGateSeconds)
                 continue;
             last = time;
             slices.push_back ({ time, juce::jlimit (0.0f, 1.0f, flux[(size_t) h] / (maxFlux > 0.0f ? maxFlux : 1.0f)) });
@@ -95,21 +95,60 @@ namespace sliceforge
         return slices;
     }
 
-    std::vector<double> padStartsFromSlices (const std::vector<Slice>& slices)
+    double sliceGapSeconds (const std::vector<Slice>& slices, int index, double durationSeconds)
     {
-        std::vector<double> starts ((size_t) kNumPads, 0.0);
-        if (slices.empty())
-            return starts;
+        if (index < 0 || index >= (int) slices.size())
+            return 0.0;
+        const auto start = slices[(size_t) index].time;
+        // A slice can sit past the end of the material (the pad editor lets you place one), so the
+        // end is taken as never before the start rather than trusted to be after it.
+        const auto end = juce::jmax (start, index + 1 < (int) slices.size()
+                                            ? slices[(size_t) (index + 1)].time
+                                            : durationSeconds);
+        return end - start;
+    }
+
+    SliceMapping sliceMapFromSlices (const std::vector<Slice>& slices, double durationSeconds)
+    {
+        SliceMapping mapping;
+        mapping.slices = slices;
+        const int n = (int) slices.size();
+        if (n == 0)
+            return mapping; // No slices is no kit: the caller keeps whatever it already had.
+
         for (int pad = 0; pad < kNumPads; ++pad)
         {
             double position = 0.0;
-            if ((int) slices.size() >= kNumPads)
-                position = pad * ((double) slices.size() - 1.0) / (kNumPads - 1.0);
+            if (n >= kNumPads)
+            {
+                position = (double) pad * (double) (n - 1) / (double) (kNumPads - 1);
+            }
+            else if (pad < n)
+            {
+                // Fewer slices than pads. Every slice gets a pad of its own before any slice gets
+                // a second one: wrapping at `pad % n` instead means a four-onset take puts all
+                // sixteen pads on the first quarter of the file and none on the rest of it.
+                position = (double) pad;
+            }
             else
-                position = (double) (pad % (int) slices.size());
-            const auto index = juce::jlimit (0, (int) slices.size() - 1, (int) std::round (position));
-            starts[(size_t) pad] = slices[(size_t) index].time;
+            {
+                const auto stride = (double) (n - 1) / (double) (kNumPads - n);
+                position = (double) (pad - n) * stride;
+            }
+            const auto index = juce::jlimit (0, n - 1, (int) std::round (position));
+            mapping.padSliceIndices[(size_t) pad] = index;
+            mapping.padStarts[(size_t) pad] = slices[(size_t) index].time;
+            mapping.padLengths[(size_t) pad] = sliceGapSeconds (slices, index, durationSeconds);
         }
-        return starts;
+        return mapping;
+    }
+
+    std::vector<double> padStartsFromSlices (const std::vector<Slice>& slices)
+    {
+        // The starts-only view. The duration argument cannot make a start move, and no length is
+        // read out of this result, so passing the last slice's own time is inert by construction.
+        const auto duration = slices.empty () ? 0.0 : slices.back().time;
+        const auto mapping = sliceMapFromSlices (slices, duration);
+        return std::vector<double> (mapping.padStarts.begin(), mapping.padStarts.end());
     }
 } // namespace sliceforge

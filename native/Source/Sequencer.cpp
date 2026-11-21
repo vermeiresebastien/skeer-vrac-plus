@@ -3,6 +3,7 @@
 #include <algorithm>
 #include <cmath>
 #include <cstdint>
+#include <cstring>
 
 namespace sliceforge
 {
@@ -502,119 +503,137 @@ namespace sliceforge
         }
     }
 
-    juce::String patternPresetName (PatternPreset preset)
+    namespace
     {
-        switch (preset)
+        /*  The one place the groove alphabet becomes a step. A character that is not in the table
+            leaves a hole rather than a note, which is why isGrooveStepChar() exists for the bank
+            check to walk every character of every lane: a typo in a mask is otherwise silent. */
+        void applyGrooveChar (SeqPattern& pattern, int pad, int step, char stepChar)
         {
-            case PatternPreset::fourFloor: return "FOUR FLOOR";
-            case PatternPreset::boomBap:   return "BOOM BAP";
-            case PatternPreset::halfTime:  return "HALF TIME";
-            case PatternPreset::trap:      return "TRAP";
-            case PatternPreset::afro:      return "AFRO 12";
-            case PatternPreset::broken:    return "BROKEN";
+            switch (stepChar)
+            {
+                case '-': setStep (pattern, pad, step, 0.30f); break;
+                case 'x': setStep (pattern, pad, step, 0.72f); break;
+                case 'X': setStep (pattern, pad, step, 0.95f); break;
+                case '#': setStep (pattern, pad, step, 1.00f); break;
+                case 'r': setStep (pattern, pad, step, 0.68f, 1.0f, 3); break;
+                case 'R': setStep (pattern, pad, step, 0.62f, 1.0f, 4); break;
+                case 'p': setStep (pattern, pad, step, 0.72f, 0.55f); break;
+                case 'f':
+                    setStep (pattern, pad, step, 0.85f);
+                    pattern.rows[(size_t) pad][(size_t) step].flam = 1;
+                    break;
+                case '<':
+                    setStep (pattern, pad, step, 0.72f);
+                    pattern.rows[(size_t) pad][(size_t) step].nudge = -0.18f;
+                    break;
+                case '>':
+                    setStep (pattern, pad, step, 0.72f);
+                    pattern.rows[(size_t) pad][(size_t) step].nudge = 0.18f;
+                    break;
+                default:
+                    break; // '.' is a rest; anything else is the bank check's problem, not the engine's
+            }
         }
-        return "PATTERN";
+    } // namespace
+
+    std::pair<int, int> grooveGenreRun (int grooveIndex)
+    {
+        const auto bank = grooveBank();
+        if (grooveIndex < 0 || grooveIndex >= (int) bank.size())
+            return { -1, -1 };
+
+        /*  strcmp, not CharacterFunctions::compare: in JUCE 8 that name is a template over
+            *pointer types* and instantiating it with two `const char*`s asks a raw pointer for
+            getAndAdvance. The genre names are ASCII literals either way. */
+        const auto* genre = bank[(size_t) grooveIndex].genre;
+        auto first = grooveIndex;
+        auto last = grooveIndex;
+        while (first > 0 && std::strcmp (bank[(size_t) (first - 1)].genre, genre) == 0)
+            --first;
+        while (last + 1 < (int) bank.size()
+               && std::strcmp (bank[(size_t) (last + 1)].genre, genre) == 0)
+            ++last;
+        return { first, last };
     }
 
-    SeqPattern makePatternPreset (PatternPreset preset)
+    bool isGrooveStepChar (char stepChar) noexcept
+    {
+        return stepChar == '.' || stepChar == '-' || stepChar == 'x' || stepChar == 'X'
+            || stepChar == '#' || stepChar == 'r' || stepChar == 'R' || stepChar == 'f'
+            || stepChar == 'p' || stepChar == '<' || stepChar == '>';
+    }
+
+    juce::String grooveLabel (const Groove& groove)
+    {
+        return juce::String (groove.genre) + "  -  " + juce::String (groove.name);
+    }
+
+    int nextGrooveVariation (int grooveIndex)
+    {
+        const auto bank = grooveBank();
+        if (bank.empty() || grooveIndex < 0 || grooveIndex >= (int) bank.size())
+            return grooveIndex;
+
+        const auto run = grooveGenreRun (grooveIndex);
+        return grooveIndex >= run.second ? run.first : grooveIndex + 1;
+    }
+
+    std::array<int, kNumPads> grooveVoicing (int grooveIndex)
+    {
+        std::array<int, kNumPads> models;
+        models.fill (-1);
+        const auto bank = grooveBank();
+        if (grooveIndex < 0 || grooveIndex >= (int) bank.size())
+            return models;
+
+        for (const auto& voice : bank[(size_t) grooveIndex].voicing)
+            if (voice.pad >= 0 && voice.pad < kNumPads)
+                models[(size_t) voice.pad] = juce::jlimit (0, kNumModels - 1, voice.model);
+        return models;
+    }
+
+    SeqPattern makeGroovePattern (int grooveIndex)
     {
         SeqPattern pattern;
-        switch (preset)
+        const auto bank = grooveBank();
+        if (grooveIndex < 0 || grooveIndex >= (int) bank.size())
+            return pattern;
+
+        for (const auto& lane : bank[(size_t) grooveIndex].lanes)
         {
-            case PatternPreset::fourFloor:
-                setStep (pattern, 0, 0, 0.98f);
-                setStep (pattern, 0, 4, 0.82f);
-                setStep (pattern, 0, 8, 0.98f);
-                setStep (pattern, 0, 12, 0.86f);
-                setStep (pattern, 2, 4, 0.86f);
-                setStep (pattern, 2, 12, 0.9f);
-                setStep (pattern, 3, 4, 0.55f);
-                setStep (pattern, 3, 12, 0.62f);
-                for (int step = 0; step < 16; step += 2)
-                    setStep (pattern, 6, step, step % 4 == 0 ? 0.7f : 0.45f);
-                for (int step = 1; step < 16; step += 2)
-                    setStep (pattern, 7, step, 0.32f);
-                break;
+            if (lane.pad < 0 || lane.pad >= kNumPads || lane.steps == nullptr)
+                continue;
 
-            case PatternPreset::boomBap:
-                setStep (pattern, 0, 0, 0.98f);
-                setStep (pattern, 0, 7, 0.7f);
-                setStep (pattern, 0, 10, 0.86f);
-                setStep (pattern, 1, 3, 0.5f);
-                setStep (pattern, 2, 4, 0.88f);
-                setStep (pattern, 2, 12, 0.95f);
-                setStep (pattern, 3, 4, 0.55f);
-                setStep (pattern, 3, 12, 0.62f);
-                for (int step = 0; step < 16; step += 2)
-                    setStep (pattern, 6, step, step % 4 == 0 ? 0.72f : 0.5f);
-                for (int step = 1; step < 16; step += 2)
-                    setStep (pattern, 7, step, 0.28f);
-                pattern.rows[2][4].nudge = -0.08f;
-                pattern.rows[2][12].nudge = 0.06f;
-                break;
+            for (int step = 0; step < kSeqSteps; ++step)
+            {
+                const auto stepChar = lane.steps[step];
+                if (stepChar == '\0')
+                    break; // a short mask is a bank bug, and the bank check names it
+                applyGrooveChar (pattern, lane.pad, step, stepChar);
+            }
 
-            case PatternPreset::halfTime:
-                setStep (pattern, 0, 0, 1.0f);
-                setStep (pattern, 0, 10, 0.8f);
-                setStep (pattern, 2, 8, 0.92f);
-                setStep (pattern, 3, 8, 0.66f);
-                for (int step = 0; step < 16; step += 4)
-                    setStep (pattern, 6, step, 0.7f);
-                for (int step = 2; step < 16; step += 4)
-                    setStep (pattern, 7, step, 0.35f);
-                break;
-
-            case PatternPreset::trap:
-                setStep (pattern, 0, 0, 1.0f);
-                setStep (pattern, 0, 3, 0.62f);
-                setStep (pattern, 0, 6, 0.82f);
-                setStep (pattern, 0, 10, 0.76f);
-                setStep (pattern, 2, 8, 0.9f);
-                setStep (pattern, 3, 4, 0.5f);
-                setStep (pattern, 3, 12, 0.58f);
-                for (int step = 0; step < 16; ++step)
-                    setStep (pattern, 6, step, step % 4 == 0 ? 0.62f : 0.3f, 0.72f);
-                pattern.rows[6][7].ratchet = 3;
-                pattern.rows[6][15].ratchet = 2;
-                pattern.rows[0][3].flam = 1;
-                break;
-
-            case PatternPreset::afro:
-                setStep (pattern, 0, 0, 0.95f);
-                setStep (pattern, 0, 3, 0.65f);
-                setStep (pattern, 0, 6, 0.8f);
-                setStep (pattern, 0, 10, 0.72f);
-                setStep (pattern, 2, 4, 0.72f);
-                setStep (pattern, 2, 12, 0.82f);
-                for (int step = 0; step < 12; step += 3)
-                {
-                    setStep (pattern, 6, step, 0.55f);
-                    setStep (pattern, 7, step + 1, 0.36f);
-                }
-                pattern.laneLength[6] = 12;
-                pattern.laneLength[7] = 12;
-                pattern.laneLength[10] = 6;
-                setStep (pattern, 10, 2, 0.62f);
-                setStep (pattern, 10, 5, 0.45f);
-                break;
-
-            case PatternPreset::broken:
-                setStep (pattern, 0, 0, 0.9f);
-                setStep (pattern, 0, 5, 0.6f);
-                setStep (pattern, 0, 9, 0.75f);
-                setStep (pattern, 2, 3, 0.62f);
-                setStep (pattern, 2, 11, 0.95f);
-                setStep (pattern, 3, 7, 0.55f);
-                setStep (pattern, 6, 2, 0.45f);
-                setStep (pattern, 6, 6, 0.55f);
-                setStep (pattern, 6, 10, 0.4f);
-                setStep (pattern, 7, 13, 0.4f);
-                pattern.rows[0][5].nudge = 0.22f;
-                pattern.rows[2][11].nudge = -0.18f;
-                pattern.rows[6][10].flam = 1;
-                break;
+            pattern.laneLength[(size_t) lane.pad] = lane.loop > 0
+                ? juce::jlimit (1, kSeqSteps, lane.loop)
+                : 0;
         }
         return pattern;
+    }
+
+    bool applyGroove (SequencerData& data, int grooveIndex)
+    {
+        const auto bank = grooveBank();
+        if (grooveIndex < 0 || grooveIndex >= (int) bank.size())
+            return false;
+
+        const auto& groove = bank[(size_t) grooveIndex];
+        const auto active = juce::jlimit (0, kSeqPatterns - 1, data.activePattern);
+        data.patterns[(size_t) active] = makeGroovePattern (grooveIndex);
+        data.length = kSeqSteps;
+        data.bpm = juce::jlimit (kSeqMinBpm, kSeqMaxBpm, (double) groove.bpm);
+        data.division = sanitiseDivision (groove.division);
+        data.swing = juce::jlimit (0.0f, 0.66f, groove.swing);
+        return true;
     }
 
     void clearPattern (SeqPattern& pattern)

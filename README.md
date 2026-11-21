@@ -260,12 +260,18 @@ automate.
 ![SKEER SliceForge step inspector](native/shots/sequencer-inspector.png)
 
 Six edit modes paint and edit the grid directly: **DRAW, VELOCITY, PROB, RATCHET, NUDGE, FLAM**.
-Ten pattern tools: RANDOM, CLEAR, COPY, PASTE, COPY TO, LANE RND, EUCLID, SONG, PAT PRESET and MIDI.
+Ten pattern tools: RANDOM, CLEAR, COPY, PASTE, COPY TO, LANE RND, EUCLID, SONG, GROOVES and MIDI.
 RANDOM opens thirteen items — a light, medium or busy groove, mutate, humanize velocities, accent
 downbeats, shift left and right, randomise or euclid (3, 5 or 7 pulses) the selected lane, and clear —
 and COPY TO, or a right-click on a pattern letter, duplicates a pattern into another slot as one undo
-step. Six built-in pattern presets ship with it: FOUR FLOOR, BOOM BAP, HALF TIME, TRAP, AFRO 12,
-BROKEN.
+step. **GROOVES** is the preset menu: sixty named patterns in twenty genres, three variations each —
+HOUSE, TECHNO, TRAP, BOOM BAP, DRUM & BASS, UK GARAGE, AFRO, DANCEHALL, BREAKS, ELECTRO, REGGAE & DUB,
+FUNK & SOUL, LO-FI, HARD & CLUB, DISCO, TRIP HOP, POP, ROCK, EBM & INDUSTRIAL and LATIN. One submenu per
+genre, so DEEP sits under HOUSE beside CLASSIC and DRIVE; the row you applied stays ticked and
+**Next HOUSE variation** walks the three. A groove writes its 32-step pattern *and* takes the grid with it
+— two bars, plus that genre's tempo, division and swing — because a second bar behind a 16-step window is
+data nobody hears. It never re-voices your pads: **Match … sounds** is a separate, deliberate click. The
+`.vracpattern` save and load items live on the same menu.
 
 **Probability re-rolls.** The roll is a positional hash over pattern, pad, absolute step and a pass
 counter, so a looping pattern does not replay the same frozen dropout set — and the exporter uses
@@ -533,18 +539,20 @@ wall-clock or count bound that fails on a loaded machine is a worse test than a 
 
 | Suite | Command | Result |
 | --- | --- | --- |
-| Native engine, headless | `SliceForgeSmokeTest.exe` | `PASS - 217/217 checks passed`, exit 0 |
-| Native layout and paint | `SliceForgeLayoutTest.exe` | 28 checks, screenshots regenerated, exit 0 |
+| Native engine, headless | `SliceForgeSmokeTest.exe` | `PASS - 253/253 checks passed`, exit 0 |
+| Native layout and paint | `SliceForgeLayoutTest.exe` | 32 checks, screenshots regenerated, exit 0 |
 | Native VST3 in a real host | `SliceForgeHostTest.exe` | `PASS VST3 host test`, 350 parameters = 348 + Bypass + Program |
 | All three together | `ctest --test-dir native/build -C Release` | `100% tests passed out of 3`, exit 0 |
-| Web units | `npm test` | 65 tests across 7 files, exit 0 |
+| Web units | `npm test` | 68 tests across 8 files, exit 0 |
 | Web type gate | `npm run build` | exit 0 |
 | Browser end-to-end | `npm run test:browser` | `27/27 checks passed`, exit 0 |
 
 The headless suite drives the engine with no UI and no audio device and asserts the cross-edition
 facts: the parameter count, the slice-to-LENGTH derivation, the import ceilings including the
 byte-clamp arithmetic at 44.1, 48, 96 and 192 kHz, the sequencer's timing against a mock host
-playhead, and the bytes a `.mid` export actually writes to disk. The layout suite paints every page
+playhead, the shape of all sixty groove rows (mask span, a second bar that is not a copy of the first,
+the grid write that makes it audible, and a save/reload round-trip), and the bytes a `.mid` export
+actually writes to disk. The layout suite paints every page
 and regenerates the screenshots in this file. The web suite parses the C++ header directly, which is
 what keeps the two editions from drifting on the ceilings.
 

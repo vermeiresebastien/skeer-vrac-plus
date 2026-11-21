@@ -2,6 +2,8 @@
 #include "PluginProcessor.h"
 #include "UI/Controls.h"
 #include "VaultLibrary.h"
+#include "GrooveBankTest.h"
+#include "SlicerScoreTest.h"
 
 #include <algorithm>
 #include <array>
@@ -150,9 +152,19 @@ namespace
     }
 } // namespace
 
-int main()
+int main (int argc, char** argv)
 {
     juce::ScopedJuceInitialiser_GUI juceInitialiser;
+
+    /*  Re-blessing the slicer table is opt-in and reached only through argv, so a `ctest` run - which
+        never passes an argument - cannot quietly approve whatever the detector does today. */
+    if (argc > 1 && juce::String (argv[1]) == "--bless-slicer-baseline")
+    {
+        const auto refusal = sliceforge::test::writeSlicerBaseline();
+        std::cout << (refusal.isEmpty() ? "BLESSED fixtures/slicer-baseline.json"
+                                        : "BLESS REFUSED: " + refusal) << '\n';
+        return refusal.isEmpty() ? 0 : 1;
+    }
 
     std::cout << "SliceForge native smoke test\n";
 
@@ -1884,15 +1896,21 @@ int main()
         }
 
         {
-            const auto afro = sliceforge::makePatternPreset (sliceforge::PatternPreset::afro);
-            check (afro.laneLength[6] == 12 && afro.rows[0][0].on,
-                   "factory pattern preset contains polymeter and notes");
-            auto data = makeFeatureSequence();
-            data->patterns[0] = afro;
-            const auto block = sliceforge::serialisePattern (afro);
-            const auto restored = sliceforge::deserialisePattern (block);
-            check (restored != nullptr && restored->laneLength[6] == 12,
-                   "pattern presets save and load correctly");
+            /*  The factory groove bank, in its own translation unit: sixty rows of invariants do not
+                belong in main()'s already 1 MB stack frame, and they report through this harness's
+                check() so the suite total stays the suite total. */
+            sliceforge::test::runGrooveBankChecks (
+                [] (bool ok, const juce::String& name, const juce::String& detail)
+                { check (ok, name, detail); });
+        }
+
+        {
+            /*  The slicer scorer, also in its own translation unit for the same stack reason. It scores
+                the rendered takes in fixtures/marks against the committed baseline and runs the code-only
+                controls that prove the scorer itself works, so it reports green while there is no material. */
+            sliceforge::test::runSlicerScoreChecks (
+                [] (bool ok, const juce::String& name, const juce::String& detail)
+                { check (ok, name, detail); });
         }
 
         {
@@ -2897,6 +2915,183 @@ int main()
                juce::String (at48, 2) + " dB");
         check (spread < 0.5, "warp does the same work at 44.1, 48 and 96 kHz",
                juce::String (at44, 2) + " / " + juce::String (at48, 2) + " / " + juce::String (at96, 2) + " dB");
+    }
+
+    /*  Every slice has an end. Two levels, because the property has two halves that break apart:
+        the derivation, which is a pure function of a slice list and a file length, and the wiring,
+        which is a reslice actually moving the LENGTH knobs. The pure half is written against the
+        gaps and the distinct-index count rather than against sixteen summed lengths: with four
+        slices, sixteen pads repeat each gap four times, so "the lengths sum to the duration" would
+        fail on correct code. What does tile the material is the *distinct* set - and it tiles from
+        the first onset to the end, not from zero, because the head before the first hit has no pad
+        that plays it. */
+    {
+        const std::vector<sliceforge::Slice> four { { 0.4, 1.0f }, { 1.3, 0.8f }, { 1.75, 0.6f }, { 2.6, 0.4f } };
+        const std::array<double, 4> gapOf { 0.9, 0.45, 0.85, 0.4 }; // to the next onset; the last is the tail
+        const auto layout = sliceforge::sliceMapFromSlices (four, 3.0);
+
+        bool derived = true;
+        for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
+        {
+            const auto index = layout.padSliceIndices[(size_t) pad];
+            if (index < 0 || index >= 4)
+            {
+                derived = false;
+                break;
+            }
+            if (std::abs (layout.padStarts[(size_t) pad] - four[(size_t) index].time) > 1e-9
+                || std::abs (layout.padLengths[(size_t) pad] - gapOf[(size_t) index]) > 1e-9)
+                derived = false;
+        }
+        check (derived, "a pad's length is the distance to the next onset, and the tail for the last slice");
+
+        std::vector<double> distinctStarts;
+        std::vector<double> distinctLengths;
+        for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
+        {
+            const auto addUnique = [] (std::vector<double>& into, double value)
+            {
+                for (const auto seen : into)
+                    if (std::abs (seen - value) < 1e-9)
+                        return;
+                into.push_back (value);
+            };
+            addUnique (distinctStarts, layout.padStarts[(size_t) pad]);
+            addUnique (distinctLengths, layout.padLengths[(size_t) pad]);
+        }
+        double tiled = 0.0;
+        for (const auto one : distinctLengths)
+            tiled += one;
+        check (distinctStarts.size() == 4 && distinctLengths.size() == 4,
+               "four slices across sixteen pads give four distinct starts and four distinct lengths",
+               juce::String ((int) distinctStarts.size()) + " / " + juce::String ((int) distinctLengths.size()));
+        check (std::abs (tiled - (3.0 - four.front().time)) < 1e-9,
+               "the distinct gaps tile the material from the first onset to the file end",
+               juce::String (tiled, 4) + " s");
+
+        bool everySliceHeard = true;
+        bool firstRoundIsDistinct = true;
+        bool repeatsRunForward = true;
+        for (int index = 0; index < 4; ++index)
+        {
+            bool used = false;
+            for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
+                if (layout.padSliceIndices[(size_t) pad] == index)
+                    used = true;
+            if (! used)
+                everySliceHeard = false;
+        }
+        for (int pad = 0; pad < 4; ++pad)
+            if (layout.padSliceIndices[(size_t) pad] != pad)
+                firstRoundIsDistinct = false;
+        for (int pad = 5; pad < sliceforge::kNumPads; ++pad)
+            if (layout.padSliceIndices[(size_t) pad] < layout.padSliceIndices[(size_t) (pad - 1)])
+                repeatsRunForward = false;
+        // Four slices on sixteen pads used to be 0,1,2,3,0,1,2,3 - every pad on the first quarter of
+        // the take. Now: each slice owns a pad before any slice owns a second, the repeats run
+        // forward across the whole material, and the last pad can reach the end of it.
+        check (everySliceHeard && firstRoundIsDistinct && repeatsRunForward
+                   && layout.padSliceIndices[15] == 3,
+               "a slice is repeated only after every slice has a pad of its own",
+               juce::String (firstRoundIsDistinct ? 1 : 0) + juce::String (everySliceHeard ? 1 : 0)
+                   + juce::String (repeatsRunForward ? 1 : 0) + ", last pad on slice "
+                   + juce::String (layout.padSliceIndices[15]));
+
+        std::vector<sliceforge::Slice> twenty;
+        for (int i = 0; i < 20; ++i)
+            twenty.push_back ({ (double) i * 0.1, 0.5f });
+        const auto wide = sliceforge::sliceMapFromSlices (twenty, 3.0);
+        bool sixteenSpread = true;
+        for (int pad = 1; pad < sliceforge::kNumPads; ++pad)
+            if (wide.padSliceIndices[(size_t) pad] == wide.padSliceIndices[(size_t) (pad - 1)])
+                sixteenSpread = false;
+        check (sixteenSpread, "twenty slices still spread across sixteen different pads");
+
+        const auto none = sliceforge::sliceMapFromSlices (std::vector<sliceforge::Slice> {}, 3.0);
+        bool allZero = true;
+        for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
+            if (none.padStarts[(size_t) pad] != 0.0 || none.padLengths[(size_t) pad] != 0.0)
+                allZero = false;
+        check (allZero, "a file with no onsets maps to nothing rather than to garbage");
+    }
+
+    // The same property through the door a customer uses: drop one recording on the plugin.
+    {
+        const double rate = 48000.0;
+        const int length = (int) (rate * 3.0);
+        const double clickAt[4] { 0.4, 1.3, 1.75, 2.6 };
+        juce::AudioBuffer<float> clicks (2, length);
+        clicks.clear();
+        for (const auto at : clickAt)
+        {
+            const auto start = (int) (at * rate);
+            for (int i = 0; i < 300 && start + i < length; ++i)
+            {
+                const auto v = 0.85f * std::sin (juce::MathConstants<float>::twoPi * 4000.0f * (float) i
+                                                 / (float) rate);
+                clicks.setSample (0, start + i, v);
+                clicks.setSample (1, start + i, v);
+            }
+        }
+        const auto probeFile = juce::File (juce::File::getSpecialLocation (juce::File::tempDirectory))
+                                   .getChildFile ("SliceForgeSliceEndsProbe.wav");
+        check (sliceforge::writeStereoWav (probeFile, clicks, rate) && probeFile.existsAsFile(),
+               "the slice-ends probe writes its fixture");
+
+        SliceForgeAudioProcessor kit;
+        kit.prepareToPlay (rate, 512);
+        const auto loaded = kit.loadUserSampleFromFile (probeFile);
+        const auto found = kit.getSlices();
+        const auto file = kit.getSamplePtr();
+        check (loaded && found.size() == 4 && file != nullptr,
+               "the detector finds the four clicks it was given",
+               juce::String ((int) found.size()) + " slices");
+
+        bool onTime = found.size() == 4;
+        for (size_t i = 0; onTime && i < found.size(); ++i)
+            onTime = std::abs (found[i].time - clickAt[i]) < 0.012; // the envelope window is centred: up to two hops early
+        check (onTime, "the four onsets land on the clicks and not elsewhere",
+               found.size() == 4 ? juce::String (found[0].time, 3) + " " + juce::String (found[3].time, 3)
+                                 : juce::String ("wrong slice count"));
+
+        const auto global = (double) getParam (kit, "global.length");
+        const double fileSeconds = file != nullptr ? file->getDurationSeconds() : 0.0;
+        juce::String mismatch;
+        bool wired = loaded && found.size() == 4 && file != nullptr;
+        std::vector<double> kitLengths;
+        for (int pad = 0; wired && pad < sliceforge::kNumPads; ++pad)
+        {
+            const auto start = kit.getPadStart (pad);
+            int index = -1;
+            for (size_t i = 0; i < found.size(); ++i)
+                if (std::abs (found[i].time - start) < 1e-3)
+                    index = (int) i;
+            const auto end = index + 1 < (int) found.size() ? found[(size_t) (index + 1)].time : fileSeconds;
+            const auto seconds = (double) getParam (kit, sliceforge::padParamId (pad, "length")) * global;
+            if (index < 0 || seconds <= 0.0 || std::abs (seconds - (end - start)) > 0.004)
+            {
+                wired = false;
+                mismatch = "pad " + juce::String (pad) + " start " + juce::String (start, 4)
+                             + " length " + juce::String (seconds, 4) + " expected " + juce::String (end - start, 4);
+            }
+            kitLengths.push_back (seconds);
+        }
+        check (wired, "a dropped recording writes each pad's gap into its LENGTH knob", mismatch);
+
+        size_t distinct = 0;
+        for (size_t a = 0; a < kitLengths.size(); ++a)
+        {
+            bool seen = false;
+            for (size_t b = 0; b < a; ++b)
+                if (std::abs (kitLengths[b] - kitLengths[a]) < 1e-3)
+                    seen = true;
+            if (! seen)
+                ++distinct;
+        }
+        check (distinct == 4, "sixteen pads on four slices carry four distinct lengths, not one default",
+               juce::String ((int) distinct) + " distinct");
+        kit.releaseResources();
+        probeFile.deleteFile();
     }
 
     // CPU cost. Reported, not asserted: the number depends on what else is running, so a bound

@@ -45,7 +45,7 @@ host-synced 32-step sequencer with pattern chaining, polymeter, parameter locks 
 | Installed plugin | `%ProgramFiles%\Common Files\VST3\SliceForge.vst3` |
 | Installed standalone | `%LOCALAPPDATA%\Programs\SliceForge\SliceForge.exe` |
 | Launch folder | `..\launch\` — `SliceForge.exe`, `SliceForge.vst3`, `SliceForge-1.0.0-Windows-x64.zip`, `start.bat`, `start.ps1` |
-| Test suite | 190 engine/state checks, editor layout snapshots, VST3 host load |
+| Test suite | 253 engine/state checks, editor layout snapshots, VST3 host load |
 
 The plugin bundle is self-contained (factory audio and SKEER brand assets are embedded, no
 external resource folder). The build is about **24 MB**. The VST3 session identity is preserved
@@ -219,17 +219,69 @@ control falls outside its parent.
 - output stage state loaded from a kit saved before it existed (params stripped from the
   host-state XML) restores bypassed and still plays
 - randomizer, Euclidean, parseable MIDI file and CPU-headroom checks
+- slice ends: on a fixture with four known onsets, each distinct slice gets `t[i+1] - t[i]` and the
+  last gets the file tail; the gaps tile the material from the first onset to the end of the file; a
+  take with fewer onsets than pads gets four distinct starts and four distinct lengths before any
+  slice is reused, and the reuse then walks forward through the file instead of restarting at zero.
+  Proven again through the processor on a wav the test writes itself: every pad's LENGTH times the
+  global LENGTH equals its own gap, and sixteen pads carry four lengths rather than sixteen defaults.
 
-Current result: **190/190 passed** - that is what `SliceForgeSmokeTest.exe` prints on the tree
+Current result: **253/253 passed** - that is what `SliceForgeSmokeTest.exe` prints on the tree
 this file describes, so re-run it rather than trusting the number here - with the engine using
-between **4.4% and 6.9% of one core** across separate runs of the same binary while continuously
-triggering pads at 48 kHz / 512 samples (the two 190/190 runs printed 6.91% and 4.51%; the three
-runs behind the 186/186 it replaced printed 4.59%, 4.57% and 4.77%, and the 175-check runs
-before those printed 4.53%, 4.57% and 5.11% on three invocations of those bytes). The four
-checks that took 186 to 190 add fixtures, not engine work, and the machine load of each run was
-not measured, so the spread is not attributed to them. The spread is real, so the figure is
-reported and never asserted: real-time safety rests on the finite-and-in-ceiling checks, not on
-a wall-clock bound that measured the machine rather than the engine.
+between **4.4% and 5.8% of one core** across seven separate runs while continuously
+triggering pads at 48 kHz / 512 samples: they printed 4.52%, 4.56%, 4.86%, 5.04% and 5.75% on the
+Step 24 bytes, 4.43% on the groove-bank build, and 4.45% on the Step 25 scorer build. Step 24
+added eleven checks and each one runs once, so the tree before it printed 206/206, and the
+**190/190** stamped here was already stale by sixteen - the import-ceiling commit restamped the
+plan and missed this file, which is the sweep defect recorded in `docs/next-steps-plan.md` 8O. The
+groove bank then moved the total again, and the arithmetic reconciles both stamps:
+**217 − 2 + 22 = 237**, and the slicer scorer then made it **237 + 16 = 253** - eight checks on the
+fixture state (directory, marks, baseline presence, readability, the tuning it was blessed under,
+inventory parity, the band, and no capped row) plus eight controls that score the scorer itself. The
+sixteen do not vary with how many takes are on disk, so adding the ninth rendered take does not
+restamp this number. The two that went were the checks on the six-preset `PatternPreset` API that the
+sixty-row bank replaced; the twenty-two come from nineteen check sites in `Tests/GrooveBankTest.cpp`,
+which print one row per pattern slot in the slot-isolation arm (the same `^ *check (` census 8O uses). The
+206-check run printed 4.38% and the 190/190 pair printed 6.91% and 4.51%; the machine load of each
+run was not measured, so no spread is attributed to the checks, and the figure is reported rather
+than asserted: real-time safety rests on the finite-and-in-ceiling checks, not on a wall-clock
+bound that measured the machine rather than the engine.
+
+### Auto-slicer ground truth
+
+The detector used to be judged by ear, and the only number attached to it was a folklore correction
+("pull the onset back 6 ms"). `Tests/SlicerScoreTest.cpp` is the ruler that replaces that opinion.
+
+- **Material.** `fixtures/marks/<take>.marks.json` names a wav under `fixtures/` and lists its onset
+  times in seconds, ascending. `schema` must read `sliceforge-slicer-marks/1`, `take` must equal the
+  file name without `.marks.json`, and `markProvenance` must say where the truth came from - a marks
+  file nobody can trace is refused, because a wrong reference is worse than no reference. The takes
+  this repo intends to ship are rendered out of real kits in the DAW, so the reference is the MIDI
+  clip's own note times: exact by construction, and free of any third-party recording.
+- **Scoring.** Each take runs through `detectSlices` at sensitivities 0.20 / 0.55 / 0.90 - the
+  default plus both ends a customer can reach - and the onsets are matched one-to-one against the
+  marks, closest pair first. The printed row carries `refN detN tp recall recall25 fpmin medAbsMs
+  maxAbsMs biasMs capped`. 50 ms is the MIREX hit window; the 25 ms second recall exists because a
+  50 ms window happily pays a detector that is consistently 40 ms late. A metric that is undefined
+  prints `-` and lands in the JSON as `null`: a take with no reference onsets is never a 1.000.
+- **The blessed table.** `fixtures/slicer-baseline.json` holds the numbers a given build produced,
+  the six tuning constants they were produced with, and the tolerance bands. Every run re-scores and
+  compares, so a **regression and an improvement both redden** - a detector that got better has also
+  changed behaviour, and the shipped kit's feel changed with it. Re-blessing is explicit and never
+  happens under ctest: `SliceForgeSmokeTest.exe --bless-slicer-baseline`. A bless refuses outright
+  when a marks file did not load or when any row is `capped`, because a table that cannot pass is not
+  a baseline.
+- **Current state.** No rendered takes are committed yet, so the fixture half runs idle and green:
+  the sixteen slicer checks in the total are eight fixture-state gates and eight controls that score
+  the scorer, and they were each driven red deliberately before any of this was called gated.
+- **What the synthetic table already says.** On a generated click train the detector finds every
+  click at all three sensitivities and the false-positive column reads 0.00 - but its signed bias is
+  **-10.24 ms**, i.e. it reports the onset 10 ms *early*, and withdrawing the 6 ms correction moves
+  the median absolute error from 10.24 ms to 4.24 ms. On clicks, in other words, the correction
+  overshoots. That is not yet a verdict on drums: a click has an instantaneous edge where a kit hit
+  takes milliseconds to reach its peak, which is precisely the case the correction was written for.
+  The number gets re-measured against the rendered takes, and only then does anything in
+  `Engine/SlicerTuning.h` move.
 
 ---
 
@@ -247,9 +299,15 @@ a wall-clock bound that measured the machine rather than the engine.
   input bus in your host to use this. Stop recording and the take is adopted automatically as the
   new source.
 - Waveform — drag the orange marker to set the selected pad's start position.
-- **AUTO SLICE** — transient detection sensitivity. **HITS** shows the detected count.
+- **AUTO SLICE** — transient detection sensitivity. **HITS** shows the detected count. Re-slicing
+  also writes each pad's **LENGTH** from the material: a pad plays from its onset to the onset that
+  follows it, and the last slice runs to the end of the recording, so one take becomes sixteen
+  separate hits instead of one long drone triggered from sixteen places. LENGTH stays a knob you can
+  grab afterwards; moving AUTO SLICE again rewrites it, because the boundaries it came from moved.
 - **< > RND** — step to the previous, next or a random detected hit.
-- **+ / DEL** — add a slice at the current marker or delete the nearest slice.
+- **+ / DEL** — add a slice at the current marker or delete the nearest slice. These edit the slice
+  list only: a length already derived from the old boundaries is left alone, so grab LENGTH (or move
+  AUTO SLICE) if you want the pads to follow the new ones.
 
 ### Theme
 
@@ -322,8 +380,16 @@ engine and follows host transport when available.
 - **Lane M/S** — mute or solo one sequencer row without changing the kit's pad mute/solo.
 - **Random** — light/medium/busy grooves, mutate, humanise, accent downbeats, shift left/right,
   randomise the selected lane, or generate 3/5/7-pulse Euclidean rhythms.
-- **Pattern presets** — the **PAT PRESET** menu loads six factory grooves or saves/loads
-  `.vracpattern` files.
+- **Grooves** — the **GROOVES** menu is the preset library: sixty named patterns in twenty genres, three
+  variations each (HOUSE, TECHNO, TRAP, BOOM BAP, DRUM & BASS, UK GARAGE, AFRO, DANCEHALL, BREAKS,
+  ELECTRO, REGGAE & DUB, FUNK & SOUL, LO-FI, HARD & CLUB, DISCO, TRIP HOP, POP, ROCK, EBM & INDUSTRIAL,
+  LATIN). One submenu per genre, the row you applied stays ticked, and **Next <GENRE> variation** steps
+  through the three without opening the menu again. A groove writes its pattern into the slot you are
+  editing *and* takes the grid with it — two bars (32 steps), plus that genre's tempo, division and swing
+  — because the scheduler wraps on the length, so a second bar written behind a 16-step grid is data
+  nobody hears. It never changes what your pads sound like: **Match <GENRE> sounds** is a separate,
+  opt-in item that sets the named pads' models and leaves every other pad alone. Saving and loading
+  `.vracpattern` files live on the same menu.
 - **Copy / Paste / Clear** — clipboard pattern-level operations. **COPY** takes the pattern you are
   editing and **PASTE** writes it over whichever pattern you switch to next; **CLEAR** empties the
   current one.
@@ -419,9 +485,11 @@ Every enabled bus then passes through the same output stage, in this order:
 Source/
   Params.*              parameter IDs, defaults, factory model metadata
   Presets.*             six factory kits
+  GrooveBank.cpp        the factory groove bank: 20 genres x 3 named variations, step masks,
+                        per-genre voicings
   Sequencer.*           4-pattern/32-step model, song chain, micro-timing, flams,
                         parameter locks, per-lane polymeter, pattern duplicate,
-                        presets and MIDI export
+                        groove parsing and application, and MIDI export
   VaultLibrary.*        read-only SKEER Sample Vault SQLite index discovery and queries
   PluginProcessor.*     APVTS, sample/slice state, 32-voice engine, 8-bus host output,
                         sequencer scheduling, recording, MIDI learn, undo/redo, state,
@@ -440,7 +508,9 @@ Source/
     SourcePanel / PadEditorPanel / HeaderBar / FooterBar / SequencerGrid / SequencerPanel /
     VaultPanel
 Tests/
-  SmokeTest.cpp         190 audio/state checks
+  SmokeTest.cpp         the engine/state suite (253 checks in total, printed at the end)
+  GrooveBankTest.*      the bank's structural and audible checks, run by SmokeTest (22 of the 253)
+  SlicerScoreTest.*     the slicer scorer, its baseline gate and its controls (16 of the 253)
   LayoutTest.cpp        editor bounds + PNG snapshots
   HostTest.cpp          scans and loads the built VST3 through JUCE's host path
 ```

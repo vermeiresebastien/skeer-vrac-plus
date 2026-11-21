@@ -9,7 +9,7 @@ import {
   createDefaultPads,
   makePad,
 } from '../types';
-import { detectSlices, padStartsFromSlices, type Slice } from '../audio/slicer';
+import { detectSlices, padStartsFromSlices, assignSliceLengths, type Slice } from '../audio/slicer';
 import { generateLibrarySample } from '../audio/sampleLibrary';
 
 export interface SessionData {
@@ -236,7 +236,9 @@ export function buildInitialSession(): SessionData {
   return buildPresetSession('big-cat');
 }
 
-/** Keep the current pad design when a different source is loaded. */
+/** Keep the current pad design - models, gains, pans, chokes - when a different source is
+ * loaded. The slice boundaries belong to the new material, so the starts and the lengths that
+ * come from them are recomputed; everything the player chose by ear is kept. */
 export function buildSourceSession(
   sourceId: string,
   name: string,
@@ -245,7 +247,10 @@ export function buildSourceSession(
   sensitivity = previous.sensitivity,
 ): SessionData {
   const { slices } = detectSlices(sample.left, sample.right, sample.sampleRate, sensitivity);
-  const pads = padStartsFromSlices(slices, previous.pads.map((pad) => ({ ...pad })));
+  const assigned = padStartsFromSlices(slices, previous.pads.map((pad) => ({ ...pad })));
+  // Every slice now has an end: without this a dropped take becomes sixteen overlapping
+  // copies of itself, each pad playing from its onset to the end of the file.
+  const pads = assignSliceLengths(assigned, slices, sample.duration, previous.global.length);
   const kit: KitState = {
     ...previous,
     presetName: name,

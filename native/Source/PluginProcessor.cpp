@@ -777,6 +777,7 @@ void SliceForgeAudioProcessor::resliceAndAssignStarts (bool remapExisting)
     const auto sensitivity = juce::jlimit (0.0f, 1.0f, parameterCache.readSensitivity());
     auto newSlices = sliceforge::detectSlices (*sample, sensitivity);
     std::array<double, sliceforge::kNumPads> newStarts {};
+    std::array<int, sliceforge::kNumPads> newIndices {};
     if (remapExisting && ! oldSlices.empty() && ! newSlices.empty())
     {
         for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
@@ -796,17 +797,36 @@ void SliceForgeAudioProcessor::resliceAndAssignStarts (bool remapExisting)
             const auto ratio = oldSlices.size() > 1 ? (double) nearest / (double) (oldSlices.size() - 1) : 0.0;
             const auto target = juce::jlimit (0, (int) newSlices.size() - 1, (int) std::round (ratio * (double) (newSlices.size() - 1)));
             newStarts[(size_t) pad] = newSlices[(size_t) target].time;
+            newIndices[(size_t) pad] = target;
         }
     }
     else
     {
-        const auto starts = sliceforge::padStartsFromSlices (newSlices);
+        const auto mapping = sliceforge::sliceMapFromSlices (newSlices, sample->getDurationSeconds());
         for (int i = 0; i < sliceforge::kNumPads; ++i)
-            newStarts[(size_t) i] = starts[(size_t) i];
+        {
+            newStarts[(size_t) i] = mapping.padStarts[(size_t) i];
+            newIndices[(size_t) i] = mapping.padSliceIndices[(size_t) i];
+        }
     }
     slices = std::move (newSlices);
     for (int i = 0; i < sliceforge::kNumPads; ++i)
         padStarts[(size_t) i].store ((float) newStarts[(size_t) i], std::memory_order_relaxed);
+
+    /*  Every slice now has an end. The length is the distance to the onset that follows it - and to
+        the end of the file for the last one - so dropping one recording on the plugin gives eight
+        separate hits instead of sixteen overlapping copies of the whole take. It goes into the
+        existing pad.length parameter rather than a hidden field: visible on the LENGTH knob,
+        automatable, saved with the set, and grabbable afterwards. The divide by global.length keeps
+        the *seconds* right without touching the global knob, and nothing here compensates per voice
+        or per note - velocity's own length influence is the user's, not a correction. */
+    const auto fileSeconds = sample->getDurationSeconds();
+    const auto globalLength = juce::jmax (0.25f, parameterCache.readGlobal().length);
+    for (int i = 0; i < sliceforge::kNumPads; ++i)
+    {
+        const auto seconds = sliceforge::sliceGapSeconds (slices, newIndices[(size_t) i], fileSeconds);
+        setParameterValue (sliceforge::padParamId (i, "length"), (float) (seconds / (double) globalLength));
+    }
     postUiChange();
 }
 

@@ -7,6 +7,7 @@
 #include "UI/VaultPanel.h"
 #include "UI/Theme.h"
 
+#include <array>
 #include <cmath>
 #include <iostream>
 
@@ -355,6 +356,107 @@ int main()
                    "the pattern duplicate control is on screen and live",
                    copyTo.getBounds().toString() + (copyTo.isEnabled() ? " enabled" : " disabled")
                        + " chain=" + firstUnplaced (copyTo));
+
+            const auto& grooves = sequencer->grooveControlForTesting();
+            check (sliceforge::ui::isPlacedOnScreen (grooves) && grooves.isEnabled()
+                       && grooves.getButtonText() == "GROOVES",
+                   "the groove picker is on screen and live",
+                   grooves.getBounds().toString()
+                       + (grooves.isEnabled() ? " enabled" : " disabled")
+                       + " chain=" + firstUnplaced (grooves));
+
+            /*  The groove menu's own handlers, driven straight. Every engine check in the smoke suite
+                works on SequencerData it built itself; only here does a pick travel the road a player
+                travels - menu id to panel to setSequencerData - so a groove that computes a perfect
+                pattern and never reaches the document, or a MATCH SOUNDS that reaches past the pads
+                its genre names, is red here and green everywhere else. Taken after every screenshot,
+                so moving a pad's model cannot repaint a tracked PNG. */
+            const auto bank = sliceforge::grooveBank();
+            sequencer->refreshFromProcessor();
+            sequencer->applyGrooveForTesting (0);
+            const auto applied = processor.getSequencerData();
+            const auto appliedSlot = applied != nullptr ? applied->activePattern : -1;
+            const auto appliedBlob = applied != nullptr && appliedSlot >= 0
+                                         ? sliceforge::serialisePattern (applied->patterns[(size_t) appliedSlot])
+                                         : juce::MemoryBlock();
+            const auto wantBlob = sliceforge::serialisePattern (sliceforge::makeGroovePattern (0));
+            const auto spanned = applied != nullptr && applied->length == sliceforge::kSeqSteps;
+            check (appliedBlob == wantBlob && spanned,
+                   "a groove chosen in the menu reaches the document the audio thread reads",
+                   "slot " + juce::String (appliedSlot) + " length "
+                       + (applied != nullptr ? juce::String (applied->length) : juce::String ("null"))
+                       + (appliedBlob == wantBlob ? " pattern=bank"
+                                                  : " pattern!=bank ("
+                                                        + juce::String ((int) appliedBlob.getSize())
+                                                        + "/" + juce::String ((int) wantBlob.getSize())
+                                                        + " bytes)"));
+
+            sequencer->cycleGrooveForTesting();
+            const auto cycled = sequencer->lastGrooveForTesting();
+            const auto inBank = cycled >= 0 && cycled < (int) bank.size();
+            const auto afterCycle = processor.getSequencerData();
+            const auto cycleBlob = inBank && afterCycle != nullptr
+                                       && afterCycle->activePattern >= 0
+                                       ? sliceforge::serialisePattern (
+                                             afterCycle->patterns[(size_t) afterCycle->activePattern])
+                                       : juce::MemoryBlock();
+            const auto cycleWant = inBank
+                                       ? sliceforge::serialisePattern (sliceforge::makeGroovePattern (cycled))
+                                       : juce::MemoryBlock();
+            const auto sameGenre = inBank
+                && juce::String (bank[(size_t) cycled].genre) == juce::String (bank[0].genre);
+            check (inBank && cycled != 0 && cycleBlob == cycleWant && sameGenre,
+                   "NEXT VARIATION applies another row of the same genre through the panel",
+                   "index " + juce::String (cycled) + (sameGenre ? " same genre" : " left the genre")
+                       + (cycleBlob == cycleWant ? " pattern=bank" : " pattern!=bank"));
+
+            auto& state = processor.getValueTreeState();
+            auto models = inBank ? sliceforge::grooveVoicing (cycled)
+                                 : std::array<int, sliceforge::kNumPads>{};
+            if (! inBank)
+                models.fill (-1);
+            std::array<float, sliceforge::kNumPads> before {};
+            auto voiced = 0;
+            for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
+            {
+                auto* parameter = state.getParameter (sliceforge::padParamId (pad, "model"));
+                before[(size_t) pad] = parameter != nullptr ? parameter->getValue() : -1.0f;
+                if (models[(size_t) pad] >= 0)
+                    ++voiced;
+            }
+            if (inBank)
+                sequencer->matchGrooveSoundsForTesting (cycled);
+            auto moved = 0;
+            auto wrong = 0;
+            for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
+            {
+                auto* parameter = state.getParameter (sliceforge::padParamId (pad, "model"));
+                if (parameter == nullptr)
+                {
+                    ++wrong;
+                    continue;
+                }
+                const auto now = parameter->getValue();
+                const auto changed = now != before[(size_t) pad];
+                if (models[(size_t) pad] < 0)
+                {
+                    // A pad the genre says nothing about keeps the player's model, whatever it was.
+                    if (changed)
+                        ++wrong;
+                    continue;
+                }
+                const auto want = parameter->getNormalisableRange().convertTo0to1 (
+                    (float) models[(size_t) pad]);
+                if (now == want)
+                    ++moved;
+                else
+                    ++wrong;
+            }
+            check (inBank && voiced > 0 && moved == voiced && wrong == 0,
+                   "MATCH SOUNDS sets the models its genre names and leaves every other pad alone",
+                   juce::String (moved) + " of " + juce::String (voiced)
+                       + " voiced pads landed, " + juce::String (wrong) + " wrong"
+                       + (inBank ? "" : " (no groove applied)"));
         }
         else
         {

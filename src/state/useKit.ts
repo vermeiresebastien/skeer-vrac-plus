@@ -1,7 +1,7 @@
 import { useCallback, useMemo, useReducer, useRef } from 'react';
 import type { GlobalParams, KitState, PadParams, SourceSample } from '../types';
 import { PAD_COUNT, clamp, createDefaultPads, makePad, sanitizeGlobal, sanitizeNumber, sanitizePad } from '../types';
-import { detectSlices, remapStartsAfterReslice, type Slice } from '../audio/slicer';
+import { detectSlices, remapStartsAfterReslice, assignSliceLengths, type Slice } from '../audio/slicer';
 import { generateLibrarySample } from '../audio/sampleLibrary';
 import {
   FACTORY_PRESETS,
@@ -14,13 +14,16 @@ import { randomizeGlobal, randomizePads } from './randomize';
 
 const HISTORY_LIMIT = 80;
 
-interface HistoryState {
+// Exported for the test in `src/state/__tests__/sliceEnds.test.ts`: the SENSITIVITY knob is the
+// live reslice door in the browser, and a plain function call is the only way to reach it without
+// a renderer. Nothing about the reducer's behavior changes; `useKit` still owns the dispatch.
+export interface HistoryState {
   present: SessionData;
   past: SessionData[];
   future: SessionData[];
 }
 
-type Action =
+export type Action =
   | { type: 'push' }
   | { type: 'undo' }
   | { type: 'redo' }
@@ -57,7 +60,7 @@ function mapPads(session: SessionData, fn: (pad: PadParams) => PadParams): Sessi
   return { ...session, kit: { ...session.kit, pads } };
 }
 
-function reducer(state: HistoryState, action: Action): HistoryState {
+export function reducer(state: HistoryState, action: Action): HistoryState {
   switch (action.type) {
     case 'push':
       return { ...state, past: pushPast(state), future: [] };
@@ -134,7 +137,12 @@ function reducer(state: HistoryState, action: Action): HistoryState {
         state.present.sample.sampleRate,
         value,
       );
-      const pads = remapStartsAfterReslice(state.present.kit.pads, state.present.slices, slices);
+      const pads = assignSliceLengths(
+        remapStartsAfterReslice(state.present.kit.pads, state.present.slices, slices),
+        slices,
+        state.present.sample.duration,
+        state.present.kit.global.length,
+      );
       const present: SessionData = {
         ...state.present,
         slices,

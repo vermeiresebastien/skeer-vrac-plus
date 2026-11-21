@@ -151,6 +151,17 @@ namespace sliceforge::ui
             juce::Slider nudge, flam, pitch, volume, pan, tone, length;
             bool updating = false;
         };
+
+        /*  Menu ids for the GROOVES button. A groove row is the base plus its index in the bank, so
+            the row and its id are the same fact and a callback can name the groove without a second
+            table. The span is wider than the bank on purpose: the four commands live above every
+            row id, and the bank grows by three rows at a time. */
+        constexpr int kGrooveIdBase = 1000;
+        constexpr int kGrooveIdSpan = 512;
+        constexpr int kNextVariationId = kGrooveIdBase + kGrooveIdSpan;
+        constexpr int kMatchSoundsId = kNextVariationId + 1;
+        constexpr int kSavePresetId = kMatchSoundsId + 1;
+        constexpr int kLoadPresetId = kSavePresetId + 1;
     } // namespace
 
     SequencerPanel::SequencerPanel (SliceForgeAudioProcessor& processor)
@@ -229,7 +240,7 @@ namespace sliceforge::ui
             edit ([this] (sliceforge::SequencerData& d) { d.hostSync = hostButton.getToggleState(); }, true);
         };
 
-        bpmSlider.setRange (40.0, 300.0, 1.0);
+        bpmSlider.setRange (sliceforge::kSeqMinBpm, sliceforge::kSeqMaxBpm, 1.0);
         swingSlider.setRange (0.0, 66.0, 1.0);
         lengthSlider.setRange (1.0, (double) sliceforge::kSeqSteps, 1.0);
         styleSeqSlider (bpmSlider);
@@ -291,7 +302,7 @@ namespace sliceforge::ui
 
         for (auto* button : { &randomButton, &clearButton, &copyButton, &pasteButton, &copyToButton,
                               &laneRandomButton, &euclidButton, &songButton,
-                              &patternPresetButton, &midiButton })
+                              &grooveButton, &midiButton })
         {
             styleChip (*button, false);
             addAndMakeVisible (*button);
@@ -317,7 +328,11 @@ namespace sliceforge::ui
             if (! updatingControls)
                 setSongMode (songButton.getToggleState());
         };
-        patternPresetButton.onClick = [this] { showPatternPresetMenu(); };
+        grooveButton.onClick = [this] { showGrooveMenu(); };
+        grooveButton.setTooltip ("Sixty named grooves in twenty genres, three variations each. A groove "
+                                 "writes its pattern, sets the length to two bars and takes the genre's "
+                                 "tempo and swing; it never re-voices your pads - MATCH SOUNDS does that, "
+                                 "when you want it.");
         midiButton.onClick = [this] { showMidiMenu(); };
 
         for (int i = 0; i < sliceforge::kSeqChainLength; ++i)
@@ -482,7 +497,8 @@ namespace sliceforge::ui
         for (int i = 0; i < sliceforge::kSeqPatterns; ++i)
             styleChip (patternButtons[(size_t) i], i == activePattern);
 
-        bpmSlider.setValue (juce::jlimit (40.0, 300.0, data->bpm), juce::dontSendNotification);
+        bpmSlider.setValue (juce::jlimit (sliceforge::kSeqMinBpm, sliceforge::kSeqMaxBpm, data->bpm),
+                            juce::dontSendNotification);
         swingSlider.setValue (juce::jlimit (0.0, 66.0, (double) data->swing * 100.0),
                               juce::dontSendNotification);
         lengthSlider.setValue (juce::jlimit (1, sliceforge::kSeqSteps, data->length), juce::dontSendNotification);
@@ -517,7 +533,7 @@ namespace sliceforge::ui
         grid.setPlayheadStep (processorRef.getSequencerPlayheadStep());
         pasteButton.setEnabled (patternClipboard.has_value());
         clearButton.setEnabled (data != nullptr);
-        patternPresetButton.setEnabled (data != nullptr);
+        grooveButton.setEnabled (data != nullptr);
         midiButton.setEnabled (data != nullptr);
 
         updatingControls = false;
@@ -798,39 +814,113 @@ namespace sliceforge::ui
                                                 parent != nullptr ? parent : nullptr);
     }
 
-    void SequencerPanel::showPatternPresetMenu()
+    void SequencerPanel::showGrooveMenu()
     {
+        const auto bank = sliceforge::grooveBank();
         juce::PopupMenu menu;
-        for (int i = 0; i < 6; ++i)
-            menu.addItem (i + 1, sliceforge::patternPresetName ((sliceforge::PatternPreset) i));
+        for (int run = 0; run < (int) bank.size(); )
+        {
+            const auto end = sliceforge::grooveGenreRun (run).second;
+
+            juce::PopupMenu genre;
+            for (int i = run; i <= end; ++i)
+                genre.addItem (kGrooveIdBase + i, juce::String (bank[(size_t) i].name),
+                               true, i == lastGrooveIndex);
+            menu.addSubMenu (juce::String (bank[(size_t) run].genre), genre);
+            run = end + 1;
+        }
+
+        const auto haveGroove = lastGrooveIndex >= 0 && lastGrooveIndex < (int) bank.size();
+        const auto genreName = haveGroove ? juce::String (bank[(size_t) lastGrooveIndex].genre)
+                                          : juce::String();
         menu.addSeparator();
-        menu.addItem (20, "Save pattern preset...");
-        menu.addItem (21, "Load pattern preset...");
+        // Named for the genre it will step through, so the click before the first one says what the
+        // next twenty will do.
+        menu.addItem (kNextVariationId, genreName.isNotEmpty()
+                                           ? "Next " + genreName + " variation"
+                                           : "Next variation");
+        /*  Deliberately gated on a groove having been picked: matching sounds means dressing the pads
+            in a named genre's models, and inventing a genre the player never asked for would move
+            their sounds without being asked. */
+        menu.addItem (kMatchSoundsId, genreName.isNotEmpty()
+                                          ? "Match " + genreName + " sounds"
+                                          : "Match sounds to genre",
+                      haveGroove,
+                      haveGroove && lastVoicedGenre == genreName);
+        menu.addSeparator();
+        menu.addItem (kSavePresetId, "Save pattern preset...");
+        menu.addItem (kLoadPresetId, "Load pattern preset...");
+
         auto safe = juce::Component::SafePointer<SequencerPanel> (this);
-        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&patternPresetButton),
+        menu.showMenuAsync (juce::PopupMenu::Options().withTargetComponent (&grooveButton),
                             [safe] (int result)
                             {
                                 if (safe == nullptr || result <= 0)
                                     return;
-                                if (result <= 6)
-                                    safe->applyPatternPreset (result - 1);
-                                else if (result == 20)
+                                if (result >= kGrooveIdBase && result < kNextVariationId)
+                                    safe->applyGrooveChoice (result - kGrooveIdBase);
+                                else if (result == kNextVariationId)
+                                    safe->cycleGrooveVariation();
+                                else if (result == kMatchSoundsId)
+                                    safe->matchGrooveSounds (safe->lastGrooveIndex);
+                                else if (result == kSavePresetId)
                                     safe->savePatternPresetFile();
-                                else if (result == 21)
+                                else if (result == kLoadPresetId)
                                     safe->loadPatternPresetFile();
                             });
     }
 
-    void SequencerPanel::applyPatternPreset (int presetIndex)
+    void SequencerPanel::applyGrooveChoice (int grooveIndex)
     {
         if (data == nullptr)
             return;
-        presetIndex = juce::jlimit (0, 5, presetIndex);
+        const auto bank = sliceforge::grooveBank();
+        if (grooveIndex < 0 || grooveIndex >= (int) bank.size())
+            return;
+
         pushUndo();
         auto copy = sliceforge::cloneSequencerData (*data);
-        const auto active = juce::jlimit (0, sliceforge::kSeqPatterns - 1, copy->activePattern);
-        copy->patterns[(size_t) active] = sliceforge::makePatternPreset ((sliceforge::PatternPreset) presetIndex);
+        // The bounds were just checked, so the only way applyGroove can refuse is a bank that
+        // changed size under the menu - which it cannot, being constexpr storage.
+        const auto applied = sliceforge::applyGroove (*copy, grooveIndex);
+        jassert (applied);
+        juce::ignoreUnused (applied);
+        lastGrooveIndex = grooveIndex;
         commit (std::move (copy), true);
+    }
+
+    void SequencerPanel::cycleGrooveVariation()
+    {
+        const auto bank = sliceforge::grooveBank();
+        if (bank.empty())
+            return;
+        // Before the first pick there is no genre to stay inside, so the first row is where cycling
+        // starts - the same place the menu begins.
+        applyGrooveChoice (lastGrooveIndex >= 0 ? sliceforge::nextGrooveVariation (lastGrooveIndex)
+                                                : 0);
+    }
+
+    void SequencerPanel::matchGrooveSounds (int grooveIndex)
+    {
+        const auto bank = sliceforge::grooveBank();
+        if (grooveIndex < 0 || grooveIndex >= (int) bank.size())
+            return;
+
+        const auto models = sliceforge::grooveVoicing (grooveIndex);
+        auto& state = processorRef.getValueTreeState();
+        processorRef.pushUndoSnapshot();
+        for (int pad = 0; pad < sliceforge::kNumPads; ++pad)
+        {
+            if (models[(size_t) pad] < 0)
+                continue; // this genre says nothing about this pad, so it keeps the player's model
+            if (auto* parameter = state.getParameter (sliceforge::padParamId (pad, "model")))
+            {
+                const auto range = parameter->getNormalisableRange();
+                parameter->setValueNotifyingHost (range.convertTo0to1 ((float) models[(size_t) pad]));
+            }
+        }
+        lastVoicedGenre = bank[(size_t) grooveIndex].genre;
+        processorRef.postUiChange();
     }
 
     void SequencerPanel::savePatternPresetFile()
@@ -1100,7 +1190,7 @@ namespace sliceforge::ui
         laneRandomButton.setBounds (608, 60, 66, 24);
         euclidButton.setBounds (680, 60, 54, 24);
         songButton.setBounds (740, 60, 50, 24);
-        patternPresetButton.setBounds (796, 60, 76, 24);
+        grooveButton.setBounds (796, 60, 76, 24);
         midiButton.setBounds (878, 60, 42, 24);
         laneLengthBox.setBounds (986, 60, 120, 24);
         copyToButton.setBounds (getWidth() - 116, 60, 104, 24);

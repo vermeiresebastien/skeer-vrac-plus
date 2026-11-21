@@ -34,6 +34,15 @@ namespace sliceforge::ui
         // The layout test measures the duplicate control directly: a button that exists but never
         // reaches the screen is the failure it is there to catch.
         const juce::TextButton& copyToControlForTesting() const { return copyToButton; }
+        const juce::TextButton& grooveControlForTesting() const { return grooveButton; }
+        /*  The GROOVES menu is the only road from the bank to the document, so the layout test drives
+            these three handlers and reads the result back off the processor: a groove that builds a
+            pattern but never reaches setSequencerData would play for nobody, and MATCH SOUNDS moves
+            the player's own sounds, so what it must leave alone matters as much as what it changes. */
+        void applyGrooveForTesting (int grooveIndex) { applyGrooveChoice (grooveIndex); }
+        void cycleGrooveForTesting() { cycleGrooveVariation(); }
+        void matchGrooveSoundsForTesting (int grooveIndex) { matchGrooveSounds (grooveIndex); }
+        int lastGrooveForTesting() const { return lastGrooveIndex; }
 
         void paint (juce::Graphics&) override;
         void resized() override;
@@ -57,8 +66,10 @@ namespace sliceforge::ui
         void applyPatternCopy (int source, int target);
         void clearCurrentPattern();
         void openStepInspector (int pad, int step, juce::Point<int> screenPosition);
-        void showPatternPresetMenu();
-        void applyPatternPreset (int presetIndex);
+        void showGrooveMenu();
+        void applyGrooveChoice (int grooveIndex);
+        void cycleGrooveVariation();
+        void matchGrooveSounds (int grooveIndex);
         void savePatternPresetFile();
         void loadPatternPresetFile();
         void savePatternToFile (const juce::File& file);
@@ -119,11 +130,19 @@ namespace sliceforge::ui
         juce::TextButton laneRandomButton { "LANE RND" };
         juce::TextButton euclidButton { "EUCLID" };
         juce::TextButton songButton { "SONG" };
-        juce::TextButton patternPresetButton { "PAT PRESET" };
+        juce::TextButton grooveButton { "GROOVES" };
         juce::TextButton midiButton { "MIDI" };
         juce::ComboBox laneLengthBox;
         std::array<juce::TextButton, sliceforge::kSeqChainLength> chainButtons;
         std::optional<sliceforge::SeqPattern> patternClipboard;
+        /*  Which groove the last menu pick applied, and which genre's models MATCH SOUNDS last put on
+            the kit - empty when it never has. The genre, not an index, because all three variations
+            of a genre share its voicing, so cycling within a genre must leave the tick where it is.
+            Panel-local, like the clipboard: a groove is a starting point the player edits away from,
+            so storing it in SequencerData would make a saved set claim to hold a rhythm it no longer
+            contains. */
+        int lastGrooveIndex = -1;
+        juce::String lastVoicedGenre;
         std::array<std::unique_ptr<ChipPopupMenu>, sliceforge::kSeqPatterns> chipPopups;
         std::unique_ptr<juce::FileChooser> fileChooser;
         int selectedLane = 0;

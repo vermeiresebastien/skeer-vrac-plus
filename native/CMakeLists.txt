@@ -68,6 +68,7 @@ set(SLICEFORGE_ENGINE_SOURCES
     Source/Params.cpp
     Source/Presets.cpp
     Source/Sequencer.cpp
+    Source/GrooveBank.cpp
     Source/VaultLibrary.cpp
     Source/Engine/SampleData.cpp
     Source/Engine/PreviewPlayer.cpp
@@ -136,7 +137,8 @@ target_link_libraries(SliceForge
 )
 
 juce_add_console_app(SliceForgeSmokeTest PRODUCT_NAME "SliceForgeSmokeTest")
-target_sources(SliceForgeSmokeTest PRIVATE ${SLICEFORGE_SOURCES} Tests/SmokeTest.cpp)
+target_sources(SliceForgeSmokeTest PRIVATE ${SLICEFORGE_SOURCES} Tests/SmokeTest.cpp
+                                          Tests/GrooveBankTest.cpp Tests/SlicerScoreTest.cpp)
 target_include_directories(SliceForgeSmokeTest PRIVATE Source)
 target_compile_definitions(SliceForgeSmokeTest PUBLIC ${SLICEFORGE_DEFINES})
 juce_generate_juce_header(SliceForgeSmokeTest)

@@ -7,6 +7,7 @@
 #include <cstdint>
 #include <limits>
 #include <memory>
+#include <span>
 
 namespace sliceforge
 {
@@ -14,6 +15,11 @@ namespace sliceforge
     // cache that clamps a host into the bank. This header gets them through its include at :4.
     constexpr int kSeqSteps = 32;
     constexpr int kSeqChainLength = 8;
+    /*  The tempo range the internal clock accepts AND the range the BPM slider offers - one pair,
+        because a genre that carried a tempo outside the slider would show a value the control
+        cannot display, and a clamped groove is a genre nobody can hear properly. */
+    constexpr double kSeqMinBpm = 40.0;
+    constexpr double kSeqMaxBpm = 300.0;
 
     /*  The pass number of the first render anybody hears.
 
@@ -67,18 +73,62 @@ namespace sliceforge
         int chainLength = kSeqChainLength;
     };
 
-    enum class PatternPreset
+    /*  A factory groove lane is one pad's part, written as exactly kSeqSteps characters - one per
+        step, bar two included. The alphabet below is parsed by applyGrooveChar() and pinned by the
+        groove-bank checks, so a stray character fails a test instead of hiding as a rest.
+
+          '.' silence   '-' ghost   'x' body   'X' accent   '#' hit
+          'r' roll (ratchet 3)   'R' burst (ratchet 4)   'f' flam
+          'p' dropout (probability 0.55)   '<' pushed early   '>' pushed late
+    */
+    struct GrooveLane
     {
-        fourFloor,
-        boomBap,
-        halfTime,
-        trap,
-        afro,
-        broken
+        int pad;
+        const char* steps;
+        int loop = 0;   // >0: this lane cycles on its own step count (polymeter), 1..kSeqSteps
     };
 
-    juce::String patternPresetName (PatternPreset preset);
-    SeqPattern makePatternPreset (PatternPreset preset);
+    /** The model index (the same 0..15 that `pad.model` carries) that lets a genre sound like
+        itself. The groove never writes these - only the menu's MATCH SOUNDS item does, because
+        re-voicing the kit is a decision about somebody's sound, not about a bar of music. */
+    struct GrooveVoice
+    {
+        int pad;
+        int model;
+    };
+
+    struct Groove
+    {
+        const char* genre;
+        const char* name;
+        int bpm;
+        int division;   // steps per quarter note: 2, 3, 4, 6 or 8
+        float swing;    // 0..0.66 of a step, applied to odd steps
+        std::span<const GrooveLane> lanes;
+        std::span<const GrooveVoice> voicing;
+    };
+
+    /** Genre-major, three variations per genre, so the menu can group without a second table. */
+    std::span<const Groove> grooveBank();
+    bool isGrooveStepChar (char stepChar) noexcept;
+    juce::String grooveLabel (const Groove& groove);
+    /** The first and last index of the run of the bank that shares a genre with `index`, inclusive;
+        { -1, -1 } outside the bank. The menu builds one submenu per run and the checks walk the same
+        runs, so neither of them re-reads the genre strings. */
+    std::pair<int, int> grooveGenreRun (int grooveIndex);
+
+    /** The next variation inside the same genre, wrapping; returns the argument for an unknown index. */
+    int nextGrooveVariation (int grooveIndex);
+    /** -1 for every pad this groove has no opinion about. */
+    std::array<int, kNumPads> grooveVoicing (int grooveIndex);
+
+    SeqPattern makeGroovePattern (int grooveIndex);
+    /** Writes the groove into the document's active pattern and takes the grid with it - length,
+        tempo, division and swing. Those four are what make a genre a genre, and a 32-step length is
+        what makes a two-bar groove audible at all: the scheduler wraps on `length`, so a second bar
+        written behind a 16-step window is data nobody hears. The other pattern slots stay as they
+        were, and host sync is left alone. Returns false for an index outside the bank. */
+    bool applyGroove (SequencerData& data, int grooveIndex);
 
     std::shared_ptr<const SequencerData> makeDefaultSequencerData();
     std::shared_ptr<SequencerData> cloneSequencerData (const SequencerData& source);

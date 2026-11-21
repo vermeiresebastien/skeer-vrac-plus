@@ -1,6 +1,14 @@
 import { describe, expect, it } from 'vitest';
 import { generateLibrarySample } from '../sampleLibrary';
-import { detectSlices, evenStarts, padStartsFromSlices } from '../slicer';
+import {
+  assignSliceLengths,
+  detectSlices,
+  evenStarts,
+  padLengthFromSeconds,
+  padStartsFromSlices,
+  sliceGapSeconds,
+  type Slice,
+} from '../slicer';
 import { SliceForgeEngine } from '../engineCore';
 import { DEFAULT_GLOBAL, createDefaultPads, type PadParams } from '../../types';
 
@@ -89,6 +97,149 @@ describe('factory library', () => {
     const starts = evenStarts(4);
     expect(starts).toHaveLength(16);
     expect(starts[15].time).toBeLessThan(4);
+  });
+});
+
+/* Step 24 — give every slice an end. A detected onset used to be only a start: the pad that
+ * got it kept the shipped LENGTH, so a 90 ms hi-hat gap played 420 ms of the hit after it and a
+ * 1.2 s tail played 420 ms of itself. These are the native suite's checks at
+ * `native/Tests/SmokeTest.cpp` mirrored onto the browser engine, on the same four onsets. */
+describe('slice ends', () => {
+  const onsets = [0.4, 1.3, 1.75, 2.6];
+  const fileSeconds = 3.0;
+  const slicesAt = (times: number[]): Slice[] => times.map((time) => ({ time, strength: 0.8 }));
+  const slices = slicesAt(onsets);
+
+  it('measures a slice as the distance to the next onset, and the last as the file tail', () => {
+    expect(sliceGapSeconds(slices, 0, fileSeconds)).toBeCloseTo(0.9, 12);
+    expect(sliceGapSeconds(slices, 1, fileSeconds)).toBeCloseTo(0.45, 12);
+    expect(sliceGapSeconds(slices, 2, fileSeconds)).toBeCloseTo(0.85, 12);
+    expect(sliceGapSeconds(slices, 3, fileSeconds)).toBeCloseTo(0.4, 12);
+    expect(sliceGapSeconds(slices, 4, fileSeconds)).toBe(0);
+    expect(sliceGapSeconds(slices, -1, fileSeconds)).toBe(0);
+    expect(sliceGapSeconds([], 0, fileSeconds)).toBe(0);
+  });
+
+  it('never ends a slice before it began when the onset sits past the material', () => {
+    // The pad editor lets you place a slice beyond the end of the file, so the end is taken as
+    // never before the start rather than trusted to be after it.
+    expect(sliceGapSeconds(slicesAt([0.5, 1.0, 1.5, 2.8]), 3, 2.0)).toBe(0);
+  });
+
+  it('tiles the material: the four gaps run from the first onset to the end of the file', () => {
+    // Not "sum to the duration" — that only holds when the first onset is at zero. The material
+    // before the first onset belongs to no slice, so the sum is duration minus that start.
+    const gaps = slices.map((_, i) => sliceGapSeconds(slices, i, fileSeconds));
+    expect(gaps.reduce((a, b) => a + b, 0)).toBeCloseTo(fileSeconds - onsets[0], 12);
+  });
+
+  it('repeats a slice only after every slice has a pad of its own', () => {
+    const pads = assignSliceLengths(padStartsFromSlices(slices, createDefaultPads()), slices, fileSeconds, 1);
+    expect(pads).toHaveLength(16);
+    // Four onsets used to wrap at `pad % 4`, which left all sixteen pads on the first quarter of
+    // the file. Now the first four take the four slices in order and only then does it reuse them.
+    expect(pads.slice(0, 4).map((pad) => pad.sliceIndex)).toEqual([0, 1, 2, 3]);
+    expect(new Set(pads.map((pad) => pad.sampleStart)).size).toBe(4);
+    expect(new Set(pads.map((pad) => pad.length)).size).toBe(4);
+    // The spread runs forward through the material, so the last pad reaches the last onset.
+    expect(pads[15].sliceIndex).toBe(3);
+    expect(pads[15].sampleStart).toBe(onsets[3]);
+    expect(pads[15].length).toBeCloseTo(0.4, 12);
+  });
+
+  it('walks forward through the material once the slices run out', () => {
+    // The old `pad % n` wrap also produced four distinct starts, so distinctness alone is not the
+    // defect. What the wrap did was restart at zero: a four-onset take put pads 4 through 7 back on
+    // the first quarter of the file. After every slice has had its own pad, the reuse has to keep
+    // moving towards the end.
+    const pads = assignSliceLengths(padStartsFromSlices(slices, createDefaultPads()), slices, fileSeconds, 1);
+    const indices = pads.map((pad) => pad.sliceIndex);
+    // The step from the last first-round pad to the first reused pad is the legitimate restart:
+    // pads 0..3 take slices 0..3, then the reuse begins again at the top of the map.
+    expect(indices[onsets.length]).toBe(0);
+    for (let i = onsets.length + 1; i < pads.length; i++) expect(indices[i]).toBeGreaterThanOrEqual(indices[i - 1]);
+    const starts = pads.map((pad) => pad.sampleStart);
+    for (let i = onsets.length + 1; i < pads.length; i++) expect(starts[i]).toBeGreaterThanOrEqual(starts[i - 1]);
+    // And the reuse is spread over the whole file, not bunched on one onset: the last pad of each
+    // round still lands on the last slice, and the middle of the map is not a single start.
+    expect(indices[pads.length - 1]).toBe(slices.length - 1);
+    expect(new Set(indices.slice(onsets.length)).size).toBeGreaterThan(1);
+  });
+
+  it('writes LENGTH as the gap divided by the global, bounded by the knob', () => {
+    expect(padLengthFromSeconds(0.9, 1.0)).toBeCloseTo(0.9, 12);
+    expect(padLengthFromSeconds(0.9, 2.0)).toBeCloseTo(0.45, 12);
+    // The global knob bottoms out at 0.25, so a smaller argument cannot inflate the pad:
+    // 0.9 s across a 0.1 global still divides by 0.25, and 3.6 lands on the ceiling.
+    expect(padLengthFromSeconds(0.9, 0.1)).toBe(2);
+    expect(padLengthFromSeconds(0.001, 1.0)).toBe(0.02);
+    expect(padLengthFromSeconds(30, 1.0)).toBe(2);
+  });
+
+  it('leaves a hand-placed start alone', () => {
+    // A pad with sliceIndex -1 was moved by hand; recomputing its length would silently undo it.
+    const shipped = createDefaultPads();
+    expect(assignSliceLengths(shipped, slices, fileSeconds, 1).map((pad) => pad.length)).toEqual(
+      shipped.map((pad) => pad.length),
+    );
+  });
+
+  it('plays the slice, not the rest of the file', () => {
+    const sr = 48000;
+    const frames = sr * 2;
+    const left = new Float32Array(frames);
+    const right = new Float32Array(frames);
+    for (let i = 0; i < frames; i++) {
+      const v = 0.9 * Math.sin((2 * Math.PI * 300 * i) / sr);
+      left[i] = v;
+      right[i] = v;
+    }
+    // Pad 0 gets the onset at zero and the gap to the next one: 200 ms of a 2 s recording.
+    const short = slicesAt([0, 0.2, 1.0, 1.5]);
+    const pads = assignSliceLengths(padStartsFromSlices(short, createDefaultPads()), short, 2, 1);
+    expect(pads[0].length).toBeCloseTo(0.2, 12);
+    const play = pads.map((pad) => ({
+      ...pad,
+      drumify: 0,
+      originalGain: 0,
+      velocityAmount: 0,
+      instability: 0,
+      impact: 0,
+      warp: 0,
+      super: 0,
+      choke: 0,
+      pitch: 0,
+      pan: 0,
+      volume: 0,
+      toneShift: 0,
+      eqLow: 0,
+      eqMid: 0,
+      eqHigh: 0,
+      mute: false,
+      solo: false,
+    }));
+    const engine = new SliceForgeEngine(sr);
+    engine.setSample(left, right, sr);
+    engine.setParams({
+      pads: play,
+      global: { ...DEFAULT_GLOBAL, drumify: 0, length: 1, transpose: 0, fineTune: 0 },
+    });
+    engine.trigger(0, 1);
+    const peakBetween = (fromSeconds: number, toSeconds: number): number => {
+      let peak = 0;
+      const blocks = Math.ceil((toSeconds * sr) / 128);
+      for (let b = 0; b < blocks; b++) {
+        const outputs = makeOutputs();
+        engine.process(outputs);
+        if (b * 128 >= fromSeconds * sr) peak = Math.max(peak, peakOf(outputs));
+      }
+      return peak;
+    };
+    const inside = peakBetween(0, 0.3);
+    const after = peakBetween(0.4, 0.9);
+    // The first guards against a vacuous pass: a silent engine also satisfies the second bound.
+    expect(inside).toBeGreaterThan(0.2);
+    expect(after).toBeLessThan(inside * 0.01);
   });
 });
 
