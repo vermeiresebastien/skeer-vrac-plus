@@ -45,7 +45,7 @@ host-synced 32-step sequencer with pattern chaining, polymeter, parameter locks 
 | Installed plugin | `%ProgramFiles%\Common Files\VST3\SliceForge.vst3` |
 | Installed standalone | `%LOCALAPPDATA%\Programs\SliceForge\SliceForge.exe` |
 | Launch folder | `..\launch\` — `SliceForge.exe`, `SliceForge.vst3`, `SliceForge-1.0.0-Windows-x64.zip`, `start.bat`, `start.ps1` |
-| Test suite | 256 engine/state checks, editor layout snapshots, VST3 host load |
+| Test suite | 258 engine/state checks, editor layout snapshots, VST3 host load |
 
 The plugin bundle is self-contained (factory audio and SKEER brand assets are embedded, no
 external resource folder). The build is about **24 MB**. The VST3 session identity is preserved
@@ -226,20 +226,20 @@ control falls outside its parent.
   Proven again through the processor on a wav the test writes itself: every pad's LENGTH times the
   global LENGTH equals its own gap, and sixteen pads carry four lengths rather than sixteen defaults.
 
-Current result: **256/256 passed** - that is what `SliceForgeSmokeTest.exe` prints on the tree
+Current result: **258/258 passed** - that is what `SliceForgeSmokeTest.exe` prints on the tree
 this file describes, so re-run it rather than trusting the number here - with the engine using
-between **4.4% and 5.8% of one core** across ten separate runs while continuously
+between **4.4% and 5.8% of one core** across twelve separate runs while continuously
 triggering pads at 48 kHz / 512 samples: they printed 4.52%, 4.56%, 4.86%, 5.04% and 5.75% on the
-Step 24 bytes, 4.43% on the groove-bank build, and 4.45%, 5.32% and 5.26% on the three Step 25
+Step 24 bytes, 4.43% on the groove-bank build, and 4.45%, 5.32%, 5.26%, 4.64% and 4.36% on the five Step 25
 scorer builds. Step 24
 added eleven checks and each one runs once, so the tree before it printed 206/206, and the
 **190/190** stamped here was already stale by sixteen - the import-ceiling commit restamped the
 plan and missed this file, which is the sweep defect recorded in `docs/next-steps-plan.md` 8O. The
 groove bank then moved the total again, and the arithmetic reconciles both stamps:
-**217 − 2 + 22 = 237**, and the slicer scorer then made it **237 + 19 = 256** - eight checks on the
+**217 − 2 + 22 = 237**, and the slicer scorer then made it **237 + 21 = 258** - eight checks on the
 fixture state (directory, marks, baseline presence, readability, the tuning it was blessed under,
 inventory parity, the band, and no capped row) plus eleven controls that score the scorer itself. The
-nineteen do not vary with how many takes are on disk, so adding the ninth rendered take does not
+twenty-one do not vary with how many takes are on disk, so adding the ninth rendered take does not
 restamp this number. The two that went were the checks on the six-preset `PatternPreset` API that the
 sixty-row bank replaced; the twenty-two come from nineteen check sites in `Tests/GrooveBankTest.cpp`,
 which print one row per pattern slot in the slot-isolation arm (the same `^ *check (` census 8O uses). The
@@ -522,9 +522,9 @@ Source/
     SourcePanel / PadEditorPanel / HeaderBar / FooterBar / SequencerGrid / SequencerPanel /
     VaultPanel
 Tests/
-  SmokeTest.cpp         the engine/state suite (256 checks in total, printed at the end)
-  GrooveBankTest.*      the bank's structural and audible checks, run by SmokeTest (22 of the 256)
-  SlicerScoreTest.*     the slicer scorer, its baseline gate and its controls (19 of the 256)
+  SmokeTest.cpp         the engine/state suite (258 checks in total, printed at the end)
+  GrooveBankTest.*      the bank's structural and audible checks, run by SmokeTest (22 of the 258)
+  SlicerScoreTest.*     the slicer scorer, its baseline gate and its controls (21 of the 258)
   LayoutTest.cpp        editor bounds + PNG snapshots
   HostTest.cpp          scans and loads the built VST3 through JUCE's host path
 ```

@@ -239,12 +239,18 @@ C++ header and reddens `npm test` on a native-only edit, exactly like `importLim
 `kMaxSlices` is deliberately **not** in that pair: it is a product ceiling on the kit a host sees, not a tuning of the
 detector, and it stays in `native/Source/Params.h`.
 
-Two traps in that file. `kOnsetBiasSeconds` is stored **positive and subtracted**, because the parity regex
+Three traps in that file. `kOnsetBiasSeconds` is stored **positive and subtracted**, because the parity regex
 (`constexpr\s+\S+\s+NAME\s*=\s*([0-9.]+)`) cannot capture a negative literal — writing `-0.006` silently un-gates the
 pair. And `kDedupGateSeconds` cannot bind while it is smaller than `kMinGapSeconds`: the selection pass already forces
 every accepted onset `kMinGapSeconds` apart, the bias is a constant so it cancels out of a difference, and the gate sits
 below that. Measured, not inferred — setting it to `0.0` moved no score on any fixture. Do not "fix" that by deleting
 it; it becomes the binding constraint the moment it is raised above the min gap.
+
+The third is a behaviour, not a typo: the floor is relative to the file's own peak, so a take of digital silence has a floor of
+`0 >= 0` and the detector returns exactly `targetAt(sens)` slices for it - 17/33/49 at 0.20/0.55/0.90. `SlicerScoreTest.cpp` pins
+that identity in a check named *a dead take still yields the knob's target count*, so a fix has to move the name on purpose, and no
+slicing count measured on a quiet take may be read as skill. Read `recall` alongside `recall25`, `p` and `fpmin`: a +/-50 ms window
+on references 300 ms apart pays ~0.500 recall to a detector firing on silence, and it covers dense material outright.
 
 The detector is judged by `native/Tests/SlicerScoreTest.cpp`, not by ear: `fixtures/marks/*.marks.json` holds the
 reference onsets, `fixtures/slicer-baseline.json` holds the blessed table **and the tuning it was blessed under**, and

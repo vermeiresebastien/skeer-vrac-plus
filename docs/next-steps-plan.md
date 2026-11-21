@@ -2918,7 +2918,7 @@ above: `README.md`'s suite table (`253/253`, `68 tests across 8 files`) and `nat
 *Current result* paragraph, its arithmetic sentence (`217 − 2 + 22 = 237`, then `237 + 16 = 253`) and its `Tests/` tree
 listing. Historical run records in earlier sections were left as written, dated, and annotated rather than rewritten -
 including this file's own self-recorded line count at the 8H section, now marked *was 2476 that day*. **Those four 253s
-were the correct stamp for commit `7a92a6d` and are superseded by the 256 recorded at the end of this section.**
+were the correct stamp for commit `7a92a6d` and are superseded by the 256 recorded at the end of this section, and in turn by the 257 recorded below.**
 
 Nothing here is neutral about line numbers: the Step 25 entry grew by three lines and the two status annotations by one more,
 so every `:NNNN` cite below roughly `:712` in this file sits four lines lower than the section that printed it. That includes
@@ -2969,6 +2969,64 @@ records that those bytes are not deterministic anyway. Totals restamped to 256: 
 at-a-glance row, *Current result*, the arithmetic sentence (now `237 + 19 = 256`), its run count and CPU list, the *Auto-slicer
 ground truth* section's new `p` column and `marks-src` rule, and the `Tests/` tree listing.
 
+### The midi writer bug, and what digital silence gave for free
+
+Phase 3 needs nine `.mid` files, so the generator was written before any audio existed and validated against the only reader that
+matters: `midNoteOnsets`, the production path. The first nine files were refused with *"midi carries no tempo map, so its ticks cannot be read as seconds"*,
+and the fault was in the generator rather than the scorer - the tag was written `Mtrk`, so the reader named the
+consequence (no tempo map) instead of the cause (every track skipped). `MidiFile::readFrom` compares
+the tag against the four bytes `"MTrk"` exactly, **silently skips** any chunk that is not it, and still returns `true`. So a
+format-1 file with a conductor track and eight data tracks written in the wrong case parses "successfully" holding zero tracks.
+
+Two things followed. The generator now writes `MTrk`. And the scorer got a guard, because the failure mode is a silent accept
+rather than an error: when `readFrom` returns true but `getNumTracks() == 0`, `midNoteOnsets` reports *"midi parses but holds no
+MTrk chunks, so every track in it was skipped"* instead of handing the comparison an empty list. Without it, a marks file whose
+midi was unreadable would score every take against an empty truth and agree with itself - the `refN > 0` rule one level up, since
+the provenance check has to be able to fail loudly when there is nothing to compare. The proof is the round trip, not the file
+count: the one trio put through the real reader (`kick-quad`'s midi, marks and a stand-in wav) came back with no load problem and
+its onset list matched the marks JSON, which is the evidence the other eight share before any of them is committed.
+
+Then the stand-in wav told us something the rendered material was supposed to. It is digital silence, and it scored
+`detN` 17, 33 and 49 at sensitivities 0.20, 0.55 and 0.90. Those are not detections; they are `targetAt (sens)` -
+`kTargetBase + kTargetSpan*sens`, rounded. **The detector hands back the sensitivity knob's count for a file that contains no
+signal at all**, because `kFloorRatio` is a fraction of the file's own peak and a peak of 0 makes the floor `0 >= 0`, which every
+candidate passes.
+
+That is recorded as a **characterisation test**, not as approved behaviour: `a dead take still yields the knob's target count:
+the relative floor is degenerate at peak 0` prints `detN` and `target` for all three sensitivities and asserts the identity, so
+the count stays pinned to the knob rather than to the material, and whoever gives silence a real answer has to move that name on
+purpose. It was falsified with the actual fix rather than a fake mutation: a zero-peak early return in `detectSlices` took the
+three rows to `detN=0` and produced `FAIL - 256/257` with that one name and no other red. Restored by
+`git checkout -- native/Source/Engine/Slicer.cpp`; `git hash-object` returns `13328bb9dce3f6498f395627a87d94140dde8305`, equal to
+the HEAD blob, with `git diff --stat` empty. `sha256sum` of that worktree path is **not** a publishable number: the file is
+`i/lf w/crlf`, and the probe's Python write had flattened it to LF, so the *bytes* differ from the pre-probe worktree while the
+*content* is the committed one. The fix itself is ten lines and is **not in this commit** - Step 25's rule is that the detector
+does not move until the ruler has real material on it.
+
+The same rows carry a reading rule for the metric. On a take whose references are 300 ms apart, a detector firing on *nothing*
+matched 8 of 16 references inside the +/-50 ms window: `recall=0.500`, and `p=0.242` bought by firing 33 slices. Half that score
+is window geometry - a 100 ms window over 300 ms of spacing covers a third of the timeline by chance, and the 16th-note fixtures
+(75 ms apart) are covered outright. So `recall` on dense material is nearly meaningless and the columns that survive are
+`recall25`, `p`, `fpmin` and `biasMs`. Nothing in the scorer changes; this is why `recall25` was never optional, and it is the
+first thing to state when a blessed row is quoted as a quality claim.
+The guard is exercised by its own control rather than trusted: the suite writes a one-track file through JUCE, flips every
+`MTrk` tag in the bytes to `Mtrk`, and requires the reader to refuse *and* to name the reason
+(`a midi whose track tag is not MTrk is refused by name instead of parsing as empty`, printing
+`tampered=yes cleanReads=yes brokenReads=no guardNamed=yes`). Deleting the guard leaves `brokenReads=no` - the tempo check still
+refuses - but `guardNamed=no` and the message falls back to the tempo one, and the suite prints `FAIL - 257/258` with that single
+name. So the check is about the *named* refusal, not about a bool, and it cannot be satisfied by an unrelated failure. That file
+carries uncommitted work, so it was restored from the bytes read at the top of the probe and verified by SHA-256 equality
+(`0474a9bd…`), never by `git checkout`.
+
+
+Gate on the bytes this commit carries: `PASS - 258/258 checks passed`, exit 0, CPU 4.91% of one core, no compiler
+warnings (`native/build/s26-final.log`, which opens with the blob census: `git hash-object` equals `git rev-parse HEAD:` for
+`native/Source/Engine/Slicer.cpp` (`13328bb9dce3`) and `SlicerTuning.h`, and differs only for the two files this commit changes). The census
+closed at seconds - cpp 13:26:16 < obj 13:28:00 < exe 13:28:02 - so the gated binary is built from the restored `Slicer.cpp` (`3d6829f220ca`) and the current scorer TU, which is
+what proves both mutants left the executable and not merely the tree. The slicer file now owns 21 of the 258: eight on fixture state
+plus thirteen controls. Totals restamped in `README.md`'s suite table and `native/README.md`'s at-a-glance row, *Current result*,
+the arithmetic sentence (`237 + 21 = 258`), its run count and CPU list, and the `Tests/` listing.
+
 ### Still owed by Step 25
 
 - **Phase 3, and only the owner can do it:** render nine 4-bar takes from real kits in Live (44.1 kHz / 24-bit / stereo,
@@ -2976,6 +3034,18 @@ ground truth* section's new `p` column and `marks-src` rule, and the `Tests/` tr
   note times - each one needing its `fixtures/marks-src/<take>.mid` beside it, since the scorer now refuses a `midi-note-times`
   marks file it cannot re-derive. Everything downstream is ready: the scorer, the schemas, the bless, the gate. When the wavs
   land it is one bless and one commit, and findings 2 and 3 above get their real measurements.
+- **Phase 3 render decisions, taken 2026-11-21.** The nine tracks and clips are built in the owner's current Live set through
+  abletonmcp from his own commercial sample packs, and abletonmcp's dataset-training consent was opted in for that session. One
+  deviation from the recipe above is deliberate: a single global tempo of 200 BPM for all nine takes, because the render is one
+  manual export of the whole arrangement and per-take tempi would need nine exports. The generator's `OFFSET_BEATS 4.0` matches
+  the arrangement placement, and the marks files carry wall-clock times derived from that one tempo map - which is exactly why
+  `fixtures/marks-src/<take>.mid` is mandatory rather than advisory.
+- **A licensing gate the owner clears before any wav is committed.** `origin` is a public repository
+  (`github.com/vermeiresebastien/skeer-vrac-plus`). Rendering material from commercial packs and committing the wav fixtures
+  publishes derivative third-party audio under this repo's licence, which is not the same decision as committing a marks JSON of
+  note times. The suite is green with `fixtures/` absent, so the audio is optional to the gate, and the options at bless time are
+  a private remote for the audio, pack material the owner is free to redistribute, or keeping the nine takes on the bench and out
+  of git. None of that blocks the *measurement*; it blocks its *commit*, and it is asked of the owner rather than decided here.
 - **Not built, deliberately:** the browser-side scorer. `slicerTuning.test.ts` pins the constants across the editions, and the
   native scorer owns the audio; a second scorer would be a second ruler to keep true.
 - The `launch/` archive and zip are unchanged by all of this - no product source moved, only comments and test code - but the

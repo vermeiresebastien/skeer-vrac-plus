@@ -59,6 +59,11 @@ namespace
             problem = "midi does not parse";
             return false;
         }
+        if (mf.getNumTracks() == 0) // readFrom returns true for a file whose chunks it did not recognise
+        {
+            problem = "midi parses but holds no MTrk chunks, so every track in it was skipped";
+            return false;
+        }
         juce::MidiMessageSequence tempos;
         mf.findAllTempoEvents (tempos);
         if (tempos.getNumEvents() == 0)
@@ -787,6 +792,34 @@ namespace
                     row.line());
         }
 
+        /*  A characterisation test, not an approval. On a buffer of exact zeros the detector still hands
+            back the whole target count, because `kFloorRatio` is a fraction of the file's own peak and a
+            peak of 0 lets every candidate through (`0 >= 0`). So for a dead take the slice count is a
+            function of the sensitivity knob and of nothing else. Pinned here on purpose: whoever gives
+            silence a real answer will watch this name go red and move it deliberately, instead of
+            learning about the degeneracy from a customer's first empty take. */
+        {
+            constexpr double rate = 44100.0;
+            const int length = (int) (rate * 6.0);
+            sliceforge::SampleData dead;
+            dead.sampleRate = rate;
+            dead.buffer.setSize (2, length, false, true);
+            dead.buffer.clear();
+            int followed = 0;
+            for (const auto knob : kSensitivities)
+            {
+                const auto slices = sliceforge::detectSlices (dead, (float) knob);
+                const int fired = (int) slices.size();
+                const auto asked = targetAt (knob);
+                followed += fired == asked ? 1 : 0;
+                std::cout << "  info  SLICERSCORE ctl-silence sens=" << knob
+                          << " detN=" << fired << " target=" << asked << '\n';
+            }
+            report (followed == (int) (sizeof (kSensitivities) / sizeof (kSensitivities[0])),
+                    "a dead take still yields the knob's target count: the relative floor is degenerate at peak 0",
+                    "silence no longer follows the sensitivity knob - three detN/target lines above");
+        }
+
         /*  The marks-src reader, run over a standard MIDI file built here rather than over a hand-
             written vector. Ticks-per-quarter and the tempo meta event are the two things that turn a
             note number into a wall-clock time, so a reader that guessed either would still find the
@@ -840,6 +873,52 @@ namespace
                                  + juce::String (worst * 1000.0, 6) + " ms, edited worst "
                                  + juce::String (worstEdited * 1000.0, 3) + " ms"
                            : "read failed: " + (why.isEmpty() ? juce::String ("write failed") : why)));
+        }
+
+        /*  The zero-track guard, exercised on the bytes that motivated it. `MidiFile::readFrom` compares a
+            chunk tag against "MTrk" exactly, skips anything else without a word and still returns true, so
+            a generator that emits the wrong case hands the reader a file that parses as empty. Scored
+            against an empty truth every take would agree with itself, which is why the refusal has to be
+            named rather than merely non-zero. The tag is tampered here instead of authored because JUCE's
+            own writer is the thing under test's input. */
+        {
+            juce::MidiFile mf;
+            mf.setTicksPerQuarterNote (480);
+            juce::MidiMessageSequence seq;
+            seq.addEvent (juce::MidiMessage::tempoMetaEvent (500000), 0.0);
+            seq.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), 960.0);
+            seq.addEvent (juce::MidiMessage::noteOff (1, 60), 1080.0);
+            mf.addTrack (seq);
+            juce::MemoryBlock intact;
+            {
+                juce::MemoryOutputStream out (intact, false);
+                mf.writeTo (out);
+                out.flush();
+            }
+            auto broken = intact;
+            bool tampered = false;
+            if (auto* b = static_cast<char*> (broken.getData()))
+                for (size_t i = 0; i + 3 < broken.getSize(); ++i)
+                    if (b[i] == 'M' && b[i + 1] == 'T' && b[i + 2] == 'r' && b[i + 3] == 'k')
+                    {
+                        b[i + 1] = 't';
+                        tampered = true;
+                    }
+
+            std::vector<double> back;
+            juce::String why;
+            const bool readClean = midNoteOnsets (intact, back, why);
+            std::vector<double> nothing;
+            juce::String guard;
+            const bool readBroken = midNoteOnsets (broken, nothing, guard);
+            const auto named = guard.contains ("no MTrk chunks");
+            std::cout << "  info  SLICERSCORE ctl-miditag tampered=" << (tampered ? "yes" : "no")
+                      << " cleanReads=" << (readClean ? "yes" : "no")
+                      << " brokenReads=" << (readBroken ? "yes" : "no")
+                      << " guardNamed=" << (named ? "yes" : "no") << "  [" << guard << "]\n";
+            report (tampered && readClean && ! readBroken && named,
+                    "a midi whose track tag is not MTrk is refused by name instead of parsing as empty",
+                    "the four tamper flags above carry the reason");
         }
     }
 } // namespace
