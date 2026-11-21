@@ -3159,6 +3159,57 @@ was eight greens that had nothing to compare.
   AGENTS.md `fdff18beaa30f41b`, native/README.md `7c13326803f6ef89`. These are blob digests, deliberately -
   the finding above is why a worktree digest is not the reproducible one.
 
+### The re-gate before the push found the screenshots could not be trusted (2026-11-21 18:20-18:45)
+
+Four commits had landed on top of the last shipped tuple without a native build behind them, and the branch
+carries the owner's standing "do these" for push, so the first job was to prove HEAD rather than assume it.
+
+- **The build was not the tree.** `SliceForgeHostTest.exe` on disk was dated 11-16 08:46 while the plugin's
+  `SliceForge_SharedCode.lib` was dated 11-21 16:38, because every build since then named targets
+  (`--target SliceForge_VST3 SliceForge_Standalone`, `--target launch`) and `ctest` does not build. It is *not*
+  a wrong result though, and the distinction matters: `native/Tests/HostTest.cpp` was last edited 11-16 08:45,
+  one minute before that exe, and it includes only `JuceHeader.h` - no plugin header. So the stale binary was a
+  faithful build of the current test source, loading the current module at runtime. The full
+  `cmake --build native/build --config Release --parallel 2` relinked it anyway, which is the fix for the habit,
+  not for a defect.
+- **Gate on `4f57213`, all from that build.** Smoke `PASS - 258/258 checks passed` exit 0 (`CPU: 4.59% of one
+  core for 2.1s audio`), layout `PASS layout screenshot: ... (32 checks)` exit 0, host
+  `parameters: 350 = 348 layout + Bypass + Program` and `PASS VST3 host test` exit 0
+  (`first note peak: 0.650336`, `midi out: 9 note-ons / 9 note-offs over 48 blocks, peak 0.892715`,
+  `state: 121494 bytes`, `editor: 1260 x 840`), `ctest -C Release` `100% tests passed out of 3` exit 0 in
+  `19.03 s`, `npm test` `Tests 68 passed (68)` in 8 files exit 0. The 32-check layout total is what the plan
+  already records (`:2720` "was 28"); the older 28s are dated run records, not claims about now.
+- **`launch/` does describe the tested code, and it is now proved byte-wise.** The build tree's module had been
+  relinked at 16:38 after the launch export at 14:38, so the two hashes differed (`81c540543a3249f6` vs the
+  launch and installed `641cde970ba49a5e`, standalone `25ca095cce9f792a` in both). `cmp -l` on the module pair
+  returns **four bytes**, at 305-306 and 23137941-23137942, which is the same pair of sites 8E recorded at
+  `:1485` as "the two PE `TimeDateStamp` copies" (there 305-306 and 23107221-23107222; the second moved because
+  the file grew). Same size, same code. So the install is not a fifth artifact and the green host
+  run does speak for what the DAW loads; no re-export was needed, and none was done.
+- **The real finding: `native/shots/sequencer-large.png` has two states for one unchanged binary.** The first
+  layout run after the build dirtied it (`git status` said `M`), and the run inside `ctest` wrote a second
+  variant - `f847391743dd894a`, 140 428 B against the committed `0ca0385a86706075`, 140 451 B. Ten further
+  runs of the same exe, nothing edited, all wrote the committed bytes, so the variant is intermittent rather
+  than a new truth; no other file in `native/shots/` moved in any of the twelve. Inflating both IDAT streams
+  and undoing the row filters (no imaging library,
+  `native/build/regate/pngdiff.py`) localises it exactly: payloads the same 5 644 800 B, **13 differing scanlines
+  confined to x 1086..1128, y 17..62** of a 1680x1120 grab. That is one header control, not the layout.
+  Mechanism: the grab waits `runDispatchLoopUntil (40)` after the resize (`native/Tests/LayoutTest.cpp:200-202`)
+  while the 30 Hz editor timer reaches `header->refresh()` only on every 10th tick on the sequencer page
+  (`native/Source/PluginEditor.cpp:317-323`), and `HeaderBar::refresh()` is what sets the undo/redo enabled state
+  (`native/Source/UI/HeaderBar.cpp:95-114`). Whether the header refreshed inside a 40 ms window is scheduling.
+- **What that means for the restamp the owner asked for: it is already satisfied, and it must not be "fixed" by
+  re-pinning.** The committed pictures equal what a current build writes in 10 of 12 runs. The one-line change
+  that would make it deterministic is to wait past the 333 ms refresh cycle (or call `refresh()` before the
+  snapshot), and its cost is that it re-renders the tracked set by changing *when* every grab happens - a
+  decision about the shipped documentation images, so it is left open rather than taken. Recorded in
+  `AGENTS.md`'s drift list so nobody re-pins on a single run again. It also reaches the archive: the zip carries
+  these pictures, which is a second route by which a re-export changes hash for identical code, alongside the
+  one the pinned entry clock already closed.
+- **Logs.** The six files behind this section are in `native/build/regate/` (`build.log`, `smoke.log`,
+  `layout.log`, `host.log`, `ctest.log`, `npm.log`), each ending in its own `*_EXIT=` line. That directory is
+  gitignored and dies on `git clean -xfd`; the numbers above, not the files, are the record.
+
 ### Still owed by Step 25
 
 - **Phase 3, and only the owner can do it:** render nine 4-bar takes from real kits in Live (44.1 kHz / 24-bit / stereo,

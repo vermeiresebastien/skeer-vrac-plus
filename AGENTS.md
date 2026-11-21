@@ -165,6 +165,19 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
   and rewrite `native/shots/*.png` without your change in them — which reads as "the control did not
   render". Build the test targets first (`cmake --build native/build --config Release`) when a
   snapshot or a check total looks wrong for no reason.
+- `native/shots/*.png` is **not byte-reproducible from one build**, so a restamp can move on an
+  unchanged tree. The sequencer-page grab (`native/Tests/LayoutTest.cpp:200-206`) resizes then waits
+  a fixed `runDispatchLoopUntil (40)`, but the editor's 30 Hz timer only reaches
+  `header->refresh()` on every 10th tick on that page (`native/Source/PluginEditor.cpp:317-323`) and
+  `HeaderBar::refresh()` is what re-asserts the undo/redo enabled state
+  (`native/Source/UI/HeaderBar.cpp:95-114`). Whether the header was refreshed inside a 40 ms window is
+  host scheduling. Measured 2026-11-21 on twelve runs of one unchanged `SliceForgeLayoutTest.exe`:
+  ten wrote the committed `0ca0385a86706075` (140 451 B), and the first run after the build plus the
+  run inside ctest wrote something else (the captured one: `f847391743dd894a`, 140 428 B). Inflating
+  both scanline payloads puts the whole difference on 13 rows inside x 1086..1128, y 17..62 of a
+  1680x1120 grab - one header control, not the layout. So: never re-pin a shot from a single run, and
+  do not treat a changed `native/shots/` file as evidence about a UI change. The archive carries these
+  pictures, so this is also why a re-exported `launch/*.zip` can change hash for identical code.
 - MSVC intermittently fails a parallel compile with `D8040: error creating or communicating with
   child process`, sometimes alongside a bogus `C1001` internal compiler error in an unrelated file.
   Re-running the same target sequentially succeeds; it is not a code problem.
