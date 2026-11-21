@@ -3140,14 +3140,24 @@ was eight greens that had nothing to compare.
   themselves. The tolerance is not a substitute for `.gitattributes` - it is the honest version of a claim
   that was previously overstated, and both checks now report how many files needed it.
 - **Doc sweep, one number found wrong.** `native/README.md:241` split the twenty-one slicer checks as
-  "eight fixture-state gates plus eleven controls" - 8 + 11 = 19, contradicting `:295`'s eight and thirteen
-  in the same file. Thirteen is right: `grep -c "report (" Tests/SlicerScoreTest.cpp` is 21, and the run's
-  `ok` lines divide into the eight fixture-state gates and thirteen controls that score the scorer. The same
+  "eight fixture-state gates plus eleven controls" - 8 + 11 = 19, contradicting the same file's `:305`
+  ("eight fixture-state gates and thirteen controls"). Thirteen is right: `grep -c "report (" Tests/SlicerScoreTest.cpp`
+  is 21, and the run's `ok` lines divide into the eight fixture-state gates and thirteen controls that score the scorer. The same
   line still named the retired rule ("no capped row"), so it now names the one in force.
+  *(Commit `a116532` cites that second line as `:304`, one short: the CRLF sentence added above it in the same
+  commit shifted it, and the message was written from the pre-shift reading. The blobs its message publishes were
+  re-derived from the commit and match, so only that one line number was stale. Fixed here rather than by amending.)*
 - **Gate for this change.** `PASS - 258/258` exit 0 on the LF tree and again on the CRLF tree, `ctest` 3/3
   exit 0 (`Total Test time 10.86 s`), `npm test` 68/68 in eight files, both generators re-run after the
   edits, and `native/shots/` unmodified by the ctest run. No plugin source touched, so the shipped tuple
   still describes the module - and nothing here is rebuilt, re-exported, installed or pushed.
+  Commit `a116532`, 23 files, +292/-21 (`AGENTS.md` +15/-6, this plan +62/-8, `native/README.md` +14/-4,
+  `fixtures/tools/make-takes.py` +184, `fixtures/tools/synth-takes.cjs` +8/-3, 18 new fixture files).
+  Blob digests as published in that message and re-derived from the commit afterwards with
+  `git show HEAD:<path> | sha256sum`: make-takes.py `0554974a53d5980b`, synth-takes.cjs `8dc2c008712c663a`,
+  `marks-src/hat-16th.mid` `f99753563aa759c9`, `notes/hat-16th.notes.json` `f2c02ec25d5ddc09`,
+  AGENTS.md `fdff18beaa30f41b`, native/README.md `7c13326803f6ef89`. These are blob digests, deliberately -
+  the finding above is why a worktree digest is not the reproducible one.
 
 ### Still owed by Step 25
 
