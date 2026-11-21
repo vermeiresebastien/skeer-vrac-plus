@@ -3043,6 +3043,8 @@ native/Resources native/CMakeLists.txt src` printed nothing, and HEAD was `f6108
 - `SliceForgeLayoutTest.exe` exit 0, `PASS layout screenshot: ... (32 checks)` (`ship-layout.log`), which regenerated
   `native/shots/`. Five files moved: `sequencer-dark`, `sequencer-inspector`, `sequencer-inspector-dark`, `sequencer-large`,
   `sequencer-light`. Finding 3 still holds, so `sequencer-large.png` is expected to differ again on the next run.
+  *(Held until 21:53, then fixed: the harness wait is 400 ms and seventeen runs of the rebuilt exe wrote the committed
+  bytes without a single drift - see the 21:53 section. Nothing here was re-rendered as a result.)*
 - `cmake --build native/build --config Release --target launch` exit 0: `launch/ refreshed (Release, v1.0.0)`, zip 27.3 MB.
 - **The tuple.** VST3 module `641cde970ba49a5e...` at 24,564,736 B, identical in the build tree, in `launch/`, and read back
   out of the archive into a scratch directory; Standalone `25ca095cce9f792a...` identical in all three as well. The archive is
@@ -3213,12 +3215,20 @@ carries the owner's standing "do these" for push, so the first job was to prove 
   `AGENTS.md`'s drift list so nobody re-pins on a single run again. It also reaches the archive: the zip carries
   these pictures, which is a second route by which a re-export changes hash for identical code, alongside the
   one the pinned entry clock already closed.
+  *(Both halves of that cost estimate were wrong, and the 21:53 section is the correction. The wait change did not
+  re-render anything: the committed bytes are the refreshed state, so seventeen runs after the fix reproduced them
+  exactly and the tracked set never moved. And the zip does not carry these pictures - `package-launch.ps1:106`
+  collects the eight names linked from `native/README.md`, and `sequencer-large.png` / `editor-large.png` are not
+  among them, so the flake was repo-only and no re-export was ever implied.)*
 - **Logs and tools.** Behind this section, in `native/build/regate/`: `build.log`, `smoke.log`, `layout.log`,
   `layout2.log`, `host.log`, `ctest.log`, `npm.log` from the re-gate, then `export.log`, `smoke2.log`,
   `host2.log`, `zipcheck.log` from the export, plus the two throwaway tools that produced the findings here -
   `pngdiff.py` (inflate both IDAT streams, undo the row filters, print the differing rows) and `zipcheck.py`
   (each zip member against the file it claims, non-zero exit if any differ). That directory is gitignored and
-  dies on `git clean -xfd`; the numbers above, not the files, are the record.
+  dies on `git clean -xfd`; the numbers above, not the files, are the record. The 21:45-22:00 work added
+  `install.log` (the elevated install's own lines plus `INSTALL_EXIT=0`), `host-installed.log` and
+  `host-zip.log` (the host test against the scan folder and against the extracted archive), `det-build.log`,
+  `det-run1.log`…`det-run3.log`, `det-sweep.log` (`SWEEP_DONE runs=14 drifts=0`) and `shots-baseline.txt`.
 - **One transcription slip, published and left published.** Commit `7ada9e5`'s message opens a bullet with
   "`SliceForge.exe` in `launch/` is `75e8af...`-no: `75eaf3e3829fc230`" - a half-deleted keystroke that
   survived into the text. `75eaf3e3829fc230` is the hash; nothing else in that message was affected, and every
@@ -3264,6 +3274,49 @@ terms. Both halves of that are fixed here, and the second one turned out to be w
   proven to be a byte-for-byte copy of something that compiled. The ten layout screenshots are rendered by
   the test exe's own compiled copy of the UI sources, not by the shipped module. And the extractor is the
   archive's own `extractall`, not Explorer, so a Windows-shell unzip is still outside the evidence.
+
+### The screenshot coin flip was a 40 ms harness wait, and fixing it cost no re-pin (2026-11-21 21:53-22:00)
+
+Finding 3 above stopped being a landmine instead of staying a warning. The owner had to weigh it because
+the assumed price was re-rendering ten shipped pictures; the price turned out to be zero, and the reason
+it is zero is worth more than the fix.
+
+- **The change:** `native/Tests/LayoutTest.cpp`, both scaled grabs - the `runDispatchLoopUntil (40)` that
+  follows `setSize (1680, 1120)` became `(400)` at `:152` and at `:204`, past the ~333 ms it takes the
+  editor's 30 Hz timer to reach its every-tenth-tick
+  `header->refresh()` on the sequencer and vault pages, with the reason in three comment lines. +5/-2 in
+  the test harness only; no product source moved.
+- **The rebuild touched no deliverable.** `cmake --build native/build --config Release --target
+  SliceForgeLayoutTest` exit 0: it compiled `LayoutTest.cpp` and relinked that one exe. `SliceForge.exe`
+  is still `75eaf3e3829fc230...` and the VST3 module still `81c540543a3249f6...` in the build tree, byte-for-byte
+  what `launch/`, the archive and the scan folder hold - re-hashed after the build, not assumed.
+- **The proof is a count, not a vibe.** Three runs printed `RUN1_EXIT=0`…`RUN3_EXIT=0` and wrote
+  `sequencer-large.png 0ca0385a86706075` (the committed bytes) and `editor-large.png 43365e6ae6aa0026`.
+  A scripted sweep then ran the same exe fourteen more times, hashing **all ten** files after each exit
+  against a baseline captured before the sweep: `SWEEP_DONE runs=14 drifts=0`, and `git status` afterwards
+  shows one modified file - the harness. Nothing was re-pinned, because the bytes never moved.
+- **Why 17 runs is the right number, and what it does not buy.** The pre-fix rate was 2 odd states in 12
+  runs (~17%), so seventeen identical runs by luck alone is 0.83^17 ≈ 4%. That is a demonstration, not a
+  guarantee: the wait is now a constant with a derivation instead of a race, and the failure mode if a
+  future editor timer moves is still a coin flip. `AGENTS.md` says so where a reader would shorten it.
+- **Which state was which, corrected from the direction of the evidence.** The 18:20 section could not say
+  whether the committed majority was the refreshed header or the stale one. It was the refreshed one: the
+  longer wait reproduces the committed bytes every time, and the two oddities were runs that grabbed the
+  header *before* `refresh()` re-asserted the undo/redo enabled state.
+- **One measurement of mine that was wrong, recorded so nobody re-derives it.** Mid-sweep I hashed
+  `sequencer-large.png` and got a third digest, `3a8065a17c076a1e`. That was a torn read - the harness had
+  just `deleteFile()`d and was streaming the PNG. The sweep's own compares run after the process exits, so
+  the 14/14 stands; but a tracked asset being generated is not a state, it is a race.
+- **The cite shift this edit caused, in one place instead of four.** Every line number this plan quotes
+  inside `LayoutTest.cpp` below :148 moves by three. `:200-206` → `:203-209`; `:200-202` → `:203-205`; the
+  ten png sites are now `:130-275` (the old `:129-271` was already one short at each end); and 8N's three
+  falsifier cites land on the checks they name at `:388`, `:412` and `:459`. Verified by printing those
+  lines, not by arithmetic - the check names in the old records match the strings now on them.
+- **And one claim of mine from an hour ago was over-stated:** that the archive carries these pictures, so
+  a restamp could move the zip hash for identical code. It does not carry these pictures. `native/README.md`
+  links eight, `package-launch.ps1:106` collects exactly those, and the archive holds eight `shots/` members;
+  `sequencer-large.png` and `editor-large.png` are tracked and never shipped. So the flake was repo-internal
+  all along, and the archive's reproducibility rests on 8L's pinned entry clock alone.
 
 ### Still owed by Step 25
 

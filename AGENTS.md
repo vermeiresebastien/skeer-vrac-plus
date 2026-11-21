@@ -171,19 +171,25 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
   the DAW's scan folder. When the claim being made is about the bytes a customer loads, run the exe
   again with the installed or the zip-extracted bundle as `argv[1]` — it is the same test, and it is
   the only way the host census describes an artifact other than the build tree.
-- `native/shots/*.png` is **not byte-reproducible from one build**, so a restamp can move on an
-  unchanged tree. The sequencer-page grab (`native/Tests/LayoutTest.cpp:200-206`) resizes then waits
-  a fixed `runDispatchLoopUntil (40)`, but the editor's 30 Hz timer only reaches
-  `header->refresh()` on every 10th tick on that page (`native/Source/PluginEditor.cpp:317-323`) and
-  `HeaderBar::refresh()` is what re-asserts the undo/redo enabled state
-  (`native/Source/UI/HeaderBar.cpp:95-114`). Whether the header was refreshed inside a 40 ms window is
-  host scheduling. Measured 2026-11-21 on twelve runs of one unchanged `SliceForgeLayoutTest.exe`:
-  ten wrote the committed `0ca0385a86706075` (140 451 B), and the first run after the build plus the
-  run inside ctest wrote something else (the captured one: `f847391743dd894a`, 140 428 B). Inflating
-  both scanline payloads puts the whole difference on 13 rows inside x 1086..1128, y 17..62 of a
-  1680x1120 grab - one header control, not the layout. So: never re-pin a shot from a single run, and
-  do not treat a changed `native/shots/` file as evidence about a UI change. The archive carries these
-  pictures, so this is also why a re-exported `launch/*.zip` can change hash for identical code.
+- The two `*-large.png` grabs in `native/shots/` were **not byte-reproducible from one build** until
+  2026-11-21, because the harness gave them 40 ms. The sequencer-page grab
+  (`native/Tests/LayoutTest.cpp:203-209`) resized and then waited `runDispatchLoopUntil (40)`, but the
+  editor's 30 Hz timer only reaches `header->refresh()` on every 10th tick on that page
+  (`native/Source/PluginEditor.cpp:317-323`) and `HeaderBar::refresh()` (`native/Source/UI/HeaderBar.cpp:95-114`)
+  is what re-asserts the undo/redo enabled state — so whether the header was refreshed inside a 40 ms
+  window was host scheduling. Measured on twelve runs of one unchanged `SliceForgeLayoutTest.exe`: ten
+  wrote the committed `0ca0385a86706075` (140 451 B), two wrote something else (the captured one
+  `f847391743dd894a`, 140 428 B), and inflating both scanline payloads put the whole difference on 13
+  rows inside x 1086..1128, y 17..62 of a 1680x1120 grab — one header control, not the layout. Both
+  waits are now 400 ms, longer than the ~333 ms refresh period, and seventeen consecutive runs of the
+  rebuilt exe reproduced the committed bytes for all ten files with zero drift. Do not shorten them
+  again, and if a `native/shots/` file ever moves for no visible reason, suspect the harness wait
+  before believing a UI change. Note that a shot read *while* the test is writing it is a third state:
+  `3a8065a1…` appeared once mid-run and was a torn read, not a render.
+- `editor-large.png` and `sequencer-large.png` are **not archive members** — `native/package-launch.ps1`
+  takes the picture list from the `![...](shots/…)` links in `native/README.md`, which is eight files —
+  so the flake above never reached a customer's zip, and a restamp of those two does not force a
+  re-export. The archive's reproducibility rests on the pinned entry clock (8L), not on this.
 - MSVC intermittently fails a parallel compile with `D8040: error creating or communicating with
   child process`, sometimes alongside a bogus `C1001` internal compiler error in an unrelated file.
   Re-running the same target sequentially succeeds; it is not a code problem.

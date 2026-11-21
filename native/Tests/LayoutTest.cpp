@@ -146,7 +146,10 @@ int main()
 
     // Also prove the layout scales without clipping.
     editor->setSize (1680, 1120);
-    juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+    // Longer than the editor's header-refresh period, not longer than a paint: on the sequencer and
+    // vault pages the 30 Hz timer reaches header->refresh() only on every 10th tick (~333 ms), so a
+    // shorter window captures the header refreshed or not at the OS's discretion.
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (400);
     auto scaled = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
     auto scaledFile = shots.getChildFile ("editor-large.png");
     scaledFile.deleteFile();
@@ -198,7 +201,7 @@ int main()
     }
 
     editor->setSize (1680, 1120);
-    juce::MessageManager::getInstance()->runDispatchLoopUntil (40);
+    juce::MessageManager::getInstance()->runDispatchLoopUntil (400);
     auto sequencerLarge = editor->createComponentSnapshot (editor->getLocalBounds(), true, 1.0f);
     auto sequencerLargeFile = shots.getChildFile ("sequencer-large.png");
     sequencerLargeFile.deleteFile();
