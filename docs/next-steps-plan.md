@@ -2617,7 +2617,7 @@ design each: `sliceGapSeconds` at `native/Source/Engine/Slicer.cpp:98-109` and `
   archive `a2cba3f37b3b5f2b4cda7b727198f773e2181589b425691d12edbe9d30b3d072`, 28,586,060 bytes, 17 members,
   **0 members containing a backslash** — §8L's separator defect re-checked on these bytes rather than
   assumed. That closes the three-way divergence §8M left open for the repo copies; the *installed* module
-  is still a different artifact, because installing is an owner action.
+  is still a different artifact, because installing is an owner action. *(Closed 2026-11-21 14:42 - see the ship record at the end of 8Q; the paragraph above is the record of that day's export, not of the current tree.)*
 - **Those text-member hashes are layout-dependent, and it is now measured rather than warned about.**
   `git checkout-index -f` against this index — `core.autocrlf=true`, no `.gitattributes`, confirmed empty
   `attr/` column — returned every packaged text member that this worktree holds as LF with exactly one CR
@@ -2801,7 +2801,7 @@ variations**.
   uncommitted at `c966a71`, 30 dirty paths (26 modified, 4 untracked) — then the `launch/` and zip re-export
   from the committed tree. Measured now: `launch/` carries the Standalone `83745c09b1cb3c0c…` and the module
   `9f74b739600a474a…`, while the gated build is `0e2a0d1bc6f01c01…` / `a1828f3eca6e1ad8…`, so the archive in
-  the repo predates this change and no green test has ever described it. Then the install into
+  the repo predates this change and no green test has ever described it. *(Superseded 2026-11-21: the re-export and the install both landed that afternoon; the ship record at the end of 8Q carries the tuple that now agrees in all four places.)* Then the install into
   `%ProgramFiles%\Common Files\VST3`, and the listening pass: sixty rows pass every structural check, and
   whether HOUSE DEEP reads as house and DILLA reads as Dilla is a judgement no check here makes.
   One disclosure for whoever reads the diff: the README that `9659b78` committed two steps ago says
@@ -3027,6 +3027,35 @@ what proves both mutants left the executable and not merely the tree. The slicer
 plus thirteen controls. Totals restamped in `README.md`'s suite table and `native/README.md`'s at-a-glance row, *Current result*,
 the arithmetic sentence (`237 + 21 = 258`), its run count and CPU list, and the `Tests/` listing.
 
+### The ship record: the tuple agrees in all four places (2026-11-21 14:42)
+
+The re-export, the screenshot restamp and the machine-wide install were gated on the owner and are done. Every number below
+is from the runs named with it, and the source tree was provably clean first: `git status --porcelain -- native/Source
+native/Resources native/CMakeLists.txt src` printed nothing, and HEAD was `f61087b`, so what was compiled is what is committed.
+
+- `cmake --build native/build --config Release --target SliceForge_VST3 SliceForge_Standalone --parallel 2` exit 0
+  (`native/build/ship-build.log`); it linked `SliceForge_SharedCode.lib`, the Standalone and the VST3 bundle.
+- `ctest --test-dir native/build -C Release` **3/3, exit 0** (`ship-ctest.log`): smoke 9.71 s, layout 33.15 s, host 1.05 s.
+  The host leg loads the module built above, so the shipped VST3 was exercised by the 350-parameter check, not just compiled.
+- `SliceForgeLayoutTest.exe` exit 0, `PASS layout screenshot: ... (32 checks)` (`ship-layout.log`), which regenerated
+  `native/shots/`. Five files moved: `sequencer-dark`, `sequencer-inspector`, `sequencer-inspector-dark`, `sequencer-large`,
+  `sequencer-light`. Finding 3 still holds, so `sequencer-large.png` is expected to differ again on the next run.
+- `cmake --build native/build --config Release --target launch` exit 0: `launch/ refreshed (Release, v1.0.0)`, zip 27.3 MB.
+- **The tuple.** VST3 module `641cde970ba49a5e...` at 24,564,736 B, identical in the build tree, in `launch/`, and read back
+  out of the archive into a scratch directory; Standalone `25ca095cce9f792a...` identical in all three as well. The archive is
+  `d2e920f5002cca83acc6cdbbbc0d215ab4c9a8be851a67a329fbf9d025bc64ae`, 28,604,732 bytes, 17 members, **0 members containing a
+  backslash**, `unzip -t` exit 0, every entry stamped 1980-01-01 by the pinned clock.
+- **The install.** `launch/start.ps1 -InstallOnly` exit 0 through one UAC prompt: it copied to `C:\Program Files\Common
+  Files\VST3\SliceForge.vst3`, read the module back against `launch/` twice, and the independent re-hash agrees
+  (`641cde97...`). Its mtime is 14:42:05 because the script restamps *after* both hash checks, as designed, so a host that
+  keys its plug-in cache on the date sees a new build as new. No `SliceForge.vst3` remains in `%USERPROFILE%\Documents\VST3`
+  or `%LOCALAPPDATA%\Programs\Common\VST3`, and nothing was retired - the only copy of the previous build was the one in the
+  destination, which the script overwrites by design.
+
+What that closes: the module Ableton loads had been `0f7927ab560599f6...` at 24,527,360 B - a build no green test in this repo
+has ever described, and the reason this plan kept three hashes apart. All four positions (build, `launch/`, archive, install) are
+now one artifact, and the ctest trio above ran against it. The listening pass is still the owner's.
+
 ### Still owed by Step 25
 
 - **Phase 3, and only the owner can do it:** render nine 4-bar takes from real kits in Live (44.1 kHz / 24-bit / stereo,
@@ -3048,6 +3077,6 @@ the arithmetic sentence (`237 + 21 = 258`), its run count and CPU list, and the 
   of git. None of that blocks the *measurement*; it blocks its *commit*, and it is asked of the owner rather than decided here.
 - **Not built, deliberately:** the browser-side scorer. `slicerTuning.test.ts` pins the constants across the editions, and the
   native scorer owns the audio; a second scorer would be a second ruler to keep true.
-- The `launch/` archive and zip are unchanged by all of this - no product source moved, only comments and test code - but the
-  module in `native/build` did relink, so the build/launch/installed tuple this plan has been tracking still needs the
-  re-export the owner gated.
+- **Deliverables: DONE 2026-11-21 14:42.** The `launch/` re-export, the `native/shots/` restamp, the machine-wide install and
+  the push are no longer owed - see *The ship record* above for the tuple, which agrees in all four places for the first time.
+  Still owed by the owner: the listening pass.
