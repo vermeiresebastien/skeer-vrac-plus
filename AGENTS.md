@@ -262,3 +262,16 @@ for onset: the whole point of the provenance field is that the reference can be 
 typed cannot be. `docs/next-steps-plan.md` 8Q records why, plus the falsifier matrix. The slicer check count belongs to the
 scorer and not to the material — it is identical whether the repo holds zero takes or nine — so read it off the suite's own
 `PASS - N/N` line rather than quoting it from here.
+
+Two things that paragraph did not know when it was written. First, a committed marks file commits its
+audio: a take whose `wav` is not on disk is a named red, not a skip, so tier 2 (renders out of his
+commercial packs) cannot be added to the committed table without publishing derivative third-party
+audio into a public repo — decide that before rendering, not after. Tier 1 is therefore synthetic and
+byte-reproducible: `node fixtures/tools/synth-takes.cjs --check` re-renders both wavs and both marks
+files and exits non-zero on any drift, which is the same standard `marks-src/*.mid` holds a rendered
+take to. Second, `capped` is a per-take rule and must stay that way. A take denser than the 17 slices
+`targetAt` asks for at 0.20 is a normal drum line, and gating per row would have banned eight of the nine takes the
+plan intends to render; what reddens, and what `--bless-slicer-baseline` refuses with the same words so
+it cannot be stepped around, is a take no sensitivity in the grid covers (`refN > 49` — which is why
+`hat-16th`, at 51 notes, has to be thinned before it can ever be a fixture). Read a capped row as the
+ceiling, never as a miss: the log names every one of them.

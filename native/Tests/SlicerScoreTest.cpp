@@ -411,6 +411,27 @@ namespace
         return rows;
     }
 
+    /** A take whose every row is pinned by the slice budget scores the budget rather than the
+        detector, so it has no business in the table. One capped row is the ordinary case of a knob
+        set below what a dense line asks for - the ceiling at 0.20 is seventeen slices and a 16th-note
+        hat line has more events than that - which is why this is a per-take test and not a per-row one. */
+    juce::String uncoverableTakes (const std::vector<Row>& rows, const std::vector<Take>& takes)
+    {
+        juce::String out;
+        for (const auto& take : takes)
+        {
+            int coverable = 0;
+            for (const auto& r : rows)
+                if (r.take == take.name && ! r.capped)
+                    ++coverable;
+            if (coverable == 0)
+                out << "[" << take.name << " refN " << juce::String ((int) take.refs.size())
+                    << " asks more than the grid's ceiling of "
+                    << juce::String (targetAt (kSensitivities[2])) << "] ";
+        }
+        return out;
+    }
+
     // ---------------------------------------------------------------- baseline
 
     struct Tol
@@ -977,12 +998,24 @@ void runSlicerScoreChecks (const ReportFn& report)
             "every scored fixture take stays inside its blessed band (a move either way needs reading)",
             bandViolations (rows, baseline));
 
-    juce::String capped;
+    // A dense fixture is *expected* to outrun the low knobs: the ceiling at 0.20 is seventeen slices
+    // and a 16th-note hat line has more events than that in six seconds, so gating on a capped row
+    // would gate out the material the ruler exists to measure. The pathology worth the failure is a
+    // take no knob can cover, because then every one of its rows measures the slice budget rather
+    // than the detector - which is the case `ctl-busy` above builds deliberately, in memory.
+    juce::String cappedRows;
     for (const auto& r : rows)
         if (r.capped)
-            capped << r.key() << " ";
-    report (capped.isEmpty(), "no fixture take asks for more onsets than its sensitivity can return",
-            capped);
+            cappedRows << r.key() << " ";
+    if (cappedRows.isNotEmpty())
+    {
+        std::cout << "  info  SLICERSCORE rows pinned by the slice budget, where recall is a ceiling "
+                     "and not a measurement: " << cappedRows << '\n';
+        std::cout.flush();
+    }
+    report (uncoverableTakes (rows, inventory.takes).isEmpty(),
+            "every fixture take is coverable by at least one sensitivity in the grid",
+            uncoverableTakes (rows, inventory.takes));
 
     runControls (report);
 }
@@ -1001,12 +1034,9 @@ juce::String writeSlicerBaseline()
     if (rows.empty())
         return "there are no takes in fixtures/marks yet, so there is nothing to bless";
 
-    juce::String capped;
-    for (const auto& r : rows)
-        if (r.capped)
-            capped << r.key() << " ";
-    if (capped.isNotEmpty())
-        return "refusing to bless a table that cannot pass: these rows are capped: " + capped;
+    if (const auto uncoverable = uncoverableTakes (rows, inventory.takes); uncoverable.isNotEmpty())
+        return "refusing to bless a table that cannot pass: no sensitivity in the grid covers these takes: "
+             + uncoverable;
 
     const auto file = fixtures.getChildFile (kBaselineName);
     file.replaceWithText (baselineText (rows));

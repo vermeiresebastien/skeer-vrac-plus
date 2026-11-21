@@ -3056,6 +3056,50 @@ What that closes: the module Ableton loads had been `0f7927ab560599f6...` at 24,
 has ever described, and the reason this plan kept three hashes apart. All four positions (build, `launch/`, archive, install) are
 now one artifact, and the ctest trio above ran against it. The listening pass is still the owner's.
 
+### Tier 1: the ruler stopped being idle (2026-11-21 16:40)
+
+Every green run since the scorer landed printed `takes=0 baseline=absent`, and it took the ship commit
+to make that worth reading: the blessed table the falsifiers were run against lived in
+`native/build/s25-synth/fixtures/`, which is a gitignored build folder. So the committed tree gated
+nothing - `fixtures/marks/`, `fixtures/marks-src/` and `fixtures/slicer-baseline.json` did not exist in
+it - and the paragraphs in AGENTS.md and the native README that describe those files were describing
+the scratch directory. The 258/258 at 14:42 was real for everything except the fixture half, where it
+was eight greens that had nothing to compare.
+
+- **What is in the repo now.** `fixtures/tools/synth-takes.cjs` (blob `7641e8dd0e05a610`), two wavs
+  (`synth-clean` `15dbd719330faa64` twelve hits at 500 ms, `synth-16ths` `ae66267a65216307` thirty hits
+  at 200 ms), their two marks files (`ea50752182f719b7`, `56135f34e30a9963`) and
+  `fixtures/slicer-baseline.json` (`16b0772815674998`, six rows). `node fixtures/tools/synth-takes.cjs
+  --check` re-renders all four payload files in RAM and compares against the bytes on disk; it exits 0,
+  and the two wav digests it prints are the blob digests above, so the audio is reproducible from the
+  repo rather than asserted by whoever generated it.
+- **One rule changed, on purpose.** `capped` used to be a per-row failure in both the check and the
+  bless. Measured against the plan's own material that rule bans the corpus: of the nine authored
+  patterns the note counts are 9, 18, 20, 32, 32, 36, 44, 44 and 51 against a 0.20 ceiling of 17 slices,
+  so eight of nine would have been refused for being dense. The gate is now per take - `uncoverableTakes`
+  in `SlicerScoreTest.cpp` (blob `4a0bd20fafe1ba05`), called by the check *and* by `writeSlicerBaseline`
+  so blessing cannot step around it - and a capped row is logged by name as a ceiling rather than a miss.
+  `hat-16th`, at 51 events, is still beyond every knob and must be thinned before it can be a fixture;
+  finding that out before a render session is the point of writing the generator first.
+- **Falsifiers, both run against these bytes.** *wk-f1*: `kOnsetBiasSeconds` 0.006 → 0.020 (header
+  `583caff534cc026705fbb32358dfde116a6c9ac8e8f91c1a81e64d92cae97e44` before, `193f31b3803ef8a77063aeb1a5710e31df15a4f91dd92fbe95ea6e6379104bf4`
+  during) gave `FAIL - 255/258`: the tuning-stamp check named the constant, the band check caught all six
+  rows, and `medAbsMs` moved 10.24 → 24.24 - exactly the 14 ms, so `biasMs` is honest arithmetic - while
+  `recall25` fell 1.000 → 0.750. The restored header hash-equals the pre-mutation value, rebuilt, and
+  `PASS - 258/258` again. *wk-f2*: a temporary 60-onset take turned both the coverability check and the
+  inventory-parity check red and made the bless refuse with the same sentence; the temp files were
+  deleted, the baseline hash did not move, and green returned.
+- **Gate.** `PASS - 258/258` exit 0 from the repo root *and* from `native/` (both resolve the committed
+  `fixtures/`, and ctest runs from the root by `native/CMakeLists.txt:193-194`), `ctest` 3/3 exit 0,
+  `npm test` 68/68 in eight files. The check total did not move - the change replaced one report with
+  one - and the twenty-one slicer checks are eight fixture-state gates and thirteen controls, which is
+  what the native README had been claiming all along in one place and contradicting in another.
+  No plugin source was rebuilt, so the 14:42 tuple still describes the shipped module.
+- **What this is not.** It is not tier 2 and it does not close Step 25. Clicks are the easiest material
+  the detector will ever see: instantaneous edge, no masking, no room. The `-10.24 ms` bias is a fact
+  about clicks, and the question the whole phase exists to answer - does the 6 ms pull-back help a kit
+  hit whose attack takes milliseconds - is still unanswered. Do not read the table as a verdict.
+
 ### Still owed by Step 25
 
 - **Phase 3, and only the owner can do it:** render nine 4-bar takes from real kits in Live (44.1 kHz / 24-bit / stereo,
@@ -3063,6 +3107,9 @@ now one artifact, and the ctest trio above ran against it. The listening pass is
   note times - each one needing its `fixtures/marks-src/<take>.mid` beside it, since the scorer now refuses a `midi-note-times`
   marks file it cannot re-derive. Everything downstream is ready: the scorer, the schemas, the bless, the gate. When the wavs
   land it is one bless and one commit, and findings 2 and 3 above get their real measurements.
+  **One edit first:** `hat-16th` carries 51 notes, which is more than the grid's ceiling of 49, so it is beyond every sensitivity
+  and both the check and the bless refuse it by name. Thin it to 48 events in the generator before the render session, not after -
+  and the other eight are only admissible under the per-take `capped` rule described above, which is what let them in at all.
 - **Phase 3 render decisions, taken 2026-11-21.** The nine tracks and clips are built in the owner's current Live set through
   abletonmcp from his own commercial sample packs, and abletonmcp's dataset-training consent was opted in for that session. One
   deviation from the recipe above is deliberate: a single global tempo of 200 BPM for all nine takes, because the render is one
@@ -3075,6 +3122,10 @@ now one artifact, and the ctest trio above ran against it. The listening pass is
   note times. The suite is green with `fixtures/` absent, so the audio is optional to the gate, and the options at bless time are
   a private remote for the audio, pack material the owner is free to redistribute, or keeping the nine takes on the bench and out
   of git. None of that blocks the *measurement*; it blocks its *commit*, and it is asked of the owner rather than decided here.
+  *(Reading this on 2026-11-21 16:40: the sentence "the suite is green with `fixtures/` absent" was the vacuity, not a feature -
+  see the tier 1 section above. It is still the right description of what the gate does with **no** takes, and it is still wrong
+  to treat it as a reason to skip the decision: with tier 1 committed, adding a take now means adding its bytes, because a marks
+  file whose wav is missing is a named red.)*
 - **Not built, deliberately:** the browser-side scorer. `slicerTuning.test.ts` pins the constants across the editions, and the
   native scorer owns the audio; a second scorer would be a second ruler to keep true.
 - **Deliverables: DONE 2026-11-21 14:42.** The `launch/` re-export, the `native/shots/` restamp, the machine-wide install and

@@ -1,0 +1,21 @@
+{
+  "schema": "sliceforge-slicer-baseline/1",
+  "generatedBy": "SliceForgeSmokeTest --bless-slicer-baseline",
+  "tunings": {
+    "kTargetBase": 8.000000,
+    "kTargetSpan": 46.000000,
+    "kMinGapSeconds": 0.115000,
+    "kFloorRatio": 0.012000,
+    "kOnsetBiasSeconds": 0.006000,
+    "kDedupGateSeconds": 0.070000
+  },
+  "tol": { "recall": 0.020, "recallFine": 0.020, "medAbsMs": 1.500, "biasMs": 2.000, "fpFloor": 1.000, "fpRatio": 2.000 },
+  "rows": [
+    { "take": "synth-16ths", "sens": 0.20, "refN": 30, "detN": 17, "tp": 17, "tpFine": 17, "seconds": 7.000000, "recall": 0.5667, "recallFine": 0.5667, "precision": 1.0000, "fpPerMin": 0.000, "medAbsMs": 9.673, "maxAbsMs": 10.580, "biasMs": -9.673, "capped": true },
+    { "take": "synth-16ths", "sens": 0.55, "refN": 30, "detN": 30, "tp": 30, "tpFine": 30, "seconds": 7.000000, "recall": 1.0000, "recallFine": 1.0000, "precision": 1.0000, "fpPerMin": 0.000, "medAbsMs": 10.082, "maxAbsMs": 11.578, "biasMs": -10.082, "capped": false },
+    { "take": "synth-16ths", "sens": 0.90, "refN": 30, "detN": 30, "tp": 30, "tpFine": 30, "seconds": 7.000000, "recall": 1.0000, "recallFine": 1.0000, "precision": 1.0000, "fpPerMin": 0.000, "medAbsMs": 10.082, "maxAbsMs": 11.578, "biasMs": -10.082, "capped": false },
+    { "take": "synth-clean", "sens": 0.20, "refN": 12, "detN": 12, "tp": 12, "tpFine": 12, "seconds": 8.000000, "recall": 1.0000, "recallFine": 1.0000, "precision": 1.0000, "fpPerMin": 0.000, "medAbsMs": 10.240, "maxAbsMs": 11.578, "biasMs": -10.240, "capped": false },
+    { "take": "synth-clean", "sens": 0.55, "refN": 12, "detN": 12, "tp": 12, "tpFine": 12, "seconds": 8.000000, "recall": 1.0000, "recallFine": 1.0000, "precision": 1.0000, "fpPerMin": 0.000, "medAbsMs": 10.240, "maxAbsMs": 11.578, "biasMs": -10.240, "capped": false },
+    { "take": "synth-clean", "sens": 0.90, "refN": 12, "detN": 12, "tp": 12, "tpFine": 12, "seconds": 8.000000, "recall": 1.0000, "recallFine": 1.0000, "precision": 1.0000, "fpPerMin": 0.000, "medAbsMs": 10.240, "maxAbsMs": 11.578, "biasMs": -10.240, "capped": false }
+  ]
+}

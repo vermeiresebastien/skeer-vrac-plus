@@ -277,17 +277,33 @@ The detector used to be judged by ear, and the only number attached to it was a 
   compares, so a **regression and an improvement both redden** - a detector that got better has also
   changed behaviour, and the shipped kit's feel changed with it. Re-blessing is explicit and never
   happens under ctest: `SliceForgeSmokeTest.exe --bless-slicer-baseline`. A bless refuses outright
-  when a marks file did not load or when any row is `capped`, because a table that cannot pass is not
-  a baseline.
-- **Current state.** No rendered takes are committed yet, so the fixture half runs idle and green:
-  the nineteen slicer checks in the total are eight fixture-state gates and eleven controls - some
-  score the scorer's own arithmetic, some score the rules that admit a marks file. They were each
-  driven red deliberately before any of this was called gated.
-- **What the synthetic table already says.** On a generated click train the detector finds every
-  click at all three sensitivities and the false-positive column reads 0.00 - but its signed bias is
+  when a marks file did not load or when **no** sensitivity in the grid can cover a take, because a
+  table that cannot pass is not a baseline - and the check next to it refuses the same inventory, so
+  the rule cannot be stepped around by blessing. Being too dense for the *low* knob is not that:
+  the budget at 0.20 is seventeen slices, so a thirty-event line prints `recall=0.567 capped=yes`
+  there and carries its measurement on the 0.55 and 0.90 rows. Every capped row is named in the log,
+  because a capped recall is the ceiling being read, not the detector missing.
+- **Current state.** The committed corpus is tier 1: two synthetic takes (`synth-clean`, twelve hits
+  at 500 ms; `synth-16ths`, thirty hits at 200 ms) and their six blessed rows. Both wavs and both
+  marks files are re-derived byte for byte by `node fixtures/tools/synth-takes.cjs --check`, which is
+  the synthetic answer to the same question `marks-src/*.mid` answers for a rendered take: the bytes
+  have to be reproducible from something in the repo, not asserted by whoever made them.
+  Tier 2 - the renders out of real kits - is still owed, and it is now a publishing decision rather
+  than a chore: a marks file whose wav is missing is a named red, so committing a reference means
+  committing that audio, and the audio of a commercial pack is derivative third-party material in a
+  public repo. Either the wavs ship, or those takes stay out of the committed table.
+  The twenty-one slicer checks in the total are eight fixture-state gates and thirteen controls;
+  each of the ones that guard something was driven red on purpose, and the two new ones are reported
+  in `docs/next-steps-plan.md` 8Q with the log they came from.
+- **What the synthetic table already says.** On `synth-clean` the detector finds every click at all
+  three sensitivities and the false-positive column reads 0.00 - but its signed bias is
   **-10.24 ms**, i.e. it reports the onset 10 ms *early*, and withdrawing the 6 ms correction moves
   the median absolute error from 10.24 ms to 4.24 ms. On clicks, in other words, the correction
-  overshoots. That is not yet a verdict on drums: a click has an instantaneous edge where a kit hit
+  overshoots. The direction is now gated rather than argued: raising `kOnsetBiasSeconds` from 0.006
+  to 0.020 moves `medAbsMs` on that take from 10.24 to 24.24 ms - the whole 14 ms, so the bias column
+  is honest arithmetic - and drops `recall25` from 1.000 to 0.750, which is what the 25 ms window is
+  for: at the committed -10 ms it still passes, and roughly 4 ms of drift is all it takes to fail.
+  That is not yet a verdict on drums: a click has an instantaneous edge where a kit hit
   takes milliseconds to reach its peak, which is precisely the case the correction was written for.
   A second synthetic control says what clicks cannot: on a six-second 100-4000 Hz sine whose amplitude
   ramps up and never breaks - a swell, with no impulsive onset anywhere in it - the detector still

@@ -1,0 +1,23 @@
+{
+  "schema": "sliceforge-slicer-marks/1",
+  "take": "synth-clean",
+  "markProvenance": "synthetic click train, re-derived by fixtures/tools/synth-takes.cjs",
+  "note": "twelve evenly spaced hits, the simplest thing the detector can be asked to find",
+  "sampleRate": 44100,
+  "wav": "synth-clean.wav",
+  "wavSha256": "15dbd719330faa64159da5066e89fde1b0f35e5ba156a02a33338dbd26289283",
+  "onsets": [
+    0.5,
+    1,
+    1.5,
+    2,
+    2.5,
+    3,
+    3.5,
+    4,
+    4.5,
+    5,
+    5.5,
+    6
+  ]
+}
