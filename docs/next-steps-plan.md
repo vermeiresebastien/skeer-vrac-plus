@@ -3359,6 +3359,33 @@ it is zero is worth more than the fix.
   manual export of the whole arrangement and per-take tempi would need nine exports. The generator's `OFFSET_BEATS 4.0` matches
   the arrangement placement, and the marks files carry wall-clock times derived from that one tempo map - which is exactly why
   `fixtures/marks-src/<take>.mid` is mandatory rather than advisory.
+- **Four of the eight spec categories are not producible from this authorship, and are named here rather than dropped.**
+  `:727` asked for a dry drum loop, a crash-heavy loop, a foley bag, a spoken phrase, a sustained pad with soft attacks, a fast
+  hat run, a piano phrase and one level-matched pair. What the committed grids do cover, re-counted from
+  `fixtures/tools/notes/` on 2026-11-21 rather than copied: `backbeat-8ths` 36 notes / 32 onsets, `crash-tail` 9 / 9,
+  `hat-16th` 51 / 48, `kick-quad` 18 / 16, `ride-32nd` 32 / 32, `swing-16ths` 32 / 32, `tom-fill` 20 / 20, and the pair
+  `toploop-a` + `toploop-b` - 44 notes and 34 distinct starts **in both**, byte-identical note lists, two `.mid` files of 417 B,
+  so "level-matched" is the same performance at two gains and not two similar loops. Still missing: the foley bag, the spoken
+  phrase, the sustained pad with soft attacks, and the piano phrase.
+  These are not omissions of effort but of reference: for a hand-pluck or a consonant the true onset is not a grid position, so a
+  `markProvenance: midi-note-times` file would be a lie, and for a slow attack the perceptual onset *is* the thing a detector
+  chooses, which makes it the measurement and not the ground truth. The scorer's handling of those shapes is covered by code
+  that needs no audio - the ramped sine sweep, which contains no impulsive onset at all (`SlicerScoreTest.cpp:778-803`), the
+  80-click take that outruns the slice budget (`:747`), and the rule that a take with `refN = 0` prints undefined instead of a
+  perfect 1.000 (`:699`). What stays **unevidenced** is the detector's accuracy on soft-attack real audio: no number in this
+  corpus or the pending one speaks to it, so Step 7 inherits it as a product-side limit rather than a solved case. The one
+  deferred category that is cheaply buildable is the piano phrase - a note-time reference for a struck, decaying instrument is
+  honest - and it needs only a preset the owner picks, plus the same single export.
+  deferred category that is cheaply buildable is the piano phrase - a note-time reference for a struck, decaying instrument is
+  honest - and it needs only a preset the owner picks, plus the same single export.
+- **The authorship needs no setup when the audio lands.** Both reproducibility checks re-run 2026-11-21 22:09 against `dd38bc4`,
+  each with its own exit status: `python fixtures/tools/make-takes.py --check` → 0, *"OK - every tracked .mid and notes grid is
+  re-derived by this script (18 files: 18 byte-exact, 0 identical once the checkout's LF->CRLF is undone)"*, and
+  `node fixtures/tools/synth-takes.cjs --check` → 0 with `synth-clean.wav 15dbd719330faa64 / 1411244 B` and
+  `synth-16ths.wav ae66267a65216307 / 1234844 B` (16-hex prefixes, as the tool prints them) and both marks files *"exact"*.
+  The zero in that first line is this worktree's own LF layout, not a refutation of the CRLF tolerance - a smudged checkout is
+  what exercises that branch, and it is the case `git checkout-index` was measured for above.
+
 - **A licensing gate the owner clears before any wav is committed.** `origin` is a public repository
   (`github.com/vermeiresebastien/skeer-vrac-plus`). Rendering material from commercial packs and committing the wav fixtures
   publishes derivative third-party audio under this repo's licence, which is not the same decision as committing a marks JSON of
