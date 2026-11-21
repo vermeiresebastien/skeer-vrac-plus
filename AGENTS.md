@@ -250,6 +250,9 @@ The detector is judged by `native/Tests/SlicerScoreTest.cpp`, not by ear: `fixtu
 reference onsets, `fixtures/slicer-baseline.json` holds the blessed table **and the tuning it was blessed under**, and
 the band is symmetric so a regression and an improvement both redden and force an explicit
 `SliceForgeSmokeTest.exe --bless-slicer-baseline`. That bless is argv-gated because ctest never passes an argument: a
-green run must never be able to approve its own behaviour. `docs/next-steps-plan.md` 8Q records why, plus the falsifier
-matrix that proved all sixteen slicer checks can go red. The suite total moves with the scorer, not with the material:
-sixteen slicer checks whether the repo holds zero takes or nine.
+green run must never be able to approve its own behaviour. A marks file that claims
+`markProvenance: midi-note-times` is refused unless `fixtures/marks-src/<take>.mid` sits beside it and agrees with it onset
+for onset: the whole point of the provenance field is that the reference can be re-derived, and a list of times somebody
+typed cannot be. `docs/next-steps-plan.md` 8Q records why, plus the falsifier matrix. The slicer check count belongs to the
+scorer and not to the material — it is identical whether the repo holds zero takes or nine — so read it off the suite's own
+`PASS - N/N` line rather than quoting it from here.

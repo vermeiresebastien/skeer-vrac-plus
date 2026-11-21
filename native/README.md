@@ -45,7 +45,7 @@ host-synced 32-step sequencer with pattern chaining, polymeter, parameter locks 
 | Installed plugin | `%ProgramFiles%\Common Files\VST3\SliceForge.vst3` |
 | Installed standalone | `%LOCALAPPDATA%\Programs\SliceForge\SliceForge.exe` |
 | Launch folder | `..\launch\` — `SliceForge.exe`, `SliceForge.vst3`, `SliceForge-1.0.0-Windows-x64.zip`, `start.bat`, `start.ps1` |
-| Test suite | 253 engine/state checks, editor layout snapshots, VST3 host load |
+| Test suite | 256 engine/state checks, editor layout snapshots, VST3 host load |
 
 The plugin bundle is self-contained (factory audio and SKEER brand assets are embedded, no
 external resource folder). The build is about **24 MB**. The VST3 session identity is preserved
@@ -226,19 +226,20 @@ control falls outside its parent.
   Proven again through the processor on a wav the test writes itself: every pad's LENGTH times the
   global LENGTH equals its own gap, and sixteen pads carry four lengths rather than sixteen defaults.
 
-Current result: **253/253 passed** - that is what `SliceForgeSmokeTest.exe` prints on the tree
+Current result: **256/256 passed** - that is what `SliceForgeSmokeTest.exe` prints on the tree
 this file describes, so re-run it rather than trusting the number here - with the engine using
-between **4.4% and 5.8% of one core** across seven separate runs while continuously
+between **4.4% and 5.8% of one core** across ten separate runs while continuously
 triggering pads at 48 kHz / 512 samples: they printed 4.52%, 4.56%, 4.86%, 5.04% and 5.75% on the
-Step 24 bytes, 4.43% on the groove-bank build, and 4.45% on the Step 25 scorer build. Step 24
+Step 24 bytes, 4.43% on the groove-bank build, and 4.45%, 5.32% and 5.26% on the three Step 25
+scorer builds. Step 24
 added eleven checks and each one runs once, so the tree before it printed 206/206, and the
 **190/190** stamped here was already stale by sixteen - the import-ceiling commit restamped the
 plan and missed this file, which is the sweep defect recorded in `docs/next-steps-plan.md` 8O. The
 groove bank then moved the total again, and the arithmetic reconciles both stamps:
-**217 − 2 + 22 = 237**, and the slicer scorer then made it **237 + 16 = 253** - eight checks on the
+**217 − 2 + 22 = 237**, and the slicer scorer then made it **237 + 19 = 256** - eight checks on the
 fixture state (directory, marks, baseline presence, readability, the tuning it was blessed under,
-inventory parity, the band, and no capped row) plus eight controls that score the scorer itself. The
-sixteen do not vary with how many takes are on disk, so adding the ninth rendered take does not
+inventory parity, the band, and no capped row) plus eleven controls that score the scorer itself. The
+nineteen do not vary with how many takes are on disk, so adding the ninth rendered take does not
 restamp this number. The two that went were the checks on the six-preset `PatternPreset` API that the
 sixty-row bank replaced; the twenty-two come from nineteen check sites in `Tests/GrooveBankTest.cpp`,
 which print one row per pattern slot in the slot-isolation arm (the same `^ *check (` census 8O uses). The
@@ -257,13 +258,20 @@ The detector used to be judged by ear, and the only number attached to it was a 
   file name without `.marks.json`, and `markProvenance` must say where the truth came from - a marks
   file nobody can trace is refused, because a wrong reference is worse than no reference. The takes
   this repo intends to ship are rendered out of real kits in the DAW, so the reference is the MIDI
-  clip's own note times: exact by construction, and free of any third-party recording.
+  clip's own note times: exact by construction, and free of any third-party recording. A marks file
+  that claims `markProvenance: midi-note-times` is therefore checked against the clip itself - it
+  must have a sibling `fixtures/marks-src/<take>.mid`, and the onsets read out of that file must
+  agree with the JSON to a microsecond. A transcription nobody can re-derive from its source is not
+  a measurement, so a mismatch or a missing `.mid` is a named red.
 - **Scoring.** Each take runs through `detectSlices` at sensitivities 0.20 / 0.55 / 0.90 - the
   default plus both ends a customer can reach - and the onsets are matched one-to-one against the
-  marks, closest pair first. The printed row carries `refN detN tp recall recall25 fpmin medAbsMs
-  maxAbsMs biasMs capped`. 50 ms is the MIREX hit window; the 25 ms second recall exists because a
+  marks, closest pair first. The printed row carries `refN detN tp recall recall25 p fpmin medAbsMs
+  maxAbsMs biasMs capped`, where `p` is the share of what the detector found that was real: a slice
+  count alone can be raised by firing at nothing, and precision is what refuses to call that
+  progress. 50 ms is the MIREX hit window; the 25 ms second recall exists because a
   50 ms window happily pays a detector that is consistently 40 ms late. A metric that is undefined
-  prints `-` and lands in the JSON as `null`: a take with no reference onsets is never a 1.000.
+  prints `-` and lands in the JSON as `null`: a take with no reference onsets is never a 1.000, and
+  a detector that stayed silent has no precision at all rather than a precision of 0.000.
 - **The blessed table.** `fixtures/slicer-baseline.json` holds the numbers a given build produced,
   the six tuning constants they were produced with, and the tolerance bands. Every run re-scores and
   compares, so a **regression and an improvement both redden** - a detector that got better has also
@@ -272,14 +280,20 @@ The detector used to be judged by ear, and the only number attached to it was a 
   when a marks file did not load or when any row is `capped`, because a table that cannot pass is not
   a baseline.
 - **Current state.** No rendered takes are committed yet, so the fixture half runs idle and green:
-  the sixteen slicer checks in the total are eight fixture-state gates and eight controls that score
-  the scorer, and they were each driven red deliberately before any of this was called gated.
+  the nineteen slicer checks in the total are eight fixture-state gates and eleven controls - some
+  score the scorer's own arithmetic, some score the rules that admit a marks file. They were each
+  driven red deliberately before any of this was called gated.
 - **What the synthetic table already says.** On a generated click train the detector finds every
   click at all three sensitivities and the false-positive column reads 0.00 - but its signed bias is
   **-10.24 ms**, i.e. it reports the onset 10 ms *early*, and withdrawing the 6 ms correction moves
   the median absolute error from 10.24 ms to 4.24 ms. On clicks, in other words, the correction
   overshoots. That is not yet a verdict on drums: a click has an instantaneous edge where a kit hit
   takes milliseconds to reach its peak, which is precisely the case the correction was written for.
+  A second synthetic control says what clicks cannot: on a six-second 100-4000 Hz sine whose amplitude
+  ramps up and never breaks - a swell, with no impulsive onset anywhere in it - the detector still
+  returns **33 slice points** at the default sensitivity, 330 of them a minute, and the scorer prints
+  that row on every run. Whether that is the tuning or the envelope shape, the rendered takes decide;
+  the number is on the record either way.
   The number gets re-measured against the rendered takes, and only then does anything in
   `Engine/SlicerTuning.h` move.
 
@@ -508,9 +522,9 @@ Source/
     SourcePanel / PadEditorPanel / HeaderBar / FooterBar / SequencerGrid / SequencerPanel /
     VaultPanel
 Tests/
-  SmokeTest.cpp         the engine/state suite (253 checks in total, printed at the end)
-  GrooveBankTest.*      the bank's structural and audible checks, run by SmokeTest (22 of the 253)
-  SlicerScoreTest.*     the slicer scorer, its baseline gate and its controls (16 of the 253)
+  SmokeTest.cpp         the engine/state suite (256 checks in total, printed at the end)
+  GrooveBankTest.*      the bank's structural and audible checks, run by SmokeTest (22 of the 256)
+  SlicerScoreTest.*     the slicer scorer, its baseline gate and its controls (19 of the 256)
   LayoutTest.cpp        editor bounds + PNG snapshots
   HostTest.cpp          scans and loads the built VST3 through JUCE's host path
 ```

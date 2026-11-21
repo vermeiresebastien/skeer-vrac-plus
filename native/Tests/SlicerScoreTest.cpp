@@ -35,6 +35,76 @@ namespace
     const juce::String kBaselineSchema = "sliceforge-slicer-baseline/1";
     const juce::String kBaselineName = "slicer-baseline.json";
 
+    /** The one provenance string that makes a *claim* rather than describes a source: "these onsets
+        are the clip's own note times". That claim is checkable, because the clip can be shipped next
+        to the marks (`fixtures/marks-src/<take>.mid`) and re-read. Any other provenance - a one-shot
+        bag, a fixed grid, a human tapping - is recorded honestly and left unchecked, because there is
+        nothing next to it to check it against. */
+    const juce::String kProvenanceNoteTimes = "midi-note-times";
+
+    /** Marks are serialised to six decimal places, so a note time and its own marks file can only
+        disagree by rounding. Anything bigger means the two files describe different notes. */
+    constexpr double kMarksSrcToleranceSeconds = 1.0e-6;
+
+    /** Note-onset times in seconds, read back out of a standard MIDI file image.
+        Ticks are not seconds until the file says how long a quarter note is, so an image with no tempo
+        map is refused rather than scored at JUCE's own default: a silently assumed 120 BPM would make
+        every onset disagree and blame the render for the reader's guess. */
+    bool midNoteOnsets (const juce::MemoryBlock& image, std::vector<double>& out, juce::String& problem)
+    {
+        juce::MemoryInputStream in (image, false);
+        juce::MidiFile mf;
+        if (! mf.readFrom (in))
+        {
+            problem = "midi does not parse";
+            return false;
+        }
+        juce::MidiMessageSequence tempos;
+        mf.findAllTempoEvents (tempos);
+        if (tempos.getNumEvents() == 0)
+        {
+            problem = "midi carries no tempo map, so its ticks cannot be read as seconds";
+            return false;
+        }
+        mf.convertTimestampTicksToSeconds();
+        for (int t = 0; t < mf.getNumTracks(); ++t)
+        {
+            const auto* seq = mf.getTrack (t);
+            if (seq == nullptr)
+                continue;
+            for (int i = 0; i < seq->getNumEvents(); ++i)
+            {
+                const auto* event = seq->getEventPointer (i);
+                if (event != nullptr && event->message.isNoteOn()) // isNoteOn() excludes velocity 0, which is a note-off
+                    out.push_back (event->message.getTimeStamp());
+            }
+        }
+        std::sort (out.begin(), out.end());
+        out.erase (std::unique (out.begin(), out.end(),
+                                [] (double a, double b) { return std::abs (a - b) < 1.0e-9; }),
+                   out.end());
+        return true;
+    }
+
+    bool readMarksSrcOnsets (const juce::File& fixturesDir, const juce::String& take,
+                             std::vector<double>& out, juce::String& problem)
+    {
+        const auto mid = fixturesDir.getChildFile ("marks-src").getChildFile (take + ".mid");
+        juce::MemoryBlock image;
+        if (! mid.existsAsFile())
+        {
+            problem = "claims note times but marks-src/" + mid.getFileName()
+                + " is not there, so the reference is a transcription rather than a measurement";
+            return false;
+        }
+        if (! mid.loadFileAsData (image))
+        {
+            problem = "marks-src/" + mid.getFileName() + " could not be read";
+            return false;
+        }
+        return midNoteOnsets (image, out, problem);
+    }
+
     double undefined() { return std::numeric_limits<double>::quiet_NaN(); }
     bool isSet (double v) { return std::isfinite (v); }
 
@@ -103,6 +173,7 @@ namespace
         double seconds = 0.0;
         double recall = undefined();      // NaN when there is no reference to score against
         double recallFine = undefined();
+        double precision = undefined();   // tp/detN - undefined when the detector found nothing, not 0
         double fpPerMin = 0.0;
         double medAbsMs = undefined();    // NaN when nothing matched
         double maxAbsMs = undefined();
@@ -116,7 +187,8 @@ namespace
             return "SLICERSCORE " + take + " sens=" + juce::String (sens, 2)
                 + " refN=" + juce::String (refN) + " detN=" + juce::String (detN)
                 + " tp=" + juce::String (tp) + " recall=" + fmt (recall, 3)
-                + " recall25=" + fmt (recallFine, 3) + " fpmin=" + fmt (fpPerMin, 2)
+                + " recall25=" + fmt (recallFine, 3) + " p=" + fmt (precision, 3)
+                + " fpmin=" + fmt (fpPerMin, 2)
                 + " medAbsMs=" + fmt (medAbsMs, 2) + " maxAbsMs=" + fmt (maxAbsMs, 2)
                 + " biasMs=" + fmt (biasMs, 2) + " capped=" + (capped ? "yes" : "no");
         }
@@ -144,6 +216,8 @@ namespace
         }
         const int fp = row.detN - row.tp;
         row.fpPerMin = seconds > 0.0 ? (double) fp * 60.0 / seconds : 0.0;
+        if (row.detN > 0) // A detector that stayed silent has no precision to report.
+            row.precision = (double) row.tp / (double) row.detN;
 
         std::vector<double> absMs;
         for (const auto d : coarse.signedMs)
@@ -277,6 +351,32 @@ namespace
                 continue;
             }
 
+            if (provenance == kProvenanceNoteTimes)
+            {
+                std::vector<double> fromMid;
+                juce::String why;
+                if (! readMarksSrcOnsets (fixturesDir, internalName, fromMid, why))
+                {
+                    expectProblem (why);
+                    continue;
+                }
+                if (fromMid.size() != refs.size())
+                {
+                    expectProblem ("lists " + juce::String ((int) refs.size()) + " onsets but its midi holds "
+                                   + juce::String ((int) fromMid.size()));
+                    continue;
+                }
+                double worst = 0.0;
+                for (size_t i = 0; i < refs.size(); ++i)
+                    worst = juce::jmax (worst, std::abs (refs[i] - fromMid[i]));
+                if (! (worst <= kMarksSrcToleranceSeconds)) // also catches a NaN from a corrupt read
+                {
+                    expectProblem ("disagrees with its own midi by " + juce::String (worst * 1000.0, 3)
+                                   + " ms, so one of the two files was edited after the render");
+                    continue;
+                }
+            }
+
             Take take;
             take.name = internalName;
             take.provenance = provenance;
@@ -402,6 +502,7 @@ namespace
             r.seconds = numOr (entry.getProperty ("seconds", juce::var()), undefined());
             r.recall = numOr (entry.getProperty ("recall", juce::var()), undefined());
             r.recallFine = numOr (entry.getProperty ("recallFine", juce::var()), undefined());
+            r.precision = numOr (entry.getProperty ("precision", juce::var()), undefined());
             r.fpPerMin = numOr (entry.getProperty ("fpPerMin", juce::var()), undefined());
             r.medAbsMs = numOr (entry.getProperty ("medAbsMs", juce::var()), undefined());
             r.maxAbsMs = numOr (entry.getProperty ("maxAbsMs", juce::var()), undefined());
@@ -521,6 +622,7 @@ namespace
               << ", \"seconds\": " << juce::String (r.seconds, 6)
               << ", \"recall\": " << jsonNum (r.recall, 4)
               << ", \"recallFine\": " << jsonNum (r.recallFine, 4)
+              << ", \"precision\": " << jsonNum (r.precision, 4)
               << ", \"fpPerMin\": " << jsonNum (r.fpPerMin, 3)
               << ", \"medAbsMs\": " << jsonNum (r.medAbsMs, 3)
               << ", \"maxAbsMs\": " << jsonNum (r.maxAbsMs, 3)
@@ -585,6 +687,16 @@ namespace
                 "two slices 5 ms apart on one hit are one match and one false positive",
                 doubled.line());
 
+        // The precision column, including the two cases where a naive `tp / detN` would divide by
+        // zero or report 1.000 for a detector that never fired.
+        report (! isSet (none.precision) && std::abs (bare.precision) < 1.0e-12
+                    && std::abs (clean.precision - 1.0) < 1.0e-12
+                    && std::abs (doubled.precision - 0.5) < 1.0e-12
+                    && std::abs (extra.precision - (double) refs.size() / (double) (refs.size() + 1)) < 1.0e-12,
+                "precision is undefined for a silent detector, 0.000 for one that fires at nothing, and exact otherwise",
+                "silent=" + fmt (none.precision, 3) + " noref=" + fmt (bare.precision, 3)
+                    + " clean=" + fmt (clean.precision, 3) + " doubled=" + fmt (doubled.precision, 3));
+
         const auto earlyIn = matchOnsets ({ 0.951 }, { 1.0 }, kHitWindowMs).tp;
         const auto earlyOut = matchOnsets ({ 0.949 }, { 1.0 }, kHitWindowMs).tp;
         const auto lateIn = matchOnsets ({ 1.049 }, { 1.0 }, kHitWindowMs).tp;
@@ -635,6 +747,99 @@ namespace
             report (row.detN <= (int) kMaxSlices && row.detN <= targetAt (kSensitivities[2]) && row.capped,
                     "an 80-onset take stays inside the slice budget and is flagged as capped",
                     row.line());
+        }
+
+        // A ramped sine sweep: energy that only ever rises, so it contains no impulsive onset and a
+        // reference set of zero is the honest truth about it. This is where `refN = 0` is exercised on
+        // real detector output rather than on hand-written vectors - the case that would print a
+        // vacuous 1.000 if the scorer ever divided by what it found instead of by what it was given.
+        // The detection count is reported, not asserted: a swell the detector reads as hits is a
+        // finding for the tuning, not a scorer bug.
+        {
+            constexpr double rate = 44100.0;
+            constexpr double dur = 6.0;
+            const int length = (int) (rate * dur);
+            sliceforge::SampleData sweep;
+            sweep.sampleRate = rate;
+            sweep.buffer.setSize (2, length, false, true);
+            sweep.buffer.clear();
+            double phase = 0.0;
+            for (int i = 0; i < length; ++i)
+            {
+                const auto t = (double) i / rate;
+                const auto hz = 100.0 + (4000.0 - 100.0) * (t / dur);
+                phase += juce::MathConstants<double>::twoPi * hz / rate;
+                const auto v = (float) ((t / dur) * std::sin (phase)); // amplitude ramps 0 -> 1 with the sweep
+                sweep.buffer.setSample (0, i, v);
+                sweep.buffer.setSample (1, i, v);
+            }
+            std::vector<double> fired;
+            for (const auto& slice : sliceforge::detectSlices (sweep, (float) kSensitivities[1]))
+                fired.push_back (slice.time);
+            const auto row = scorePair ("ctl-sweep", kSensitivities[1], fired, {}, dur);
+            const auto finiteFp = ! std::isnan (row.fpPerMin) && ! std::isinf (row.fpPerMin);
+            std::cout << "  info  " << row.line() << '\n'; // printed even when the check below is green
+            report (row.refN == 0 && ! isSet (row.recall) && ! isSet (row.recallFine)
+                        && ! isSet (row.medAbsMs) && ! isSet (row.biasMs) && finiteFp
+                        && (fired.empty() ? ! isSet (row.precision) : row.precision == 0.0)
+                        && ! row.capped,
+                    "a swell with no impulsive onset scores against zero references without a NaN or a free 1.000",
+                    row.line());
+        }
+
+        /*  The marks-src reader, run over a standard MIDI file built here rather than over a hand-
+            written vector. Ticks-per-quarter and the tempo meta event are the two things that turn a
+            note number into a wall-clock time, so a reader that guessed either would still find the
+            right *count* of onsets while scoring every take against a shifted truth - which is exactly
+            the failure a marks file cannot see from the inside. The second half is the falsifier: the
+            same bytes compared against a list with one onset 20 ms late must be refused. */
+        {
+            constexpr double ticksPerQuarter = 480.0;
+            juce::MidiMessageSequence seq;
+            seq.addEvent (juce::MidiMessage::tempoMetaEvent (500000), 0.0); // 120 BPM: a quarter is 0.5 s
+            const double quarters[] { 2.0, 3.0, 4.0 };                      // so 1.0 s, 1.5 s, 2.0 s
+            for (const auto q : quarters)
+            {
+                seq.addEvent (juce::MidiMessage::noteOn (1, 60, (juce::uint8) 100), q * ticksPerQuarter);
+                seq.addEvent (juce::MidiMessage::noteOff (1, 60), q * ticksPerQuarter + ticksPerQuarter * 0.25);
+            }
+            juce::MidiFile mf;
+            mf.setTicksPerQuarterNote ((int) ticksPerQuarter);
+            mf.addTrack (seq);
+            juce::MemoryBlock image;
+            juce::MemoryOutputStream stream (image, false);
+            const bool written = mf.writeTo (stream);
+            stream.flush();
+
+            std::vector<double> back;
+            juce::String why;
+            const bool reads = written && midNoteOnsets (image, back, why);
+            std::vector<double> wanted;
+            for (const auto q : quarters)
+                wanted.push_back (q * 0.5);
+
+            double worst = 0.0;
+            if (reads && back.size() == wanted.size())
+                for (size_t i = 0; i < wanted.size(); ++i)
+                    worst = juce::jmax (worst, std::abs (back[i] - wanted[i]));
+            else
+                worst = 1.0;
+
+            auto edited = wanted;
+            if (! edited.empty())
+                edited.back() += 0.02;
+            double worstEdited = 0.0;
+            if (back.size() == edited.size())
+                for (size_t i = 0; i < edited.size(); ++i)
+                    worstEdited = juce::jmax (worstEdited, std::abs (edited[i] - back[i]));
+
+            report (reads && worst <= kMarksSrcToleranceSeconds
+                        && worstEdited > kMarksSrcToleranceSeconds && back.size() == 3,
+                    "note times are read out of a real midi, and an onset edited 20 ms late is refused by it",
+                    (reads ? juce::String ((int) back.size()) + " onsets, worst "
+                                 + juce::String (worst * 1000.0, 6) + " ms, edited worst "
+                                 + juce::String (worstEdited * 1000.0, 3) + " ms"
+                           : "read failed: " + (why.isEmpty() ? juce::String ("write failed") : why)));
         }
     }
 } // namespace

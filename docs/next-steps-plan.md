@@ -2917,7 +2917,8 @@ rule is pinned in code by an eighth control that asserts all four corners of it,
 above: `README.md`'s suite table (`253/253`, `68 tests across 8 files`) and `native/README.md`'s at-a-glance row, its
 *Current result* paragraph, its arithmetic sentence (`217 − 2 + 22 = 237`, then `237 + 16 = 253`) and its `Tests/` tree
 listing. Historical run records in earlier sections were left as written, dated, and annotated rather than rewritten -
-including this file's own self-recorded line count at the 8H section, now marked *was 2476 that day*.
+including this file's own self-recorded line count at the 8H section, now marked *was 2476 that day*. **Those four 253s
+were the correct stamp for commit `7a92a6d` and are superseded by the 256 recorded at the end of this section.**
 
 Nothing here is neutral about line numbers: the Step 25 entry grew by three lines and the two status annotations by one more,
 so every `:NNNN` cite below roughly `:712` in this file sits four lines lower than the section that printed it. That includes
@@ -2925,17 +2926,56 @@ the count in the sentence before this one. `docs/next-steps-plan.md` has been de
 now; this is one more named shift, not a new class of problem, and it is why the step entries above cite `SlicerTuning.h`
 by symbol rather than `Slicer.cpp:47-49` by number.
 
-The green is on the bytes as they stand: the last native source to move was `SlicerTuning.h` at 11:46:36 (a comment), the
-full build finished after it, and `s25-final-smoke.log` printed `253/253` at 11:48:58. The doc edits after that touch no
-translation unit, so no re-gate is owed by them - but any source edit does owe one, and the number to compare against is in
-that log, not in this paragraph.
+At the `7a92a6d` gate the green was on the bytes as they stood: the last native source to move was `SlicerTuning.h` at
+11:46:36 (a comment), the full build finished after it, and `s25-final-smoke.log` printed `253/253` at 11:48:58. The doc
+edits after that touched no translation unit, so no re-gate was owed by them - but any source edit does owe one, and the
+number to compare against is in that log, not in this paragraph.
+
+### The completion audit: three promised checks that did not exist
+
+The plan asks for more than the first commit shipped. Diffed phase 2 (steps 5-13) against `Tests/SlicerScoreTest.cpp`
+clause by clause, three promises had no witness, and each was written as an assertion rather than documented away:
+
+1. **Precision was not a column.** Step 7 lists `p` among the per-row metrics, and the row printed none. A detector can raise
+   its slice count by firing at nothing, and without `tp / detN` the table cannot tell that from an improvement. The corners
+   are now pinned: a silent detector leaves it undefined, one that fires at nothing scores 0.000, a clean set is 1.0, a
+   doubled set is 0.5, and twelve-of-thirteen is that exact fraction rather than a rounding.
+2. **`markProvenance: midi-note-times` was a claim, not a check.** Step 10 puts the clip's own `.mid` beside the marks JSON
+   precisely so a re-render can be verified against the same notes; the scorer read the provenance string and moved on. It
+   now requires `fixtures/marks-src/<take>.mid`, parses it (tempo map → ticks → seconds), and refuses a marks file whose
+   onsets differ from that file by more than a microsecond, or that has no `.mid` at all. Without this the reference is a
+   transcription somebody typed - the exact failure the schema exists to prevent. The reader itself is tested over a standard
+   MIDI file built in memory, so the rule is gated today and not only when the renders land.
+3. **Zero references were only exercised on hand-written vectors.** Step 19 names a *sweep*. It is now a real one: six seconds
+   of 100-4000 Hz sine ramped 0 → 1, energy that only ever rises and therefore contains no impulsive onset, pushed through
+   `detectSlices` and scored against nothing. The scorer half is the assertion. The detector half produced a number worth
+   keeping, so the row prints as `info SLICERSCORE ctl-sweep …` on every run: **33 slice points on a swell**, 330 a minute.
+   A measurement that is only visible inside a failure message is a measurement nobody has - which is why that line exists,
+   and why the harness's detail argument does not.
+
+Three falsifiers, one per new check, each on the file restored by hash afterwards (`9d2fc9c66a441bfd…` before and after every
+one of the three):
+
+| Mutation | Outcome |
+| `precision` additionally guarded by `refN > 0` | RED `254/256` - the precision corners *and* the swell row |
+| a zero-reference row handed `recall = 1.0` | RED `254/256` - the no-reference check *and* the swell row |
+| marks-src tolerance 1 µs → 50 ms | RED `255/256` - "an onset edited 20 ms late is refused by it" |
+
+Green on the restored bytes, which are the bytes this commit carries: `PASS - 256/256 checks passed`, exit 0, CPU 5.26% of one
+core (`native/build/s25b-smoke3.log`), with the census closed at seconds - `SlicerScoreTest.cpp` written back at 12:19:47, its
+`.obj` compiled 12:20:08, `SliceForgeSmokeTest.exe` linked 12:20:09. Layout was deliberately not re-run again: the one thing it
+does that this tree cares about is rewrite `native/shots/*.png`, which the owner gated out of the commit, and finding 3 above
+records that those bytes are not deterministic anyway. Totals restamped to 256: `README.md`'s suite table, `native/README.md`'s
+at-a-glance row, *Current result*, the arithmetic sentence (now `237 + 19 = 256`), its run count and CPU list, the *Auto-slicer
+ground truth* section's new `p` column and `marks-src` rule, and the `Tests/` tree listing.
 
 ### Still owed by Step 25
 
 - **Phase 3, and only the owner can do it:** render nine 4-bar takes from real kits in Live (44.1 kHz / 24-bit / stereo,
   -6 dBFS, first downbeat at t = 1.0 s, the hat run at 200 BPM, dry), then the marks files whose reference is the clip's own
-  note times. Everything downstream is ready: the scorer, the schemas, the bless, the gate. When the wavs land it is one bless
-  and one commit, and findings 2 and 3 above get their real measurements.
+  note times - each one needing its `fixtures/marks-src/<take>.mid` beside it, since the scorer now refuses a `midi-note-times`
+  marks file it cannot re-derive. Everything downstream is ready: the scorer, the schemas, the bless, the gate. When the wavs
+  land it is one bless and one commit, and findings 2 and 3 above get their real measurements.
 - **Not built, deliberately:** the browser-side scorer. `slicerTuning.test.ts` pins the constants across the editions, and the
   native scorer owns the audio; a second scorer would be a second ruler to keep true.
 - The `launch/` archive and zip are unchanged by all of this - no product source moved, only comments and test code - but the

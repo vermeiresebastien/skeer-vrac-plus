@@ -539,7 +539,7 @@ wall-clock or count bound that fails on a loaded machine is a worse test than a 
 
 | Suite | Command | Result |
 | --- | --- | --- |
-| Native engine, headless | `SliceForgeSmokeTest.exe` | `PASS - 253/253 checks passed`, exit 0 |
+| Native engine, headless | `SliceForgeSmokeTest.exe` | `PASS - 256/256 checks passed`, exit 0 |
 | Native layout and paint | `SliceForgeLayoutTest.exe` | 32 checks, screenshots regenerated, exit 0 |
 | Native VST3 in a real host | `SliceForgeHostTest.exe` | `PASS VST3 host test`, 350 parameters = 348 + Bypass + Program |
 | All three together | `ctest --test-dir native/build -C Release` | `100% tests passed out of 3`, exit 0 |
