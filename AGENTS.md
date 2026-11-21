@@ -165,6 +165,12 @@ There is no lint or format tool and no CI. Do not add a formatter's opinion as a
   and rewrite `native/shots/*.png` without your change in them — which reads as "the control did not
   render". Build the test targets first (`cmake --build native/build --config Release`) when a
   snapshot or a check total looks wrong for no reason.
+- `SliceForgeHostTest` loads the **build-tree** bundle by default (`native/Tests/HostTest.cpp:33-38`),
+  and `argv[1]` replaces that path. So a green host leg describes
+  `native/build/SliceForge_artefacts/Release/VST3/`, not the copy in `launch/`, in the archive, or in
+  the DAW's scan folder. When the claim being made is about the bytes a customer loads, run the exe
+  again with the installed or the zip-extracted bundle as `argv[1]` — it is the same test, and it is
+  the only way the host census describes an artifact other than the build tree.
 - `native/shots/*.png` is **not byte-reproducible from one build**, so a restamp can move on an
   unchanged tree. The sequencer-page grab (`native/Tests/LayoutTest.cpp:200-206`) resizes then waits
   a fixed `runDispatchLoopUntil (40)`, but the editor's 30 Hz timer only reaches

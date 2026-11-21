@@ -3037,6 +3037,9 @@ native/Resources native/CMakeLists.txt src` printed nothing, and HEAD was `f6108
   (`native/build/ship-build.log`); it linked `SliceForge_SharedCode.lib`, the Standalone and the VST3 bundle.
 - `ctest --test-dir native/build -C Release` **3/3, exit 0** (`ship-ctest.log`): smoke 9.71 s, layout 33.15 s, host 1.05 s.
   The host leg loads the module built above, so the shipped VST3 was exercised by the 350-parameter check, not just compiled.
+  *(Load it as weak as the mechanism: `HostTest.cpp:33-38` opens the **build-tree** bundle, and that copy merely equalled
+  `launch/`, the archive member and the install by hash. The legs that passed the installed and the extracted bundles as
+  `argv[1]` are 21:45's section, five hours later.)*
 - `SliceForgeLayoutTest.exe` exit 0, `PASS layout screenshot: ... (32 checks)` (`ship-layout.log`), which regenerated
   `native/shots/`. Five files moved: `sequencer-dark`, `sequencer-inspector`, `sequencer-inspector-dark`, `sequencer-large`,
   `sequencer-light`. Finding 3 still holds, so `sequencer-large.png` is expected to differ again on the next run.
@@ -3223,6 +3226,45 @@ carries the owner's standing "do these" for push, so the first job was to prove 
   `a116532`'s stale `:304` was handled, because the convention this branch has settled on is that the record
   keeps its mistakes where they were made and says so.
 
+### The install caught up with the re-export, and the host test stopped testing a proxy (2026-11-21 21:45-21:50)
+
+The *ship record* above installed the 14:42 link, and the 18:38 re-export then moved `launch/` onto the
+16:38 one. Nobody re-ran the install, so by 21:45 the machine-wide bundle was four bytes from the
+archive's, and the bullet below that says the install is no longer owed had stopped being true on its own
+terms. Both halves of that are fixed here, and the second one turned out to be worth more than the first.
+
+- **The gap, measured before touching it.** `cmp -l` between the installed module and `launch/`'s returned
+  four bytes - 305-306 and 23137941-23137942 - the two PE `TimeDateStamp` copies again, the same pair that
+  separated the build tree from `launch/` two hours earlier. Same code, older link. `641cde970ba49a5e...`
+  installed against `81c540543a3249f6...` in `launch/`, at identical 24,564,736-byte size.
+- **The install, re-run.** `launch/start.ps1 -InstallOnly`, exit 0, one UAC prompt: `elevated: installed
+  C:\Program Files\Common Files\VST3\SliceForge.vst3 (81C54054...)`, then its own read-back against `launch/`
+  twice, then an independent `cmp` that now reports **zero** differing bytes. The module's mtime is 21:47:54
+  because the script restamps after both hash checks, as designed. `SliceForge.exe` was not running and no
+  host held the bundle, so nothing was skipped or retired; the scan folder still holds one `SliceForge*`,
+  and `%USERPROFILE%\Documents\VST3` and `%LOCALAPPDATA%\Programs\Common\VST3` still hold none.
+- **The host test does not have to load the build tree, and now does not.** `HostTest.cpp:33-38` builds its
+  default path from the cwd and then replaces it wholesale with `argv[1]`. So the plugin-format check ran
+  twice more against the two artifacts a customer actually touches - the bundle in the scan folder, and a
+  copy extracted from `launch/SliceForge-1.0.0-Windows-x64.zip` - and both exited 0 with the same census the
+  build-tree leg prints: `parameters: 350 = 348 layout + Bypass + Program`, `seq.pattern: host id 825878785,
+  index 347, 4 steps, default 0, named Active Pattern`, `first note peak: 0.650336`, `midi out: 9 note-ons /
+  9 note-offs over 48 blocks, peak 0.892715`, `state: 121494 bytes`, `editor: 1260 x 840`. Every host green
+  recorded anywhere earlier in this plan - including the one the ship section calls "the shipped VST3 was
+  exercised" - loaded `native/build/...`. These two are the first that loaded the shipped bytes themselves.
+  `AGENTS.md` now carries that path rule as a drift warning, because a green host leg is not evidence about
+  an installation unless someone passes the path.
+- **The tuple, re-measured at 21:49.** Module `81c540543a3249f691899f35b125b6204881bd14a219ee9ae7d48f97570ec509`
+  in the build tree, in `launch/`, as the archive member, and in `C:\Program Files\Common Files\VST3` - four
+  places, one hash. Standalone `75eaf3e3829fc2301430a710bd4b6837c7f3988813c47802157bc46e640e2a16`, identical
+  between `launch/` and the build tree. Archive `127e872a862ef5e98b4181abf197125097d8abbb6189114ef60e94f993bc6b1e`,
+  28,605,757 B, 17 members, all 17 byte-identical to the tree per the 18:39 check.
+- **What this still leaves unproven, so the next reader does not over-read it.** No harness drives
+  `SliceForge.exe`: the standalone has no test target, so the standalone half of the tuple is only ever
+  proven to be a byte-for-byte copy of something that compiled. The ten layout screenshots are rendered by
+  the test exe's own compiled copy of the UI sources, not by the shipped module. And the extractor is the
+  archive's own `extractall`, not Explorer, so a Windows-shell unzip is still outside the evidence.
+
 ### Still owed by Step 25
 
 - **Phase 3, and only the owner can do it:** render nine 4-bar takes from real kits in Live (44.1 kHz / 24-bit / stereo,
@@ -3259,3 +3301,6 @@ carries the owner's standing "do these" for push, so the first job was to prove 
 - **Deliverables: DONE 2026-11-21 14:42.** The `launch/` re-export, the `native/shots/` restamp, the machine-wide install and
   the push are no longer owed - see *The ship record* above for the tuple, which agrees in all four places for the first time.
   Still owed by the owner: the listening pass.
+  *(The install half fell open again the moment the 18:38 re-export moved `launch/`: the scan folder kept the 14:42 bytes and was
+  four stamp bytes behind the archive for three hours. It is shut by the section above, which also lands the first host green
+  taken against the installed bundle and the extracted archive instead of against the build copy.)*
