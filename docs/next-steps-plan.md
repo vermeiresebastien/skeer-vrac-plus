@@ -3318,6 +3318,26 @@ it is zero is worth more than the fix.
   `sequencer-large.png` and `editor-large.png` are tracked and never shipped. So the flake was repo-internal
   all along, and the archive's reproducibility rests on 8L's pinned entry clock alone.
 
+### The browser suite had not run since the web half of the ruler landed (2026-11-21 22:03)
+
+- **What was actually unclaimed.** `README.md:548` publishes `| Browser end-to-end | npm run test:browser | 27/27 checks
+  passed, exit 0 |`, and the newest runs of that suite recorded anywhere in this plan are `:297` (2026-11-15) and 8M's gate
+  bullet at `:2446` (2026-11-18). In between, `7a92a6d` (11-21 12:07) became the last commit to touch `src/` and it rewrote the browser
+  edition's slicer - `src/audio/slicer.ts`, `src/state/useKit.ts`, `src/state/factoryPresets.ts` - moving the six tuning
+  literals into `src/audio/slicerTuning.ts`. So the row was describing a tree three days and one refactor older than the
+  sentences around it. `npm test`'s 68/68 pinned the *constants'* parity across the editions; it never starts an engine.
+- **The run.** `npm run dev` (Vite 7.3.7, ready in 3266 ms, worklet rebuilt in 12 ms, 127.0.0.1:5173) then
+  `node scripts/e2e.mjs`: 27 `ok` lines, `27/27 checks passed`, exit 0 read off the command rather than the pipe. The
+  server was stopped afterwards and the listener on 5173 confirmed gone.
+- **Which checks ride the changed code**, and why the run is not a duplicate of the unit suite: `slice navigation moves the
+  pad start`, `slice add/delete updates the slice list`, `custom sample decodes and slices`, `custom-sample kit restores
+  after reload`, `recording produces a take`, `recording becomes the source`, `full kit export downloads a zip`. Those call
+  the browser `detectSlices` inside an AudioWorklet in a real Chrome with fake media and MIDI devices - the only place that
+  path is executed end to end, in either edition.
+- **It cost the tree nothing.** `test-results/`, where the run's downloaded kit zip lands, is gitignored (`.gitignore:3`),
+  so the suite leaves no tracked change. `native/build/regate/e2e.log` is the witness and, like every log here, is not a
+  carrier - this section is.
+
 ### Still owed by Step 25
 
 - **Phase 3, and only the owner can do it:** render nine 4-bar takes from real kits in Live (44.1 kHz / 24-bit / stereo,
