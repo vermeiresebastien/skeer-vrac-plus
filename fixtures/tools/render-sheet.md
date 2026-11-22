@@ -223,6 +223,23 @@ tree by replacement rather than by judgement.
 - **Still outside the slicer gate.** No `fixtures/marks/*.json` names it, so `loadTakes` never sees it
   and `fixtures/slicer-baseline.json` cannot move because of it. The nine Step 25 renders are unaffected
   by this substitution.
+- **Diagnostic: what the shipped detector actually does with these bytes (2026-11-22).** Measured on the
+  committed file by calling the app's own `detectSlices` (`src/audio/slicer.ts`) on the decoded PCM at the
+  initial-kit sensitivity (`createInitialKit`, `src/types.ts:321`, `0.55` - the same value
+  `useKit.ts:347` sanitises to), which returned 33 slices - the same count the browser leg reports, so
+  this is the app's answer and not a reimplementation of it. References are this file's `SCORE` positions
+  (`LEAD + b x BEAT`, 15 of them) and the window is ±50 ms.
+  - **Recall 11/15.** The four misses are `1.35` and `6.85` - the two soft pad entries at 0.30 and 0.26
+    amplitude - and `2.60` and `2.85`, the clank and hat that sit 0.25 s and 0.50 s behind the 0.90-amp
+    kick at `2.35`. Masking and a gentle entry, not a wandering clock.
+  - **Precision 11/33.** The other 22 slices land on the pad's beating (1.58-4.68 s) and in the tail
+    (8.02-8.96 s), because the detector fills to its target count rather than stopping at onsets.
+  - Where it matches, it is tight: median |error| 8.0 ms, worst 9.3 ms - the `ONSET_BIAS_SECONDS`
+    pull-back plus hop quantisation. The failure mode here is misses, not smearing.
+  - **Both counts are eleven by coincidence and they are not the same claim**; quote them as a pair or
+    not at all. This is a note about one fixture's behaviour. It gates nothing, and it is not an accuracy
+    result - accuracy is scored against marks files by Step 25, and no threshold, algorithm or baseline
+    expectation was moved to write it.
 
 ## 7. Order of operations, and what each step can still refuse
 
