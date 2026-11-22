@@ -3485,8 +3485,42 @@ Nothing here runs a render. What landed is the preparation, plus the gate that r
 - **Not run, by ruling:** `--publish` (no wav exists), `--bless-slicer-baseline` (waits on his listening approval), any render,
   any audio addition, and any binary rebuild. **Now on the owner:** the render itself, then the listening pass and the bless
   approval; the source tier for `ride-32nd`, `swing-16ths` and `crash-tail` (private pack vs an original recording that could be
-  committed); `fixtures/user-groove.wav`, which came in with the initial commit `192df10` and is referenced by no code, doc, test
-  or marks file - 4.000 s / 48 kHz / 2 ch / 16-bit / peak −1.41 dBFS / `3040b1fd70cff830…`, and outside the gate entirely because
-  `loadTakes` only reaches a wav through a marks file, so its provenance is a licensing question and not a test failure. It is
-  untouched. And the push: this commit is local.
+  committed); `fixtures/user-groove.wav` (see the audit below - as first written here, this bullet called it referenced by no code,
+  which was wrong and is corrected there). And the push: `3e421cc` was pushed on his word, `667007b..3e421cc`.
+
+### The user-groove provenance audit, and the false claim it began with (2026-11-22 21:05-21:22)
+
+- **The claim I had to retract first.** `3e421cc` states that `fixtures/user-groove.wav` "is referenced
+  by no code, no doc, no test and no marks file". The grep behind it searched `src/`, `native/`,
+  `scripts/` and `fixtures/` for the string but its pattern set omitted `.mjs`, so it missed
+  `scripts/e2e.mjs`, which uploads the file as the browser suite's custom-sample leg. `git grep` at HEAD
+  finds it. It is load-bearing, not orphaned. The same commit's other clause holds: no marks file names
+  it, so it cannot affect any slicer score.
+- **A second regression, found while correcting the first.** `README.md` used to say the browser test
+  depends on this fixture; commit `9659b78` deleted that sentence while the code kept consuming it. The
+  dependency is now documented again in `README.md`'s suite paragraph, and it is the kind of loss that
+  makes a later "nobody uses this" claim sound plausible. That is what this whole bullet is: my own
+  grep, made to look like a fact about the tree.
+- **Origin is not establishable.** Git: one blob (`493a3d05379a…`, 768 044 B, sha256 `3040b1fd70cff830…`,
+  binary so blob == worktree bytes) entering in the initial import `192df10` and never modified - and that
+  commit's message documents the provenance of the six `Resources/library` WAVs and the fonts while saying
+  nothing about this seventh audio file. The file: `fmt ` + `data` and zero bytes outside them, which is a
+  hand-rolled writer, not ffmpeg/Audacity/a DAW. The audio: exactly 4.0000 s, sound at exactly 0.2000 →
+  3.9007 s, 14 non-silent runs separated by 13 gaps of exact digital zero, 350.0 ms envelopes, true stereo,
+  peak 27851 = floor(0.85 x 32767). Not `encodeWav` (rounds: 27852), not the factory recipe path
+  (normalises to 0.88: 28835), not drumgen's writers (mono 44.1 kHz), byte-identical to nothing in the
+  family's tracked audio (42 WAVs, all hash-compared), and no tracked script in the thirteen git repos of
+  the twenty-one project folders under `D:/Projects/skeer-audio` names it.
+- **Two of my own probes were vacuous and were rerun.** The first "shared block" scan compared only
+  offset 0 of every candidate against a file whose first 38 KB is silence, so it "matched" seven of
+  eight; the polarity test ran over exactly the documented 200 ms lead-in, where `L == -R` is
+  `0 == -0`. Re-run: full-file `L == -R` is **False**, and a gain-invariant FFT correlation of every hit
+  against both channels of all eight candidate sources peaks at 0.64 against ~1.0 expected for a paste
+  and ~0.04 for chance at this window length. Discarding those is why the audit takes three sittings.
+- **What this changes for Step 25.** Nothing in the render path. It changes the recommendation on this
+  file: it cannot be cleared as licensed and it cannot be shown to infringe, so the way to close it is to
+  stop depending on it - regenerate the fixture in-repo the way `fixtures/tools/synth-takes.cjs` already
+  does, byte-reproducibly. The e2e leg asserts only `sourceId` starts with `user-` and `slices >= 4`, so
+  replacement moves no acceptance threshold. The file itself is untouched, per his ruling that deleting
+  or rewriting it is a separate decision.
 

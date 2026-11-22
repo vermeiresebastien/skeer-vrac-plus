@@ -152,15 +152,46 @@ and reddens a fresh clone. Therefore:
 - Private-tier scoring happens in a **copy of the repo outside the working tree**, with the private wavs
   and their marks published there. Same scripts, same scorer, nothing tracked.
 
-### One finding to decide, unrelated to this render
+### `fixtures/user-groove.wav`: provenance audit
 
-`fixtures/user-groove.wav` is tracked — it came in with the initial commit `192df10` — and is referenced
-by no code, no doc, no test and no marks file. Measured: 4.000 s, 48 kHz, 2 ch, 16-bit, peak −1.41 dBFS,
-sha256 `3040b1fd70cff830…`. Because `loadTakes` goes through `fixtures/marks/*.json` and each marks file
-names its wav, it is **outside the gate** and cannot affect any score — so this is not a test problem. It
-is a provenance problem: audio in a public repo whose licence is nobody's recollection. I have not
-touched it. Either its origin gets recorded beside it or it is retired (moved, hashed, not deleted) —
-your call, and it can wait until after the renders.
+First, a correction to what this section said when the sheet was written. It claimed the file was
+"referenced by no code, no doc, no test and no marks file". That was wrong: the grep that produced it
+omitted `.mjs`. **`scripts/e2e.mjs` loads it as the browser suite's custom-sample leg** (the `fixture`
+constant, uploaded through the file input), and `README.md` documented that dependency until commit
+`9659b78` deleted the sentence while the code kept using the file. The clause that was right: it is
+outside the slicer gate, because `loadTakes` reaches a wav only through `fixtures/marks/*.json` and no
+marks file names it. So it cannot move any score - but it is load-bearing for `npm run test:browser`.
+
+What the audit could and could not establish.
+
+- **Git cannot establish it.** One commit ever (`192df10`, the initial 131-file import), one blob ever
+  (`493a3d05379a…`, 768 044 B; sha256 `3040b1fd70cff830…`), never modified. That commit's message reasons explicitly about audio provenance - it names the six
+  `native/Resources/library` WAVs as synthesised with deterministic seeds and distinguishes them from
+  the commercial VRAC+ recordings - and it says nothing about this seventh audio file. The one commit
+  that thought about licensing covered 6 of 7 and passed this one through undocumented.
+- **The file cannot establish it.** The RIFF holds `fmt ` (16 B) and `data` and **zero bytes outside
+  those chunks** - no LIST/INFO, no BWF, no encoder tag. That header shape is what a hand-rolled writer
+  emits; ffmpeg, Audacity, Sound Forge and every DAW master page add a metadata chunk.
+- **It is a construction, not a recording.** Measured: 48 kHz / 2 ch / 16-bit, exactly 4.0000 s, first
+  non-silent frame 9600 (0.2000 s), last 187233 (3.9007 s), 14 non-silent runs separated by 13 gaps of
+  **exact digital zero**, hit envelopes of 350.0 ms (and one 700.4 ms overlap), DC -73 dBFS, true
+  stereo (energy(R-L)/energy(L) = 1.66). A room never prints 13 blocks of exact zero.
+- **Not this project's own output.** Peak 27851 = floor(0.85 x 32767). `encodeWav` scales with
+  `Math.round` (would give 27852) and the shipped kit export writes 24-bit; the factory recipe path
+  normalises to 0.88 (would give 28835). drumgen's two WAV writers emit mono 44.1 kHz, and all 33 pack
+  WAVs tracked there are 44.1 kHz (mono 16-bit or stereo 24-bit) - no rate, depth or channel count in
+  that set matches. All 42 WAVs tracked across the family were hash-compared: only the file itself
+  matches, and no tracked script in any of the thirteen git repos names it.
+- **Not a paste of the factory library either.** Gain-invariant FFT correlation of each hit run against
+  both channels of all six library WAVs plus the two synth fixtures peaked at 0.64 - a verbatim copy
+  scores about 1.0, and chance for windows this long is about 0.04.
+
+So: origin and redistribution rights are **not establishable from anything on disk**, and the residual
+risk is not "a raw recording" but "hits rendered out of some third-party pack and gated onto a grid",
+which the construction evidence cannot exclude. The file is untouched, per your ruling. The option that
+closes the question without a licence judgement: regenerate the fixture in-repo, byte-reproducibly, the
+way `fixtures/tools/synth-takes.cjs` already does - the e2e leg asserts only `sourceId` starts with
+`user-` and `slices >= 4`, so a replacement moves no acceptance threshold.
 
 ## 7. Order of operations, and what each step can still refuse
 

@@ -554,7 +554,9 @@ playhead, the shape of all sixty groove rows (mask span, a second bar that is no
 the grid write that makes it audible, and a save/reload round-trip), and the bytes a `.mid` export
 actually writes to disk. The layout suite paints every page
 and regenerates the screenshots in this file. The web suite parses the C++ header directly, which is
-what keeps the two editions from drifting on the ceilings.
+what keeps the two editions from drifting on the ceilings. The browser suite is the one suite that
+consumes a media file: `scripts/e2e.mjs` uploads `fixtures/user-groove.wav` as its custom-sample leg,
+and that fixture's provenance is under audit (`fixtures/tools/render-sheet.md`, section 6).
 
 ---
 
