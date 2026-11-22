@@ -243,7 +243,9 @@ tree by replacement rather than by judgement.
   - **Both counts are eleven by coincidence and they are not the same claim**; quote them as a pair or
     not at all. This is a note about one fixture's behaviour. It gates nothing, and it is not an accuracy
     result - accuracy is scored against marks files by Step 25, and no threshold, algorithm or baseline
-    expectation was moved to write it.
+    expectation was moved to write it. Above all: every number in this entry describes the current
+    implementation on one synthetic fixture of our own making, and none of it establishes real-music
+    accuracy.
 
 ## 7. Order of operations, and what each step can still refuse
 
