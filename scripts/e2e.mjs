@@ -10,13 +10,16 @@
  * without hardware. Downloads are written to test-results/.
  */
 import assert from 'node:assert/strict';
-import { mkdir } from 'node:fs/promises';
+import { execFileSync } from 'node:child_process';
+import { createHash } from 'node:crypto';
+import { mkdir, readFile } from 'node:fs/promises';
 import { chromium } from 'playwright-core';
 
 const URL = process.env.SLICEFORGE_URL || 'http://127.0.0.1:5173/';
 const CHROME =
   process.env.CHROME_PATH || 'C:\\Program Files\\Google\\Chrome\\Application\\chrome.exe';
 const fixture = 'fixtures/user-groove.wav';
+const generator = 'fixtures/tools/make-user-groove.cjs';
 
 await mkdir('test-results', { recursive: true });
 
@@ -147,6 +150,25 @@ const slicesAfterDelete = await page.evaluate(() => window.__SLICEFORGE__.getSli
 check('slice add/delete updates the slice list', slicesAfterAdd >= slices0 && slicesAfterDelete < slicesAfterAdd);
 
 /* ---- custom sample + IDB preset restore ---- */
+// This fixture is generated, not inherited (its SHA-256 is pinned in the generator, which carries the
+// provenance audit for the file it replaced). The leg below is only trustworthy if the bytes it uploads
+// are the bytes the generator claims, so the hash is compared here rather than taken on faith. A failed
+// render is recorded as a red check, not thrown: the generator raises when a tuning constant it reads
+// moves, and an exception here would skip browser.close() and leave a headless Chrome behind.
+const tracked = createHash('sha256').update(await readFile(fixture)).digest('hex');
+let rendered = '';
+let renderFailure = '';
+try {
+  rendered = execFileSync(process.execPath, [generator, '--sha'], { encoding: 'utf8' }).trim();
+} catch (error) {
+  const lines = String(error.stderr || error.message).trim().split('\n');
+  renderFailure = lines.find((line) => /^(?:\w*Error):/.test(line)) || lines[0];
+}
+check(
+  'custom-sample fixture re-renders byte-identical',
+  /^[0-9a-f]{64}$/.test(rendered) && rendered === tracked,
+  renderFailure || `rendered ${rendered.slice(0, 16)}… vs tracked ${tracked.slice(0, 16)}…`,
+);
 await page.locator('input[type="file"][accept*="audio"]').setInputFiles(fixture);
 await page.waitForTimeout(1000);
 const userSample = await page.evaluate(() => ({

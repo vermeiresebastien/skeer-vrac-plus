@@ -188,10 +188,41 @@ What the audit could and could not establish.
 
 So: origin and redistribution rights are **not establishable from anything on disk**, and the residual
 risk is not "a raw recording" but "hits rendered out of some third-party pack and gated onto a grid",
-which the construction evidence cannot exclude. The file is untouched, per your ruling. The option that
-closes the question without a licence judgement: regenerate the fixture in-repo, byte-reproducibly, the
-way `fixtures/tools/synth-takes.cjs` already does - the e2e leg asserts only `sourceId` starts with
-`user-` and `slices >= 4`, so a replacement moves no acceptance threshold.
+which the construction evidence cannot exclude. The option that closes the question without a licence
+judgement: regenerate the fixture in-repo, byte-reproducibly, the way `fixtures/tools/synth-takes.cjs`
+already does - the e2e leg asserts only `sourceId` starts with `user-` and `slices >= 4`, so a
+replacement moves no acceptance threshold. The file was untouched when this was written, per your
+ruling; what was done with it is below.
+
+### Resolution: the fixture is generated (approved 2026-11-22)
+
+The audit could not clear the old file and could not convict it either, so it is gone from the working
+tree by replacement rather than by judgement.
+
+- **`fixtures/tools/make-user-groove.cjs`** is the only source of `fixtures/user-groove.wav`.
+  `node fixtures/tools/make-user-groove.cjs` writes it, `--check` re-renders in RAM, compares the bytes
+  and audits the contract, and `--sha` prints the digest of the render. Constants, not material: five
+  synthesised voices (kick, snare, hat, clank, pad), one xorshift32 PRNG seeded at `0x5eed51c0`, and the
+  arrangement in the `SCORE` table. Nothing is read from a sample pack, and nothing is derived from the
+  file it replaced.
+- **Measured properties of the new bytes**: 1 728 044 B, sha256 `1998499da87776b9aafc76fd3e0b86e2…`,
+  48 kHz / 2 ch / 16-bit PCM, exactly 9.0000 s, first non-silent frame 16800 (0.3500 s lead), int16 peak
+  26214 = 0.8000 full scale with no sample at full scale, DC -73.4 dBFS per channel, true stereo
+  (energy(R-L)/energy(L) = 0.174, `L != R`), and the same bare `RIFF/WAVE/fmt /data` container with zero
+  bytes outside the two chunks - now because this writer writes nothing else, which is a claim the last
+  file could not make.
+- **What is gated**: `scripts/e2e.mjs` runs the render and compares it against the tracked file's hash
+  as its own check (`custom-sample fixture re-renders byte-identical`), so the byte-reproducibility
+  claim is exercised by the suite rather than asserted in prose. The census in `--check` reads
+  `MIN_GAP_SECONDS` and `FLOOR_RATIO` out of `src/audio/slicerTuning.ts` instead of restating them. The
+  existing acceptance thresholds are unchanged; this added a check, it did not move one.
+- **The old bytes are still in the repository.** They live in commit `192df10` as blob
+  `493a3d05379a…` and in every commit since; replacing the working file does not remove them from Git
+  history, and no history was rewritten to do this. Recoverable with
+  `git show 192df10:fixtures/user-groove.wav`.
+- **Still outside the slicer gate.** No `fixtures/marks/*.json` names it, so `loadTakes` never sees it
+  and `fixtures/slicer-baseline.json` cannot move because of it. The nine Step 25 renders are unaffected
+  by this substitution.
 
 ## 7. Order of operations, and what each step can still refuse
 

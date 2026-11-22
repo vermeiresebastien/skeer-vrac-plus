@@ -3528,5 +3528,56 @@ Nothing here runs a render. What landed is the preparation, plus the gate that r
   stop depending on it - regenerate the fixture in-repo the way `fixtures/tools/synth-takes.cjs` already
   does, byte-reproducibly. The e2e leg asserts only `sourceId` starts with `user-` and `slices >= 4`, so
   replacement moves no acceptance threshold. The file itself is untouched, per his ruling that deleting
-  or rewriting it is a separate decision.
+  or rewriting it is a separate decision. *(Superseded twenty minutes later: he ruled the separate
+  decision, and it was replacement. See the next section.)*
+
+### The fixture is generated now, and two of my own graders failed before it did (2026-11-22 21:30-21:51)
+
+He approved pushing both correction commits - `70c1df3` and `45806a6` are on `origin/master`, verified as
+a fast-forward with `git ls-remote` agreeing with local HEAD - and ruled on the uncertain fixture: replace
+it with a project-owned synthetic take, keep the thresholds, add a byte-reproducibility check, do not
+rewrite history, and do not push the replacement until he has reviewed it.
+
+- **`fixtures/tools/make-user-groove.cjs`** synthesises five voices from constants and one xorshift32
+  seed, peak-normalises to 0.80, and writes the same bare `fmt `/`data` container. The new bytes are
+  1 728 044 B, sha256 `1998499da87776b9aafc76fd3e0b86e2…`, 48 kHz / 2 ch / 16-bit, exactly 9.0000 s, no
+  sample at full scale, DC -73.4 dBFS, `L != R`. Reproducibility rests on `--check` comparing a fresh
+  render against the tracked file, and on the digest pinned in the source; it does still rest on this
+  engine's `Math.sin`/`Math.exp`, so the claim on the file is "this engine re-renders these bytes", not
+  "any C library will".
+- **My first grader was wrong about the audio, and the audio was fine.** The contract check demanded
+  "energy that holds within 6 dB for a second" and read it off the same 8 ms RMS envelope it used for
+  onsets. 384 samples is shorter than one period of the pad's 110 Hz fundamental (9.1 ms), so short-time
+  RMS flickers on perfectly steady material: measured on the shipped bytes, the 3.00-4.00 s pad window is
+  **10.45 dB of spread at an 8 ms hop and 0.73 dB at 50 ms**, and the steadiest 1.0 s window anywhere in
+  the file at 8 ms is still 7.27 dB - the bound was not satisfiable by any window, so the check could only
+  ever have been red. Fixing the window, not the audio, is why the pinned digest never moved across this
+  whole section.
+- **And my second grader was a tautology.** I replaced the refractory onset detector with a Schmitt
+  trigger specifically so `minSpacing` would stop reporting the suppression constant, then probed it: a
+  mutant that moves the clank to 100 ms - and one at 50 ms - after the kick still reported the tightest
+  gap as **0.500 s**, because the hysteresis merges a close pair into one onset. A spacing claim cannot be
+  measured by a detector that disarms on spacing. The assertion now reads the authored positions
+  (`authoredGap`, 0.250 s) and says so, and the byte-level census is left to make only the claim it can
+  support: events exist, they are findable, one voice is transient and one is sustained.
+- **Four falsifiers, each red on exactly its own assertion.** clank at 100 ms and at 50 ms →
+  `tightest authored spacing` only; pad voices deleted → `sustained material` only; hits deleted, pad only
+  → `events found` and `transient material`. Scratch copies were written beside the generator, run, and
+  deleted; `git status` on `fixtures/` afterwards shows the wav and the generator and nothing else.
+- **`slices >= 4` is saturated and I did not read it as evidence.** The app returns 33 slices for this
+  fixture, which is not a measurement of anything: `src/audio/slicer.ts:72` computes
+  `target = round(TARGET_BASE + TARGET_SPAN * sens)` and `:88` fills to it, so at the 0.55 default any file
+  with 33 candidates over the floor gets 33. Aligning the 33 reported times against the 15 scored events
+  puts 11 inside ±50 ms and 22 elsewhere - on the pad's beating and in the tail - which is the same
+  target-fill behaviour AGENTS.md already records for a dead take. Accuracy gets judged by Step 25's
+  scorer against marks files, not by a count on a fixture that is deliberately outside the corpus.
+- **Suites, on the replacement bytes.** `npm run test:browser` 28/28 exit 0 at ~21:41 with the new
+  `custom-sample fixture re-renders byte-identical` check first among the fixture legs, `npm test` 68 tests
+  across 8 files exit 0 at 21:48:40, `npm run build` (worklet + `tsc -b` + vite) exit 0 at 21:49. The dev
+  server was started for the run and stopped after; port 5173 has no listener.
+- **What did not happen.** No `marks` file for the new fixture, so `loadTakes` never sees it and
+  `fixtures/slicer-baseline.json` is untouched - `--publish` and `--bless-slicer-baseline` remain gated on
+  the nine renders and his listening approval. No threshold moved: the e2e legs still assert `slices >= 4`
+  and `peak > 0.001`. No history rewritten: the old blob is still in `192df10` and in every commit after
+  it, and replacing the working file does not remove it from the repository's past.
 

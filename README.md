@@ -545,7 +545,7 @@ wall-clock or count bound that fails on a loaded machine is a worse test than a 
 | All three together | `ctest --test-dir native/build -C Release` | `100% tests passed out of 3`, exit 0 |
 | Web units | `npm test` | 68 tests across 8 files, exit 0 |
 | Web type gate | `npm run build` | exit 0 |
-| Browser end-to-end | `npm run test:browser` | `27/27 checks passed`, exit 0 |
+| Browser end-to-end | `npm run test:browser` | `28/28 checks passed`, exit 0 |
 
 The headless suite drives the engine with no UI and no audio device and asserts the cross-edition
 facts: the parameter count, the slice-to-LENGTH derivation, the import ceilings including the
@@ -555,8 +555,11 @@ the grid write that makes it audible, and a save/reload round-trip), and the byt
 actually writes to disk. The layout suite paints every page
 and regenerates the screenshots in this file. The web suite parses the C++ header directly, which is
 what keeps the two editions from drifting on the ceilings. The browser suite is the one suite that
-consumes a media file: `scripts/e2e.mjs` uploads `fixtures/user-groove.wav` as its custom-sample leg,
-and that fixture's provenance is under audit (`fixtures/tools/render-sheet.md`, section 6).
+consumes a media file: `scripts/e2e.mjs` uploads `fixtures/user-groove.wav` as its custom-sample leg.
+That fixture is generated, not inherited - `node fixtures/tools/make-user-groove.cjs` re-renders it and
+`--check` audits its contract against the detector's own tuning, and the suite's first fixture check
+compares the tracked bytes against the hash pinned in that file. The file it replaced had no provable
+provenance; `fixtures/tools/render-sheet.md`, section 6, records that audit.
 
 ---
 
