@@ -66,7 +66,7 @@ _toploop = ([(HAT, b, 0.18, 90) for b in arange (0, 32, 0.5)]
           + [(KICK, b, 0.25, 114) for b in (0, 2.75, 4, 6.5, 8, 10.75, 12, 14.5)]
           + [(SNARE, b, 0.25, 104) for b in (2, 6, 10, 14)])
 TAKES["toploop-a"]    = _toploop
-TAKES["toploop-b"]    = _toploop                      # the level-matched pair: same notes, -6 dB gain
+TAKES["toploop-b"]    = _toploop                      # the level-matched pair: same notes, -12 dB trim
 _swing = []
 for _i in range (16):                                  # swung 16ths over 8 beats: 50 / 25 ms apart
     _swing.append ((HAT, _i * 0.5, 0.10, 94))
@@ -75,7 +75,13 @@ TAKES["swing-16ths"]  = _swing
 
 KIT = {"kick-quad": "kick + snare", "hat-16th": "closed hat + kick", "backbeat-8ths": "full kit 8ths",
        "crash-tail": "crash + toms, long ring", "tom-fill": "toms, 16th fill", "ride-32nd": "ride 32nds",
-       "toploop-a": "top loop, reference gain", "toploop-b": "top loop, -6 dB", "swing-16ths": "swung 16ths"}
+       "toploop-a": "top loop, reference gain", "toploop-b": "top loop, -12 dB trim", "swing-16ths": "swung 16ths"}
+
+# The render level per take. toploop-b is toploop-a's grid 12 dB lower, so one literal for all nine
+# would publish a false claim about it - and nothing gates this field: SlicerScoreTest.cpp reads
+# schema, take, markProvenance, wav and onsets only. verify-takes.py is what refuses a render that
+# disagrees with what is written here, so the two must stay in step.
+PEAK_DBFS = {t: (-18.0 if t == "toploop-b" else -6.0) for t in TAKES}
 
 def onsets_seconds (notes):
     seen = set()
@@ -122,8 +128,8 @@ def notes_json (notes):
 
 def marks_json (take, ons):
     doc = {"schema": "sliceforge-slicer-marks/1", "take": take, "wav": take + ".wav",
-           "sampleRate": 44100, "bpm": BPM, "bars": 4, "kit": KIT[take],
-           "chain": "dry: no master limiter, no sends, monitor off", "peakDbfs": -6.0,
+           "sampleRate": 44100, "bpm": BPM, "clipBars": 4, "regionBeats": 24, "kit": KIT[take],
+           "chain": "dry: no master limiter, no sends, monitor off", "peakDbfs": PEAK_DBFS[take],
            "markProvenance": "midi-note-times",
            "onsets": [round (o, 6) for o in ons]}
     return json.dumps (doc, indent = 2) + "\n"

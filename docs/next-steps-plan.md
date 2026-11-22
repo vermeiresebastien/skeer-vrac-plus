@@ -3359,6 +3359,10 @@ it is zero is worth more than the fix.
   manual export of the whole arrangement and per-take tempi would need nine exports. The generator's `OFFSET_BEATS 4.0` matches
   the arrangement placement, and the marks files carry wall-clock times derived from that one tempo map - which is exactly why
   `fixtures/marks-src/<take>.mid` is mandatory rather than advisory.
+  *(Superseded on two points by the owner's ruling of 2026-11-22, recorded in the section at the end of this file: the nine tracks
+  are built in a **disposable** Live set - "Do not modify an existing working session" - and a render of pack material does not
+  enter this repository at all, so the consent decision above no longer has a publishing consequence here. The single 200 BPM tempo
+  map, the `OFFSET_BEATS 4.0` placement and the mandatory `.mid` all stand.)*
 - **Four of the eight spec categories are not producible from this authorship, and are named here rather than dropped.**
   `:727` asked for a dry drum loop, a crash-heavy loop, a foley bag, a spoken phrase, a sustained pad with soft attacks, a fast
   hat run, a piano phrase and one level-matched pair. What the committed grids do cover, re-counted from
@@ -3374,8 +3378,6 @@ it is zero is worth more than the fix.
   80-click take that outruns the slice budget (`:747`), and the rule that a take with `refN = 0` prints undefined instead of a
   perfect 1.000 (`:699`). What stays **unevidenced** is the detector's accuracy on soft-attack real audio: no number in this
   corpus or the pending one speaks to it, so Step 7 inherits it as a product-side limit rather than a solved case. The one
-  deferred category that is cheaply buildable is the piano phrase - a note-time reference for a struck, decaying instrument is
-  honest - and it needs only a preset the owner picks, plus the same single export.
   deferred category that is cheaply buildable is the piano phrase - a note-time reference for a struck, decaying instrument is
   honest - and it needs only a preset the owner picks, plus the same single export.
 - **The authorship needs no setup when the audio lands.** Both reproducibility checks re-run 2026-11-21 22:09 against `dd38bc4`,
@@ -3396,6 +3398,12 @@ it is zero is worth more than the fix.
   see the tier 1 section above. It is still the right description of what the gate does with **no** takes, and it is still wrong
   to treat it as a reason to skip the decision: with tier 1 committed, adding a take now means adding its bytes, because a marks
   file whose wav is missing is a named red.)*
+  *(ANSWERED 2026-11-22, ruling 2: the owner declines to commit pack-derived audio to this public repo until redistribution rights
+  are verified, and the private references stay private. The consequence for the gate, which is the part this bullet could not see
+  in advance, is structural: `kBaselineName` is a fixed path inside `fixtures/` (`native/Tests/SlicerScoreTest.cpp:36`) and
+  `loadTakes` enumerates `fixtures/marks/*.json`, so a bless taken while only private wavs are on disk writes a baseline that
+  passes here and reddens a fresh clone. The public tier therefore blesses the tracked tree; private-tier scoring happens in a
+  copy of the repo outside it. Mechanics and the per-take tier assignment are in `fixtures/tools/render-sheet.md`.)*
 - **Not built, deliberately:** the browser-side scorer. `slicerTuning.test.ts` pins the constants across the editions, and the
   native scorer owns the audio; a second scorer would be a second ruler to keep true.
 - **Deliverables: DONE 2026-11-21 14:42.** The `launch/` re-export, the `native/shots/` restamp, the machine-wide install and
@@ -3404,3 +3412,81 @@ it is zero is worth more than the fix.
   *(The install half fell open again the moment the 18:38 re-export moved `launch/`: the scan folder kept the 14:42 bytes and was
   four stamp bytes behind the archive for three hours. It is shut by the section above, which also lands the first host green
   taken against the installed bundle and the extracted archive instead of against the build copy.)*
+
+### The five rulings became a render sheet, and the sheet's own gate found two defects in it (2026-11-22 20:35-21:05)
+
+The owner answered the open items with five rulings: render from a **disposable** Live set and touch no existing session, keeping
+the render and every session-recovery decision his; commit no pack-derived audio to this public repo until redistribution rights
+are verified, and keep private references separate from public fixtures; prepare a listening checklist that keeps measurable
+timing error apart from musical quality; verify identity, rate, channels, duration, level and content **before** any bless, and
+bless only after he approves what he heard; and ship the sheet with the commercial-versus-redistributable split named per clip.
+Nothing here runs a render. What landed is the preparation, plus the gate that refuses bad preparation.
+
+- **`fixtures/tools/render-sheet.md` (new).** Project setup (200 BPM one map, 4/4, swing off, empty master, no sends, metronome
+  off), the region geometry (bar 1.1.000→7.1.000 = 24 beats = **7.200 s**, clip 4 bars at bar 2.1.000 so the first onset is
+  1.200 s and the narrowest ring-out is 7.200 − 5.925 = 1.275 s), the import rule for `fixtures/marks-src/*.mid` (the +4-beat
+  offset is already in the note positions, so it drops at bar 1 and not bar 2), the GM pitch→role map, the nine-clip table with
+  notes/refs/IOI/velocity spread, the exact export settings, the bless order and the listening checklist. **Tail = Never** is the
+  setting the whole file turns on: `3 Beats` adds 0.900 s, which is 132 300 frames and a duration red, and the ring-out is inside
+  the region precisely so no rendered tail is ever needed.
+- **The answer to "which clips require commercial material" is: none.** What three of them need is *real decaying acoustic
+  sources*, and a pack is only the fastest way to get one - a recording of his own kit serves identically and would be
+  committable. `ride-32nd` at 37.5 ms washes on a real bell but not on a synthetic ping, so a good synthetic score would
+  overstate the detector; `swing-16ths` carries its ghost as a −6 velocity step, and a synthesised hit has no velocity layers, so
+  the peak-*relative* floor (`kFloorRatio`, `native/Source/Engine/SlicerTuning.h:28`) cancels the exact variable under test;
+  `crash-tail` needs inharmonic partials to ring under re-triggered toms. The other six - `kick-quad`, `backbeat-8ths`,
+  `toploop-a`, `toploop-b`, `hat-16th`, `tom-fill` - are a fair timing test from material this repo already owns.
+- **`fixtures/tools/verify-takes.py` (new) is ruling 4 in code:** identity/rate/channels/bit depth/frames/peak/clipping/DC, the
+  0.000-0.200 s pre-roll, the ring-out rules, and the pair's grid equality, refusing before any publish. Run against the tree as
+  it stands it exits **1** naming all nine absent; `--report-only` prints the same census at exit 0. Its decoder was validated
+  first: a 24-bit stereo control written with a known 0.5 peak read back `peak -6.02 dBFS` and `dc -7.49e-02`, matching an
+  independent decode of the same bytes to the digit.
+- **The first draft of its tail rule was wrong, and the control suite is what proved it.** It asserted that nothing may exceed
+  −48 dBFS after last onset + 1.000 s - but that window is where a long-ring take legitimately lives. Control A, a *correct*
+  render of `crash-tail` whose last hit decays 40 dB/s, measured **−43.92 dBFS** there: a conforming file reddened, on the one
+  fixture whose stated purpose is a long ring. The rule is now change-based (a rise past the authored end, plus an end-of-file
+  click rule), because energy in a tail is decay and not an onset, while the hazard worth catching is material that *starts*
+  after the reference stops. Controls B-E: a stray hit at 6.600 s reddens on a **20.2 dB** rise; a clip displaced 1.1 s reddens
+  at **−8.0 dBFS** in the pre-roll; a live tail cut at the last sample reddens at **−13.1 dBFS** - and that last one needed its own
+  control, because the first cut-off test tripped the rise rule too and proved nothing about the click rule's independence, so
+  control E holds the tail non-decaying to make the two windows equal and leave the click rule the only one that can fire.
+- **A false statement was about to be published into a tracked file.** `make-takes.py`'s `marks_json` hardcoded
+  `"peakDbfs": -6.0` for all nine, and `SlicerScoreTest.cpp:295-345` reads exactly five fields out of a marks file - `schema`,
+  `take`, `markProvenance`, `wav`, `onsets` - so the level claim is **ungated**: nothing would ever have caught it contradicting
+  `toploop-b`, which is the −12 dB twin. It now derives from `PEAK_DBFS` (−18.0 for that take), and `bars: 4` became
+  `clipBars: 4` + `regionBeats: 24` because the field named the clip while the file is six bars. `--check` is unaffected and
+  re-run green: 18 files, 18 byte-exact, exit 0 - marks are only ever written by `--publish`.
+- **The pair's separation was an unrecorded disagreement between two tools,** `make-takes.py` saying "-6 dB gain" while the
+  verifier spec said −18 dBFS, and the plan fixing no number at all ("the same performance at two gains", above). Settled at
+  12 dB / −18 dBFS and stated in both files, on the reason rather than the arithmetic: because the floor is peak-relative, the
+  pair's job is to test level invariance, and a doubled separation doubles the signal without approaching a 24-bit noise floor.
+- **Corpus totals, measured twice this session:** the nine grids carry **257 references** (32+9+48+16+32+32+20+34+34), counting
+  distinct note *starts* - `hat-16th` is 51 notes/48 refs and `toploop-a` 44/34 because two instruments on one beat are one onset
+  to a detector. The two totals agree between `verify-takes.py`'s `grid_onsets_s`, a direct count over `notes/*.json`, and
+  `make-takes.py --check`'s printed `onsets=`. `fixtures/marks-src/toploop-a.mid` and `toploop-b.mid` are byte-identical at 417 B
+  (`01f2137c…`), which is the pair's whole claim in one comparison.
+- **What the bless will do when it is authorised, so it arrives as a known change:** `fixtures/slicer-baseline.json` goes from 6
+  rows to **33** (nine takes × 0.20/0.55/0.90, plus the two synthetic takes already there). Seven of the nine will report
+  `capped = True` at 0.20 because `targetAt(0.20)` = 8 + 46 × 0.2 = **17** slices and only `kick-quad` (16) and `crash-tail` (9)
+  have fewer references than that; no take approaches the 49 ceiling, `hat-16th` at 48 being the tightest by one slice. The band
+  is symmetric, so an improvement reddens until blessed - which is the gate, not a defect.
+- **Two traps of mine, both recorded because both touched the tree.** Inspecting `marks_json` through `runpy.run_path` executed
+  `make-takes.py`'s *default* branch - the script writes unless it is given `--check` or `--publish`, so an import-for-reading is
+  a write - and rewrote all 18 tracked generator outputs. No bytes moved: `git status --porcelain fixtures/` listed only the
+  intended `make-takes.py` edit, `git diff --stat` on the data files was empty, and `--check` re-verified 18/18 byte-exact - but
+  their mtimes are now 20:47:16, so a later `find -newer` attestation against `fixtures/marks-src/` or `notes/` will read them as
+  freshly authored and must be discounted for this timestamp. Second: `python -m py_compile` left `fixtures/tools/__pycache__/`
+  in the tree (removed), and `.gitignore` does not cover `__pycache__` - staging by explicit path is the only thing keeping a
+  Python bytecode dir out of this repo's commits.
+- **Pre-existing doc defect closed in passing:** `:3377-3380` of this plan carried the piano-phrase sentence twice, two identical
+  lines repeated; the duplicate is deleted, so cites into this file past that point moved by two lines before this section added
+  any. The 2026-11-21 render-decision bullet above is annotated as superseded on its two changed points rather than rewritten,
+  because it records what was decided that day.
+- **Not run, by ruling:** `--publish` (no wav exists), `--bless-slicer-baseline` (waits on his listening approval), any render,
+  any audio addition, and any binary rebuild. **Now on the owner:** the render itself, then the listening pass and the bless
+  approval; the source tier for `ride-32nd`, `swing-16ths` and `crash-tail` (private pack vs an original recording that could be
+  committed); `fixtures/user-groove.wav`, which came in with the initial commit `192df10` and is referenced by no code, doc, test
+  or marks file - 4.000 s / 48 kHz / 2 ch / 16-bit / peak −1.41 dBFS / `3040b1fd70cff830…`, and outside the gate entirely because
+  `loadTakes` only reaches a wav through a marks file, so its provenance is a licensing question and not a test failure. It is
+  untouched. And the push: this commit is local.
+
