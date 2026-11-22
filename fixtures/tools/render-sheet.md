@@ -232,8 +232,12 @@ tree by replacement rather than by judgement.
   - **Recall 11/15.** The four misses are `1.35` and `6.85` - the two soft pad entries at 0.30 and 0.26
     amplitude - and `2.60` and `2.85`, the clank and hat that sit 0.25 s and 0.50 s behind the 0.90-amp
     kick at `2.35`. Masking and a gentle entry, not a wandering clock.
-  - **Precision 11/33.** The other 22 slices land on the pad's beating (1.58-4.68 s) and in the tail
-    (8.02-8.96 s), because the detector fills to its target count rather than stopping at onsets.
+  - **Precision 11/33.** The other 22 slices are the surplus budget spent on the two sustained voices:
+    fourteen inside the first pad's span (1.58-4.68 s, which enters at 1.35 and releases at 4.90), one at
+    7.15 s and seven from 8.02 to 8.96 s inside the second pad (it enters at 6.85 and the file ends at
+    9.00 while it is still sounding, so that is pad, not ring-out). Nothing lands in the 5.35-6.85 s
+    pocket where the pad has released and no voice is struck. The detector is not merely firing late -
+    it is firing on exactly the material this fixture exists to call "no slice here".
   - Where it matches, it is tight: median |error| 8.0 ms, worst 9.3 ms - the `ONSET_BIAS_SECONDS`
     pull-back plus hop quantisation. The failure mode here is misses, not smearing.
   - **Both counts are eleven by coincidence and they are not the same claim**; quote them as a pair or

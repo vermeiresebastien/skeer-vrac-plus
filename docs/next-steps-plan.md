@@ -3568,10 +3568,11 @@ rewrite history, and do not push the replacement until he has reviewed it.
   fixture, which is not a measurement of anything: `src/audio/slicer.ts:72` computes
   `target = round(TARGET_BASE + TARGET_SPAN * sens)` and `:88` fills to it, so at the 0.55 default any file
   with 33 candidates over the floor gets 33. Aligning the 33 reported times against the 15 scored events
-  puts 11 inside ±50 ms and 22 elsewhere - on the pad's beating and in the tail - which is the same
-  target-fill behaviour AGENTS.md already records for a dead take. Recorded as a pair, because both
-  denominators came out at eleven by coincidence: **recall 11/15, precision 11/33**, with the four missed
-  events named and the ±50 ms method in `fixtures/tools/render-sheet.md` section 6. Accuracy gets judged by
+  puts 11 inside ±50 ms and 22 elsewhere - all 22 on the two sustained pad spans, none in the pocket
+  between them - which is the same target-fill behaviour AGENTS.md already records for a dead take.
+  Recorded as a pair, because both denominators came out at eleven by coincidence: **recall 11/15,
+  precision 11/33**, with the four missed events named and the ±50 ms method in
+  `fixtures/tools/render-sheet.md` section 6. Accuracy gets judged by
   Step 25's scorer against marks files, not by a count on a fixture that is deliberately outside the corpus.
 - **Suites, on the replacement bytes.** `npm run test:browser` 28/28 exit 0 at ~21:41 with the new
   `custom-sample fixture re-renders byte-identical` check first among the fixture legs, `npm test` 68 tests
