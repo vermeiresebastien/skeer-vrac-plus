@@ -3517,6 +3517,12 @@ Nothing here runs a render. What landed is the preparation, plus the gate that r
   `0 == -0`. Re-run: full-file `L == -R` is **False**, and a gain-invariant FFT correlation of every hit
   against both channels of all eight candidate sources peaks at 0.64 against ~1.0 expected for a paste
   and ~0.04 for chance at this window length. Discarding those is why the audit takes three sittings.
+- **The dependency is proven at runtime, not only by grep.** `npm run test:browser` re-run at 21:24-21:26
+  on this commit: `27/27 checks passed`, exit 0, with all three legs that consume the fixture green -
+  `custom sample decodes and slices` and `custom sample is audible` and `custom-sample kit restores after
+  reload` (`scripts/e2e.mjs:157`, `:164`, `:180`). So the suite passes *because* it decodes this file, and
+  README's `27/27` row is current as of that run. `npm test` exit 0, 68 tests across 8 files, at 21:24:05.
+  The dev server was started for the run and stopped after it; port 5173 left with no listener.
 - **What this changes for Step 25.** Nothing in the render path. It changes the recommendation on this
   file: it cannot be cleared as licensed and it cannot be shown to infringe, so the way to close it is to
   stop depending on it - regenerate the fixture in-repo the way `fixtures/tools/synth-takes.cjs` already
