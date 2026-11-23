@@ -234,7 +234,7 @@ two are refuted, and the refutations are why this entry now carries evidence in 
   `native/CMakeLists.txt:109-110`, `:119`, `:49`, `:130`, `PluginProcessor.cpp:23`, `:974`, `:978`,
   `:1036`, `:1041`, `Sequencer.cpp:12`, `Source/UI/Theme.cpp:75`, `Source/PluginEditor.cpp:461`, `:491`,
   `Source/VaultLibrary.cpp:143`, `src/state/storage.ts:5-7`, `src/state/sampleStore.ts:7`,
-  `Tests/HostTest.cpp:68`) was opened and read at HEAD `4abe4b0` on 2026-11-16, and each line says what
+  `Tests/HostTest.cpp:68`) was opened and read at HEAD `a327d65` on 2026-11-16, and each line says what
   the prose around it claims. The instruction is the stale item, not the references. Two traps, recorded
   so nobody re-derives this: the web paths are **root-relative** — `web/src/state/storage.ts` does not
   exist, so resolving them against `web/` invents staleness — and the one real defect in the same
@@ -543,7 +543,7 @@ Closed by 8I, which refutes this line's own reason: `COMPANY_COPYRIGHT` is a `ju
 **Step 17 — Make the zip reproducible and take the binaries out of git (0.5 d, owner decision).** DONE on
 its determinism half, 2026-11-17 (§8L); the git half is still yours. Measured when this was first written:
 `.git` was 205 MB, 318 loose objects, **zero packs**; `launch/` was 76.5 MB in HEAD; the zip and the exe were
-plain blobs, and the restamp in `92336b5` added a fresh 27.75 MB blob for a payload-identical archive - two
+plain blobs, and the restamp in `dee0bef` added a fresh 27.75 MB blob for a payload-identical archive - two
 objects of 27,709,732 B with different hashes - because `native/package-launch.ps1` let `ZipArchive` stamp
 each entry with the clock it was running on (§8J measured 68 differing bytes of an otherwise identical re-export).
 So every export cost about +28 MB forever, and it no longer does: the entry clock is pinned, and two exports
@@ -619,7 +619,7 @@ probability 0.5 on all sixteen lanes and asserts (a) the two passes are not the 
 arrives or leaves together. Must fail on today's code, and it must fail on the *first* assertion only,
 not because (b) broke.
 
-Built 2026-11-16 in `4abe4b0`, gate red first: `FAIL  a looped bar re-rolls its probability` with pass 1
+Built 2026-11-16 in `a327d65`, gate red first: `FAIL  a looped bar re-rolls its probability` with pass 1
 and pass 2 printing the identical 40-character signature `-PPPPP--P--PPPPPPP----P-PP-PPPPPP`, then green.
 The check cannot pass for the wrong reason, and the reason is stronger than "same seed, same result":
 `probabilityRollFor` is pure splitmix64 over `patternIndex`, `pad`, `absoluteStep` and `passCount` with no
@@ -670,7 +670,7 @@ through a test-only seam - the field is `SeqPlaybackState::historyClears`, one c
 (transport engage and tolerance trip) after the Step 26 rename, and "a reset happened" is otherwise
 invisible from outside. Must fail today on the first half.
 
-Built 2026-11-16 in `4abe4b0`, with the gate red first: `FAIL  sub-block host position rounding is not a
+Built 2026-11-16 in `a327d65`, with the gate red first: `FAIL  sub-block host position rounding is not a
 seek  [clears=9 expected=1]`, and the audible symptom red alongside it, `FAIL  overlapping host blocks do
 not play one hit twice  [fires at 64000 = 2 expected=1 clears=60]`, then both green. Common tail for the
 pair: `PASS - 148/148 checks passed`, `ctest -C Release` 100% out of 3, `npm test` 43 passed / 5 files,
@@ -959,7 +959,7 @@ one path and not the other. Then the real gate, and the reason this outranks a l
 Ableton, arm a MIDI track to SliceForge's output, record, and play the clip back through a different
 drum rack.
 
-Built 2026-11-16, red first. With production at `82d8866` and the new assertions in place, the smoke suite
+Built 2026-11-16, red first. With production at `f255144` and the new assertions in place, the smoke suite
 printed `FAIL - 171/175 checks passed` on `FAIL  MIDI out carries nothing but four note-on/note-off pairs
 [0/0 notes, 0 other events]`, `FAIL  MIDI out notes carry the scheduler offset, 36 + pad and the 32-sample
 gate [0 events: ]`, `FAIL  MIDI out notes are all on channel 10 [0 off-channel of 0]` and
@@ -1243,7 +1243,7 @@ test their own names (2026-11-16)
   (`parameter-locked sequencer step is audible` read at `:498` before and `:525` after): the four
   tolerance cites and the wiring-comment cite in 8C were re-pointed by
   reading the target line, not by arithmetic. The other six were already wrong at
-  `e0b246d` - each one was checked against `git show HEAD:native/Tests/SmokeTest.cpp`, so this is
+  `7378393` - each one was checked against `git show HEAD:native/Tests/SmokeTest.cpp`, so this is
   transcription, not drift - and
   `AGENTS.md` means exactly this when it says a cite is a snapshot and not an address, and every number
   below was re-read at the target line rather than offset - the plan has grown by 215 lines and
@@ -1261,11 +1261,11 @@ test their own names (2026-11-16)
   six entries is a prose edit in somebody else's historical record and is deliberately not done here; what
   is done is naming where each one actually lives.
   **Item 14 moved all of them again, and this list is re-pointed a second time for it.** `SmokeTest.cpp`
-  grew by 96 lines across **two** net-inserting hunks (+47 at `:1561`, +49 at `:1633`, from `b8e4523`'s
+  grew by 96 lines across **two** net-inserting hunks (+47 at `:1561`, +49 at `:1633`, from `3b0d30a`'s
   own hunk headers) beside two line-neutral edits, so the offset is uniform only *below the last of
   them* - every address this bullet re-points sits past `:1741`, and anything in the 17-line gap between
   the hunks would have moved by +47. Which is why the number was checked and not derived:
-  each of the twelve numbers above was re-read at its target line in `b8e4523` and every one names the
+  each of the twelve numbers above was re-read at its target line in `3b0d30a` and every one names the
   construct this bullet claims (`:2308` is `a real wav loads through the user-sample path`, `:2504` and
   `:2508` are the `0.349`/`0.844` pair, `:1788` is the `out.triggers[0].pad == 1` read below, `:2183` is the
   `"931 960 1080 "` characterisation). The file is now 2831 lines, and `SmokeTest.cpp` has grown by 587 since
@@ -1278,18 +1278,18 @@ test their own names (2026-11-16)
   What is left is positional fragility, not a false green: a later edit that lights a second step in that
   pattern keeps the check green while no longer proving which slot ran. LOW, and the real song-mode
   discriminator is the exact-list differential at `SmokeTest.cpp:1388` that Step 26 shipped.
-- **Every code-file cite in the five bullets above was re-read at its target line against `69e01ba`, and
-  the drift was caused by the two code commits that followed `c57f277`.** The offsets are not one number,
-  which is why arithmetic re-points nothing: `5f8815d` added 162 lines to `SmokeTest.cpp` but only 6 of
-  them above `:361`, so `:361` moved to `:367` while `:771` moved to `:933`; `16258b3` added 329 more, so
+- **Every code-file cite in the five bullets above was re-read at its target line against `69aa6c7`, and
+  the drift was caused by the two code commits that followed `a1fb055`.** The offsets are not one number,
+  which is why arithmetic re-points nothing: `064ba19` added 162 lines to `SmokeTest.cpp` but only 6 of
+  them above `:361`, so `:361` moved to `:367` while `:771` moved to `:933`; `0fd3c02` added 329 more, so
   the vault-era cites ended up 491, 493 and 489 lines below where they were written; `Sequencer.cpp` moved
   +13 above the exporter helper and +47 below it (956 -> 1003 lines); and `PluginProcessor.cpp` moved +52
-  in `5f8815d` alone (1196 -> 1255). Two dead cites were inside shipped source and were deliberately left
+  in `064ba19` alone (1196 -> 1255). Two dead cites were inside shipped source and were deliberately left
   where they are: `SmokeTest.cpp:523` cites `Sequencer.cpp:261` for the host-tempo preference (now `:274`),
   and `SmokeTest.cpp:1553`/`:1555` cite `Sequencer.cpp:291` (now `:304`) and `PluginProcessor.cpp:315-316`
   (the call is `:367`, the comment `:369-370`). Those are comment-only edits to files the gates compile, so
   each one costs a rebuild and a re-gate and should ride the next stage that touches a gated source, not a
-  doc commit. **That stage came: `b8e4523` repaired both, on a pass that was already rebuilding all four
+  doc commit. **That stage came: `3b0d30a` repaired both, on a pass that was already rebuilding all four
   targets for item 14, so they cost no extra gate.** `:523` now reads `Sequencer.cpp:274`, and the wiring
   comment reads `Sequencer.cpp:304` and `PluginProcessor.cpp:369-371` (comment plus argument, which is the
   honest span for "read once per block"). Both were line-neutral substitutions, which is why the twelve
@@ -1299,7 +1299,7 @@ test their own names (2026-11-16)
 - **The cap was then measured on this tree, not only on the one it was proposed on.** The probe recorded
   above ran while the suite was 165 checks, and it *inferred* that the floored form of the cap would keep
   `a small block keeps the original tolerance window` green. That inference is now a measurement, taken on
-  `5afa40f` with `native/Source/Sequencer.cpp` at `607ef68f203f88528ddaf28efe804f7f0f8d96e7d597d0043c67c7d163d1e11b`
+  `ed4585a` with `native/Source/Sequencer.cpp` at `607ef68f203f88528ddaf28efe804f7f0f8d96e7d597d0043c67c7d163d1e11b`
   (blob hash and worktree hash agree - this file is `i/lf w/lf`) and the suite at 186 checks. Applying the
   unfloored `jmin (blockPpq * 0.5, 0.5 / division)` prints `FAIL - 183/186 checks passed` with three reds:
   that small-block check at `[clears=9 expected=1]`, the `KNOWN DEFECT:` one-step-edit characterisation at
@@ -1316,13 +1316,13 @@ test their own names (2026-11-16)
   carries no header, no hashes and no exit codes - and it is left under that name rather than renamed,
   because its name is not what is wrong with it.
 - **The `hostResyncs` -> `historyClears` rename was executed in exactly one stage, and the disputed counts
-  are three different true things.** In `e0b246d` the old name sits at 7 sites in 3 files
-  (`Sequencer.cpp` 1, `Sequencer.h` 1, `SmokeTest.cpp` 5). All 7 are renamed 1:1 inside `c57f277` and
-  nowhere else: `git log -S hostResyncs` returns `c57f277` plus `4abe4b0`, the commit that introduced the
-  field, while `git log -S historyClears` returns `c57f277` alone. That commit removes 7 lines carrying the
+  are three different true things.** In `7378393` the old name sits at 7 sites in 3 files
+  (`Sequencer.cpp` 1, `Sequencer.h` 1, `SmokeTest.cpp` 5). All 7 are renamed 1:1 inside `a1fb055` and
+  nowhere else: `git log -S hostResyncs` returns `a1fb055` plus `a327d65`, the commit that introduced the
+  field, while `git log -S historyClears` returns `a1fb055` alone. That commit removes 7 lines carrying the
   old name and adds 9 carrying the new one, because the 7 renamed pairs are joined by two net-new mentions
   - the `probabilityRollFor` comment at `native/Source/Sequencer.h:163` and this doc's own prose at `:669`.
-  So: 8 live code sites on `5afa40f` (`Sequencer.h:153` and `:163`, `Sequencer.cpp:312`,
+  So: 8 live code sites on `ed4585a` (`Sequencer.h:153` and `:163`, `Sequencer.cpp:312`,
   `SmokeTest.cpp:875` `:1013` `:1101` `:1120` `:1123`), and zero old sites in any source or test file, in
   the commit or in the worktree - `git grep -q hostResyncs HEAD -- native` exits 1, and the same against the
   working tree. The rename moved no smoke total: exactly one of the 9 added lines is a `check (` call, and
@@ -1339,7 +1339,7 @@ test their own names (2026-11-16)
   processor asserts 348 (`SmokeTest.cpp:181`) and the loaded VST3 asserts 350 (`HostTest.cpp:110`); the
   difference is exactly the wrapper's `Bypass` and `Program`, and both numbers are current - 347 and 349
   were the same two views before `seq.pattern`. That sentence already exists in `AGENTS.md`, in
-  `native/README.md` and in `c57f277`'s own message, so no historical commit needed rewriting. What was
+  `native/README.md` and in `a1fb055`'s own message, so no historical commit needed rewriting. What was
   nearly repaired into a wrong value by reading the two counts as a split is the index: `seq.pattern` sits
   at 347 in *both* views, because the wrapper appends its pair after the layout, so the host's own check
   (`HostTest.cpp:132`, `patternIndex != parameters.size() - 3`) and the bare check's `getLast()` agree on
@@ -1425,7 +1425,7 @@ Item 13a's premise is right about the mechanism and wrong about the history. The
 `native/Tests/HostTest.cpp:110` returns 1 on the parameter count at `:114` before the by-id block runs, so on a
 build where `seq.pattern` is *deleted* the identity conjunct at `:132` is unreachable, and delete-only bisection
 can therefore never show that half of the gate works. The history: the total-preserving reorder had already been
-run twice, at 06:37:22 and 07:47:49 (`stageC-s26-mut2-host.log`, `stageC-s26-m2final-host.log`), and `c57f277`
+run twice, at 06:37:22 and 07:47:49 (`stageC-s26-mut2-host.log`, `stageC-s26-m2final-host.log`), and `a1fb055`
 quotes its FAIL line in its own message. What was missing is a capture on the then-current 186-check tree with a green
 pair on restored bytes. This section is that capture.
 
@@ -1433,7 +1433,7 @@ pair on restored bytes. This section is that capture.
   pair at `:192-193`; moving the pair below the selector keeps the total at 348 layout / 350 host and changes only
   which control occupies the tail. `git stash show -p` records it as 2 added / 2 removed and the file stays 364
   lines, so the red window is line-neutral by construction.
-- **Red, on a build of `904b289` carrying that reorder** (`native/build/pm/item13a-mut-*`, mutated source
+- **Red, on a build of `0e65892` carrying that reorder** (`native/build/pm/item13a-mut-*`, mutated source
   `39544ca5001a…`). All four of the brief's expectations, each quoted from its own command's output and exit:
   `  FAIL  seq.pattern is a four-choice parameter appended after every existing id  [param=Active Pattern range=0.000..3.000 step=1.000 last=global.out]`
   then `FAIL - 185/186 checks passed`, `smoke exit=1` - the smoke total did not move, one check did;
@@ -1463,23 +1463,23 @@ pair on restored bytes. This section is that capture.
   worktree hash; and for a deliberately-red window, commit-then-revert beats `git stash`, because a stash is
   one mutable stack shared by every lane working in this tree.
 - **13b was already discharged; its own file was not.** The 9 + 21 x 16 + 2 + 1 composition and the prescriptive
-  "Quote the total as 350 and name the composition" shipped in `c57f277` at `AGENTS.md:143-150` and
-  `native/README.md:154-161`; the brief's `:136`/`:137`/`:139` are `e0b246d` addresses, which is why they read as
+  "Quote the total as 350 and name the composition" shipped in `a1fb055` at `AGENTS.md:143-150` and
+  `native/README.md:154-161`; the brief's `:136`/`:137`/`:139` are `7378393` addresses, which is why they read as
   unpatched. Sweeping AGENTS.md's numeric cites instead found six dead ones - `PluginProcessor.cpp:23` (live
   `:75`), the four `VRAC_EXTRA` cites `:974`/`:978`/`:1036`/`:1041` (live `:1043`/`:1047`/`:1116`/`:1121`) and
-  `HostTest.cpp:69` (live `:110`) - and each was proved live when written: `git show c57f277:native/Tests/HostTest.cpp`
-  puts the `!= 350` assert on line 69, and `5f8815d` moved it to 110 by adding 41 lines above it. Drift, not
+  `HostTest.cpp:69` (live `:110`) - and each was proved live when written: `git show a1fb055:native/Tests/HostTest.cpp`
+  puts the `!= 350` assert on line 69, and `064ba19` moved it to 110 by adding 41 lines above it. Drift, not
   transcription. All six were corrected line-neutrally - 183 lines before and after, 3 changed - and landed in
-  `e6e2c44`, a concurrent docs commit whose own message re-verifies every one of those targets independently. The
+  `99b5d5f`, a concurrent docs commit whose own message re-verifies every one of those targets independently. The
   durable form is a name anchor ("the `!= 350` count assert"); `AGENTS.md:139` is what tells the reader to check.
 - **13c and 13d, from these logs only.** Unique passing check names: 148 in `stageB-precommit-smoke.log`, 169 in
   `stageC-s26-commit-smoke.log`, 186 in `item13a-final-smoke.log`, and no name repeats inside any of the three.
-  148 -> 169 is 27 added and 6 removed names; 169 -> 186 is 17 added and 0 removed. `c57f277` published "21
+  148 -> 169 is 27 added and 6 removed names; 169 -> 186 is 17 added and 0 removed. `a1fb055` published "21
   checks added, 0 removed, 1 renamed", which reconciles as arithmetic (27 - 6 = 21) but undercounts the renames
   by five: the six names that disappeared are `the parameter surface is the documented 347 controls` plus four
   `… resyncs …` checks and `a small block keeps the original resync window`, all renamed in place into the
   `clears`/`tolerance` vocabulary. The true sentence is 21 new checks, 6 renamed in place, 0 deleted. Forward
-  correction only - `c57f277` is shipped and amending it now rewrites three commits, which stays the owner's call.
+  correction only - `a1fb055` is shipped and amending it now rewrites three commits, which stays the owner's call.
 - **One tuple re-measured rather than inherited - and re-measured again by 8H, which supersedes it.**
   `launch/` and the installed module were then byte-identical (`1a0747b8e6ca…`, 24,530,432 B, link stamp
   1794820043 = 10:07:23), and a build of that HEAD differed from them in four bytes: `cmp -l` names 305-306
@@ -1487,13 +1487,13 @@ pair on restored bytes. This section is that capture.
   was then 5 members with 0 backslash separators. The green host test still
   loads the build copy, so it describes these bytes only through that comparison, not through the path it opens.
 - **Not verified here, and untouched by it:** no install, no re-export, no push, and no source change
-  survived this section; 13g's `0.08` literal is untouched, and `904b289..HEAD` is `AGENTS.md` alone.
+  survived this section; 13g's `0.08` literal is untouched, and `0e65892..HEAD` is `AGENTS.md` alone.
 
 ## 8F. Item 14: the stub was ordered as a coverage probe and the tree reddened (recorded 2026-11-16)
 
 The dispatch said the pattern parameter path has no test at all, predicted that stubbing
 `readActivePattern` to `return 0` would leave the smoke suite green, and called that expected green the
-finding. It was run on `1bfe8e8` exactly as ordered and it does not stay green, so the finding is not the
+finding. It was run on `dc4322d` exactly as ordered and it does not stay green, so the finding is not the
 one the brief predicted - and the reason it is not is more useful than the prediction was.
 
 - **183/190, seven reds, smoke exit 1.** `native/Source/Params.cpp:307` became `return 0;`, all four
@@ -1508,7 +1508,7 @@ one the brief predicted - and the reason it is not is more useful than the predi
   0 is its own expected value, which is the by-construction agreement 8C already records. So 14a's "zero
   coverage" was a stale snapshot of a 165-check tree, and the sixteen call sites that exist now refute
   it - twelve reads through `getPatternParameter`, four writes through `setPatternParameter`, counted on
-  `b8e4523`.
+  `3b0d30a`.
 - **Three of the four checks 14a asked for were already shipped, and are reported rather than copied.**
   (i) mirror 0 with parameter 3 *is* ladder arm D (`:1607`, mirror table at `:1609-1612`). (iii) mirror 3
   with the sentinel is the class of `with no parameter in sight the document still decides` at `:1398-1404`;
@@ -1563,7 +1563,7 @@ one the brief predicted - and the reason it is not is more useful than the predi
   hand the document straight to the engine and never touch the route that lost the flag. That pair of
   results is the whole argument: the first says the new arms agree with the old ones, the second says only
   the new arms can see the processor.
-- **Gate, on the shipped bytes.** `b8e4523` added four checks, removed none, renamed none; the four
+- **Gate, on the shipped bytes.** `3b0d30a` added four checks, removed none, renamed none; the four
   existing ladder names are byte-identical, and the green log holds 190 smoke `ok` lines (218 unique
   names across the log, layout's 28 included). Build exit 0, `PASS - 190/190 checks passed` smoke exit 0,
   host `350 = 348 layout + Bypass + Program` and `PASS VST3 host test` exit 0, layout 28 checks exit 0,
@@ -1572,14 +1572,14 @@ one the brief predicted - and the reason it is not is more useful than the predi
   11:56:41 > 11:55:46, exe linked 12:02:36, VST3 11:56:31 > the last PluginProcessor.cpp write. CPU on
   this run: 6.91% of one core, one measurement, machine load unmeasured - 8C's warning about treating a
   wall-clock number as a comparison applies, and the four added checks add fixtures, not engine work.
-- **Two errors this pass published, and their corrections.** (1) `b8e4523`'s message cites the sentinel
+- **Two errors this pass published, and their corrections.** (1) `3b0d30a`'s message cites the sentinel
   check at `SmokeTest.cpp:1490-1496` and 14b's round trip at `:1549-1553`. Both are wrong: the true
   addresses are `:1398-1404` and `:1453-1467`, and the cause is that an offset was applied to two
   addresses sitting above the first inserting hunk, which therefore never moved. The tell is that the
   two wrong numbers are not even the same offset - `:1490` is `:1398` +92 and `:1549` is `:1453` +96 -
   so they were reconstructed, not re-read, which is what 8C's re-point bullet exists to prevent. The
   blob hash the same message publishes, `37a8fbfe5454…` for `native/Tests/SmokeTest.cpp`, was verified
-  against `git show b8e4523:native/Tests/SmokeTest.cpp` and is correct. (2) Two lines in
+  against `git show 3b0d30a:native/Tests/SmokeTest.cpp` and is correct. (2) Two lines in
   `item14-F3-songparam.log` labelled "restore proof" were printed after that run's mutation had already
   been applied, so they show a mutated hash; the true F1/F2/F3 restore proofs are in the F4 log header -
   Params.cpp `fb4f7b44…` and blob `f9869c64…`, Sequencer.cpp `607ef68f…` and blob `370e3eab…`, both equal
@@ -1595,10 +1595,10 @@ one the brief predicted - and the reason it is not is more useful than the predi
   the publishable value is the blob's `a73bf191…`, and both are recorded side by side in the log rather
   than one of them quoted alone.
 - **The README paragraph grew the file by two lines, and that is where the drift lands.**
-  `native/README.md` is 495 lines against 493 at `1bfe8e8`, so a cite to a README line below `:218` is
+  `native/README.md` is 495 lines against 493 at `dc4322d`, so a cite to a README line below `:218` is
   +2 on this tree. Two of the plan's README cites were already dead before this commit, and the growth
   did not break them: `:250` cites `native/README.md:394` for "32 fixed voices; no audio-thread
-  allocation or locking", which is `:439` at `1bfe8e8` and `:441` then, and `:537` cites `:422` for the
+  allocation or locking", which is `:439` at `dc4322d` and `:441` then, and `:537` cites `:422` for the
   JUCE licence sentence, which is `:488` and `:490`. Named here, not rewritten there, on 8C's precedent
   that re-pointing a historical record is a prose edit while saying where a string lives is a fact. 8H
   grew the file again (`:446` and `:495` now), re-pointed `:250` as a location fact, and deleted `:537`'s.
@@ -1607,14 +1607,14 @@ one the brief predicted - and the reason it is not is more useful than the predi
   still gated only engine-side; the new arms deliberately remove slot arithmetic as a variable. Nothing
   installed, nothing re-exported to `launch/`, nothing pushed: the module in `Common Files\VST3` is still
   the owner's copy and the zip is still the 04:56 build, both behind this HEAD. 14e's item-13 list was
-  delivered last pass (`e6e2c44`, `780ec07`, `1bfe8e8`) and the `0.08` literal is untouched, as ruled.
+  delivered last pass (`99b5d5f`, `7fc42ff`, `dc4322d`) and the `0.08` literal is untouched, as ruled.
 
 ## 8G. Item 15: the notify-drop mutation reddened seven checks, and 15c's open list had already shipped
 
 - **What 15 asked, and what the landed commit already was.** 15a(2), 15a(3) and 15b describe a working-tree
   snapshot, not a shipped one. The two locals they are built on - `notified` and the singular `firedPad` -
   have never existed in any commit on this branch: `git log --all -S "bool notified"` and
-  `git log --all -S "firedPad = "` over `native/Tests/SmokeTest.cpp` both return nothing. What `c57f277`,
+  `git log --all -S "firedPad = "` over `native/Tests/SmokeTest.cpp` both return nothing. What `a1fb055`,
   the very commit under review, actually landed already carried `valueLanded`, the `NotifySpy` and the
   set-based song-mode assert, and all three are still there: `valueLanded` at
   `native/Tests/SmokeTest.cpp:1442-1443`, the four-conjunct host check at `:1444-1451`, the listener at
@@ -1623,13 +1623,13 @@ one the brief predicted - and the reason it is not is more useful than the predi
   all 60 blocks, `list == "1 "` at `:1388`, the chain-slot justification at `:1379-1383`: all eight slots
   hold pattern 1, and pattern p lights row p. The five `firedPads` hits are the shared lambda at `:1299` and
   its four uses. Nothing was owed here, and the brief's `:1041` and `:1069-1072` cannot be re-pointed,
-  because they were never committed bytes: at `e0b246d` those addresses sit in the Vault block, at
-  `c57f277` in a grid-drawing lambda and the torn-lane counter, and from `5f8815d` onward in the
+  because they were never committed bytes: at `7378393` those addresses sit in the Vault block, at
+  `a1fb055` in a grid-drawing lambda and the torn-lane counter, and from `064ba19` onward in the
   probability/flam/ratchet setup. Unrelated code in every blob, which is what reading a working tree at
   06:21 costs.
 - **The mutation, applied and reverted byte-exactly (`item15-mut1-*`).** One line, line-neutral, in
   `setParameterValue` at `native/Source/PluginProcessor.cpp:252` - the brief's `:195-201` was exact for
-  the committed file at 06:21 (`git show e0b246d:native/Source/PluginProcessor.cpp` puts the function
+  the committed file at 06:21 (`git show 7378393:native/Source/PluginProcessor.cpp` puts the function
   there and the call at `:199`), and it has since moved. Before:
   `parameter->setValueNotifyingHost (range.convertTo0to1 (value));`. After:
   `parameter->setValue (range.convertTo0to1 (value));`. Pre-mutation worktree SHA-256 `e8a4c882…`,
@@ -1668,25 +1668,25 @@ one the brief predicted - and the reason it is not is more useful than the predi
   because 0 is exactly what arm A expects. That is the sentinel degeneracy 8C and 8F keep running into.
 - **The optional listener of 15a(3) is not redundant, and the run shows it.** The same FAIL line prints
   `notifications=0 notified=-1000`, so the `NotifySpy` dies with the atomic rather than duplicating its
-  evidence. It was already in `b8e4523`; nothing had to be added, and the branch in the dispatch ("if nothing
+  evidence. It was already in `3b0d30a`; nothing had to be added, and the branch in the dispatch ("if nothing
   reddens, add the listener and say so") did not fire.
 - **Three checks stay green under this mutation and should.** `song mode lets the chain pick the pattern and
   the parameter stay silent`, `with no parameter in sight the document still decides` and `a pattern above the
   bank is clamped, not walked off` all call `processSequencerBlock` with an explicit live index and never
   touch APVTS, so they gate engine precedence rather than the notify path. No coverage was lost; the notify
   path is guarded by seven checks and the song-mode arms guard a different invariant.
-- **13a and 13b, which 15c still listed as open, shipped last pass.** 13a is in `780ec07`: the
+- **13a and 13b, which 15c still listed as open, shipped last pass.** 13a is in `7fc42ff`: the
   total-preserving reorder that moves the output-stage pair below `seq.pattern`, reddening smoke on
   `last=global.out` at `185/186` and the host on `index 345 of 350` with the count unchanged, the assert that
   fired being `patternIndex != parameters.size() - 3` at `native/Tests/HostTest.cpp:132` and its print at
-  `:137`, then green at 186/186 with `N = 347`. 13b is in `c57f277` plus `e6e2c44`: `AGENTS.md:143` cites
+  `:137`, then green at 186/186 with `N = 347`. 13b is in `a1fb055` plus `99b5d5f`: `AGENTS.md:143` cites
   `native/Tests/HostTest.cpp:110` asserting exactly 350 and `:144` gives the 9 + 21 x 16 + 2 + 1 composition,
   so the brief's "AGENTS.md 136-139 still instructs 349" is false of the file as shipped.
 - **The other two 15c premises were stale too.** "There is no green smoke or host log yet" was written
   against the failed 06:11 build: `item13a-final-smoke.log` prints `PASS - 186/186 checks passed` at 11:17
   and `item14-final-gate2.log` prints `PASS - 190/190 checks passed` at 12:03, with this pass's
   `item15-final-gate.log` the third. "11 files, all code, zero docs" described a tree caught mid-mutation;
-  this pass started from a clean `eca3a79`. All of those logs are gitignored (`.gitignore:10`), which is why
+  this pass started from a clean `5fba7d3`. All of those logs are gitignored (`.gitignore:10`), which is why
   the numbers are repeated here instead of left as pointers.
 - **Green pair on the restored tree (`item15-final-gate.log`).** `BUILD_EXIT=0` with `PluginProcessor.cpp`
   compiled in all three of the module, smoke and layout targets (log lines 33, 45, 53). Census at seconds:
@@ -1799,7 +1799,7 @@ ahead of any measurement, gated the bounce on a property it cannot have, and led
 whose answer is a design decision rather than a fixture. Round 2's sequence, with each link justified:
 
 **1. Close out Phase 0 first — done, 1.5 d.** Step 29 (0.25) landed first, because everything below is
-judged by `ctest`; Steps 23 (0.25) and 22 (0.5) then landed together in `4abe4b0` on 2026-11-16, in the
+judged by `ctest`; Steps 23 (0.25) and 22 (0.5) then landed together in `a327d65` on 2026-11-16, in the
 order that forced the tolerance before the pass counter. Step 5 (0.5) closed as *evidence* rather than
 code: its three sub-deliverables were one already built (`HostTest.cpp:110`'s exact 350-parameter
 literal), one measured to not exist (the "stale" `AGENTS.md` references), and one refuted by JUCE itself.
@@ -1827,7 +1827,7 @@ forward the moment a public release is actually on the table — it does not nee
 Steps 1-19 and 22-29 add up to **41.75 dev-days** at midpoint (the ranges in Steps 7, 8, 11, 18, 19, 24
 and 26 widen that to ~38-45 d), so "roughly 40" is the honest headline. **10.75 d are banked** — Steps 1-4
 (2.75), Step 29 (0.25), Step 16 (1), Step 5 (0.5), Steps 22 (0.5) and 23 (0.25), Steps 26/27/28 at 3.75
-(`c57f277`, `16258b3`, `5f8815d`), Step 17's determinism half (0.25) and Step 24 (1.5, recorded in 8O) — so
+(`a1fb055`, `0fd3c02`, `064ba19`), Step 17's determinism half (0.25) and Step 24 (1.5, recorded in 8O) — so
 **~31 d remain**, plus Step 20 (macOS 3-5 d), Step 21 (a decision, not code) and the Ableton listening
 pass, which banks nothing by itself. Round 1's "~31 d", then "8.0 d / ~33.75 d", then "9.25 d / ~32.5 d"
 are the three stale pairs this paragraph has printed: true the day they were written, a landed step behind
@@ -1893,27 +1893,27 @@ Step 29 was built the same day, and `native/Tests/SmokeTest.cpp` is the only fil
   empty, together with an empty `git diff -- $f`. `git status` still lists the file as modified because
   the mtime moved.
 - **Corrected forward, 2026-11-16 — two committed messages published a hash their own commit cannot
-  reproduce, and this bullet existed before both of them.** `c57f277` (Step 26) and `5f8815d` (Step 28)
+  reproduce, and this bullet existed before both of them.** `a1fb055` (Step 26) and `064ba19` (Step 28)
   each list `native/Source/PluginProcessor.cpp` under "restored bytes" using the **working-tree**
   SHA-256 — `704272544c…` and `e8a4c882…` — while the blob each of those commits actually stores is:
 
   | commit | published (worktree, unreproducible) | `git show <commit>:native/Source/PluginProcessor.cpp \| sha256sum` |
  |---|---|---|
-  | `c57f277` | `704272544c8cbea9…` | `f9ecce1d300c2318a0a18fc68fa6dfaeae8242515ee7a1b4042f4cf017d4f0c1` |
-  | `5f8815d` | `e8a4c88277bbfd8e…` | `a73bf191a6a9d15bafb7ef0d2a99f6ce26ecec3bf096b5c594c4139e5b36ba60` |
+  | `a1fb055` | `704272544c8cbea9…` | `f9ecce1d300c2318a0a18fc68fa6dfaeae8242515ee7a1b4042f4cf017d4f0c1` |
+  | `064ba19` | `e8a4c88277bbfd8e…` | `a73bf191a6a9d15bafb7ef0d2a99f6ce26ecec3bf096b5c594c4139e5b36ba60` |
 
   The cause is the one measured above: `git ls-files --eol` reports `i/lf w/crlf` for this file, the only
   source file in either set that is CRLF in the working tree, so `git add` normalized it on the way in
   and the raw working-tree hash can never be recomputed from the commit. Every other hash in both
-  messages *does* reproduce (`fb4f7b44…`/`6c69b8d8…`/`d8f171a6…`/`63f08cd4…` for `c57f277`;
-  `93eb69d7…`/`fb875e6c…`/`f9375308…`/`cf7a74ac…`/`61cffc9b…` for `5f8815d`), which is why the mistake is
+  messages *does* reproduce (`fb4f7b44…`/`6c69b8d8…`/`d8f171a6…`/`63f08cd4…` for `a1fb055`;
+  `93eb69d7…`/`fb875e6c…`/`f9375308…`/`cf7a74ac…`/`61cffc9b…` for `064ba19`), which is why the mistake is
   easy to miss: four and five of six are right, so the list reads as if it were all right.
   **The rule for any future record line is `git show <sha>:<path> | sha256sum`, never `sha256sum <path>`,**
   and if a worktree hash is quoted it must be labelled as the worktree hash.
-  This is a forward correction, not an amend: when the owner authorized the correction `c57f277` was
-  `HEAD~1`, and `5f8815d` then made it `HEAD~2`, so rewriting it would also rewrite `82d8866` and
-  `5f8815d` and orphan two citations that name `82d8866` as their red-test baseline (the `5f8815d`
-  message's own "Production at `82d8866`" line, and §8D above). Nothing is pushed, so both routes were
+  This is a forward correction, not an amend: when the owner authorized the correction `a1fb055` was
+  `HEAD~1`, and `064ba19` then made it `HEAD~2`, so rewriting it would also rewrite `f255144` and
+  `064ba19` and orphan two citations that name `f255144` as their red-test baseline (the `064ba19`
+  message's own "Production at `f255144`" line, and §8D above). Nothing is pushed, so both routes were
   open; the cost of the rewrite is every reference this day wrote down, and the defect is a *number in a
   message*, which the corrected pair above answers. The CR-stripped `diff` remains the restore witness
   for this one file.
@@ -2008,13 +2008,13 @@ Appended at the end rather than inserted after 8G, on the AGENTS.md precedent: a
   deletions - line-neutral against the 1925-line file that every cite in it addressed, and that number is
   of-then (this file was 2476 lines that day, 2943 at the 8Q renumber); the whole commit carries 96 against 18, because 8H itself is 78.
 
-- **Corrected forward, same day: `b481d74` published a hash it had not measured.** Its "zip
+- **Corrected forward, same day: `e183141` published a hash it had not measured.** Its "zip
   `166175ed33fe8ba8a6a7c92bdcf4b05914bb8145ee908d7c14f7d1a4f3a4b1a4`" line is wrong from byte 13 onward -
   the true SHA-256 of `launch/`'s copy and of its blob is
   **`166175ed33fe3f77dd27440f7a6b96d2627101ff8148cedf13024417cb3cc156`**. The first twelve hex digits were
   measured; the remaining fifty-two were written from the shape of a hash rather than out of a command. That
-  makes three hash defects this plan has recorded and only two of them the same defect: `c57f277` and
-  `5f8815d` published *worktree* hashes for a `w/crlf` file, which are unreproducible, while this one is a
+  makes three hash defects this plan has recorded and only two of them the same defect: `a1fb055` and
+  `064ba19` published *worktree* hashes for a `w/crlf` file, which are unreproducible, while this one is a
   number typed instead of copied, which is unreproducible *and* never measured. The tripwire is the one
   already named here: a hash is copied out of the tool output into the message, never retyped.
   Re-deriving the whole set with `git show HEAD:<path> | sha256sum` also produced two facts the message
@@ -2025,7 +2025,7 @@ Appended at the end rather than inserted after 8G, on the AGENTS.md precedent: a
   not labelled as such. And the `LICENSE` member hash the archive gate compares, `0d96a4ff68ad6d4b…`, was
   measured and left out of the list while the four text members around it were named.
   This correction is docs-only, so the deliverable tuple above still describes the built bytes: nothing was
-  recompiled, re-exported, re-installed or re-gated by it, and the 190/190 plus ctest 3/3 in `b481d74` remain
+  recompiled, re-exported, re-installed or re-gated by it, and the 190/190 plus ctest 3/3 in `e183141` remain
   the green that owns `ce66de92…`.
 
 ---
@@ -2035,7 +2035,7 @@ Appended at the end rather than inserted after 8G, on the AGENTS.md precedent: a
 Appended at the end for the 8H reason: inserted anywhere else it would shift every cite below it, and this
 file cites its own line numbers.
 
-- **The string Step 16 left open is in the deliverable.** `native/CMakeLists.txt` is +3/-0 against `3b70d7d`
+- **The string Step 16 left open is in the deliverable.** `native/CMakeLists.txt` is +3/-0 against `81d4c67`
   (181 -> 184 lines): one `COMPANY_COPYRIGHT` argument inside `juce_add_plugin` (`:105`) and the
   two comment lines above it. Read back out of the PE, its value is `SliceForge 1.0.0 - licensed under the
   GNU Affero General Public License v3.0 - Corresponding Source:
@@ -2497,7 +2497,7 @@ and the only honest diff left in the tree was this file describing itself wrongl
 - **Four test cites re-read rather than re-derived.** `native/Tests/HostTest.cpp:69` → `:110` (the
   `!= 350` literal), its composition print `:107` → `:148`, the pattern-index print `:102` → `:143`, and
   `SmokeTest.cpp:171`/`:177` → `:181` (the `== 348` check). One was deliberately left alone: `:237` quotes
-  the string `AGENTS.md` held when Step 5 audited it at `4abe4b0` — a record of its own time, per the
+  the string `AGENTS.md` held when Step 5 audited it at `a327d65` — a record of its own time, per the
   precedent at `:1999`. `AGENTS.md:143` already cites `:110`, so nothing live disagrees any more.
 - **§11's arithmetic was the actual defect, and it was a present-tense claim.** It said "Eight days are
   banked … ~33.75 d remain" and named Steps 5 + 23 + 22 as the Ableton-visible remainder, all three of
@@ -2594,7 +2594,7 @@ design each: `sliceGapSeconds` at `native/Source/Engine/Slicer.cpp:98-109` and `
   grabbable. The other residual is upstream of this step: `minGapSeconds = 0.115` (`Slicer.cpp:48`,
   `slicer.ts:63`) still fuses a fast hat run into one slice, and that is Step 25's work, not this one's.
 - **The native README was sixteen checks stale, and the restamp was wrong once before it was right.**
-  `cc971bb` raised the suite 190 → 206 and restamped this document while missing `native/README.md`, so
+  `9b1ab37` raised the suite 190 → 206 and restamped this document while missing `native/README.md`, so
   the file that ships inside the zip was describing a build three commits old. Fixing it then produced a
   second defect: the CPU sentence was written from memory of writing it and printed 4.34 / 4.72 / 5.00 —
   none of which appears in a clean 217/217 log — while the runs at 4.56 and 4.86 went unquoted. The draft
@@ -2606,7 +2606,7 @@ design each: `sliceGapSeconds` at `native/Source/Engine/Slicer.cpp:98-109` and `
   root cause is the one §8N named: a number in prose is a claim with an expiry date, and re-measuring means
   running the command, not re-reading the sentence. The root README's
   "(43 tests, 5 files)" was stale the same way before this step even started — HEAD was already 53 in 6.
-- **§8N's banking pair is superseded by this step**, per its own note: 9.25 d / ~32.5 d described `05b85ef`;
+- **§8N's banking pair is superseded by this step**, per its own note: 9.25 d / ~32.5 d described `54980d5`;
   §11 now says 10.75 d banked and ~31 d remain, with Step 24's 1.5 d of its 1.5-2 d estimate banked here.
 - **Deliverables re-exported from the gated tree, and the tuple agrees.** Two exports (both exit 0): the
   first because `native/README.md` is one of the six text members, the second because the CPU sentence
@@ -2798,13 +2798,13 @@ variations**.
   reproducible from a fresh clone, unlike the four `w/crlf` sources above; this section deliberately records
   no hash of its own file, because editing it would invalidate what it says.
 - **Owed after this, none of it code.** The owner's commit and push — this step and Step 24 are both still
-  uncommitted at `c966a71`, 30 dirty paths (26 modified, 4 untracked) — then the `launch/` and zip re-export
+  uncommitted at `b1f1b4e`, 30 dirty paths (26 modified, 4 untracked) — then the `launch/` and zip re-export
   from the committed tree. Measured now: `launch/` carries the Standalone `83745c09b1cb3c0c…` and the module
   `9f74b739600a474a…`, while the gated build is `0e2a0d1bc6f01c01…` / `a1828f3eca6e1ad8…`, so the archive in
   the repo predates this change and no green test has ever described it. *(Superseded 2026-11-21: the re-export and the install both landed that afternoon; the ship record at the end of 8Q carries the tuple that now agrees in all four places.)* Then the install into
   `%ProgramFiles%\Common Files\VST3`, and the listening pass: sixty rows pass every structural check, and
   whether HOUSE DEEP reads as house and DILLA reads as Dilla is a judgement no check here makes.
-  One disclosure for whoever reads the diff: the README that `9659b78` committed two steps ago says
+  One disclosure for whoever reads the diff: the README that `7b6601b` committed two steps ago says
   `217/217` and still names `PAT PRESET` with "six built-in pattern presets", and its own commit subject
   claims every number on it was re-measured. Both are true of that commit — the bank was not in the tree
   when it was written — so the `237/32` restamp above is not a correction of the peer's measurement, it is
@@ -2918,7 +2918,7 @@ above: `README.md`'s suite table (`253/253`, `68 tests across 8 files`) and `nat
 *Current result* paragraph, its arithmetic sentence (`217 − 2 + 22 = 237`, then `237 + 16 = 253`) and its `Tests/` tree
 listing. Historical run records in earlier sections were left as written, dated, and annotated rather than rewritten -
 including this file's own self-recorded line count at the 8H section, now marked *was 2476 that day*. **Those four 253s
-were the correct stamp for commit `7a92a6d` and are superseded by the 256 recorded at the end of this section, and in turn by the 257 recorded below.**
+were the correct stamp for commit `7530952` and are superseded by the 256 recorded at the end of this section, and in turn by the 257 recorded below.**
 
 Nothing here is neutral about line numbers: the Step 25 entry grew by three lines and the two status annotations by one more,
 so every `:NNNN` cite below roughly `:712` in this file sits four lines lower than the section that printed it. That includes
@@ -2926,7 +2926,7 @@ the count in the sentence before this one. `docs/next-steps-plan.md` has been de
 now; this is one more named shift, not a new class of problem, and it is why the step entries above cite `SlicerTuning.h`
 by symbol rather than `Slicer.cpp:47-49` by number.
 
-At the `7a92a6d` gate the green was on the bytes as they stood: the last native source to move was `SlicerTuning.h` at
+At the `7530952` gate the green was on the bytes as they stood: the last native source to move was `SlicerTuning.h` at
 11:46:36 (a comment), the full build finished after it, and `s25-final-smoke.log` printed `253/253` at 11:48:58. The doc
 edits after that touched no translation unit, so no re-gate was owed by them - but any source edit does owe one, and the
 number to compare against is in that log, not in this paragraph.
@@ -3031,7 +3031,7 @@ the arithmetic sentence (`237 + 21 = 258`), its run count and CPU list, and the 
 
 The re-export, the screenshot restamp and the machine-wide install were gated on the owner and are done. Every number below
 is from the runs named with it, and the source tree was provably clean first: `git status --porcelain -- native/Source
-native/Resources native/CMakeLists.txt src` printed nothing, and HEAD was `f61087b`, so what was compiled is what is committed.
+native/Resources native/CMakeLists.txt src` printed nothing, and HEAD was `8c7a3c0`, so what was compiled is what is committed.
 
 - `cmake --build native/build --config Release --target SliceForge_VST3 SliceForge_Standalone --parallel 2` exit 0
   (`native/build/ship-build.log`); it linked `SliceForge_SharedCode.lib`, the Standalone and the VST3 bundle.
@@ -3090,7 +3090,7 @@ was eight greens that had nothing to compare.
   36, 44, 44, 51 - and concluded "eight of nine refused" and "`hat-16th`, at 51 events, is beyond every knob
   and must be thinned". `onsets_seconds()` dedupes note *starts*, and two instruments struck on one beat are
   one onset to a detector, so 51 notes are 48 references and 44 are 34. Nothing was thinned; the mistake was
-  reading the generator's `notes=` column as `refN`, and commit `1669a6d` published it in its message.)*
+  reading the generator's `notes=` column as `refN`, and commit `bebca29` published it in its message.)*
 - **Falsifiers, both run against these bytes.** *wk-f1*: `kOnsetBiasSeconds` 0.006 → 0.020 (header
   `583caff534cc026705fbb32358dfde116a6c9ac8e8f91c1a81e64d92cae97e44` before, `193f31b3803ef8a77063aeb1a5710e31df15a4f91dd92fbe95ea6e6379104bf4`
   during) gave `FAIL - 255/258`: the tuning-stamp check named the constant, the band check caught all six
@@ -3128,7 +3128,7 @@ was eight greens that had nothing to compare.
   then looks for the `.mid` beside a take, so committing authorship ahead of audio is safe in exactly the
   direction that matters - the reverse (a reference without audio) is the named red that `--publish` now
   refuses to create.
-- **The defect this found is in my own previous commit.** `1669a6d` published `synth-takes.cjs --check` as
+- **The defect this found is in my own previous commit.** `bebca29` published `synth-takes.cjs --check` as
   proof that tier 1 is "byte-reproducible", and both that check and the new one compared the LF text
   payloads byte for byte. That is a property of this worktree, not of the repo: `git checkout-index
   --prefix=<temp>` reproduces what a clone gets, and `fixtures/marks/synth-clean.marks.json` comes out
@@ -3149,14 +3149,14 @@ was eight greens that had nothing to compare.
   ("eight fixture-state gates and thirteen controls"). Thirteen is right: `grep -c "report (" Tests/SlicerScoreTest.cpp`
   is 21, and the run's `ok` lines divide into the eight fixture-state gates and thirteen controls that score the scorer. The same
   line still named the retired rule ("no capped row"), so it now names the one in force.
-  *(Commit `a116532` cites that second line as `:304`, one short: the CRLF sentence added above it in the same
+  *(Commit `314ba1c` cites that second line as `:304`, one short: the CRLF sentence added above it in the same
   commit shifted it, and the message was written from the pre-shift reading. The blobs its message publishes were
   re-derived from the commit and match, so only that one line number was stale. Fixed here rather than by amending.)*
 - **Gate for this change.** `PASS - 258/258` exit 0 on the LF tree and again on the CRLF tree, `ctest` 3/3
   exit 0 (`Total Test time 10.86 s`), `npm test` 68/68 in eight files, both generators re-run after the
   edits, and `native/shots/` unmodified by the ctest run. No plugin source touched, so the shipped tuple
   still describes the module - and nothing here is rebuilt, re-exported, installed or pushed.
-  Commit `a116532`, 23 files, +292/-21 (`AGENTS.md` +15/-6, this plan +62/-8, `native/README.md` +14/-4,
+  Commit `314ba1c`, 23 files, +292/-21 (`AGENTS.md` +15/-6, this plan +62/-8, `native/README.md` +14/-4,
   `fixtures/tools/make-takes.py` +184, `fixtures/tools/synth-takes.cjs` +8/-3, 18 new fixture files).
   Blob digests as published in that message and re-derived from the commit afterwards with
   `git show HEAD:<path> | sha256sum`: make-takes.py `0554974a53d5980b`, synth-takes.cjs `8dc2c008712c663a`,
@@ -3177,7 +3177,7 @@ carries the owner's standing "do these" for push, so the first job was to prove 
   faithful build of the current test source, loading the current module at runtime. The full
   `cmake --build native/build --config Release --parallel 2` relinked it anyway, which is the fix for the habit,
   not for a defect.
-- **Gate on `4f57213`, all from that build.** Smoke `PASS - 258/258 checks passed` exit 0 (`CPU: 4.59% of one
+- **Gate on `d7bdaad`, all from that build.** Smoke `PASS - 258/258 checks passed` exit 0 (`CPU: 4.59% of one
   core for 2.1s audio`), layout `PASS layout screenshot: ... (32 checks)` exit 0, host
   `parameters: 350 = 348 layout + Bypass + Program` and `PASS VST3 host test` exit 0
   (`first note peak: 0.650336`, `midi out: 9 note-ons / 9 note-offs over 48 blocks, peak 0.892715`,
@@ -3192,7 +3192,7 @@ carries the owner's standing "do these" for push, so the first job was to prove 
   `:1485` as "the two PE `TimeDateStamp` copies" (there 305-306 and 23107221-23107222; the second moved because
   the file grew). Same size, same code. So the install is not a fifth artifact and the green host
   run does speak for what the DAW loads. **Superseded six minutes later, and only partly:** a re-export was in
-  fact done (`7ada9e5`), but not for these binaries - the archive's `README.md` was found stale. What this
+  fact done (`4f8f4a1`), but not for these binaries - the archive's `README.md` was found stale. What this
   bullet established survives it: the exported module is still the 16:38 link, now proved `cmp`-equal to the
   build copy at zero differing bytes rather than four.
 - **The real finding: `native/shots/sequencer-large.png` has two states for one unchanged binary.** The first
@@ -3229,11 +3229,11 @@ carries the owner's standing "do these" for push, so the first job was to prove 
   `install.log` (the elevated install's own lines plus `INSTALL_EXIT=0`), `host-installed.log` and
   `host-zip.log` (the host test against the scan folder and against the extracted archive), `det-build.log`,
   `det-run1.log`…`det-run3.log`, `det-sweep.log` (`SWEEP_DONE runs=14 drifts=0`) and `shots-baseline.txt`.
-- **One transcription slip, published and left published.** Commit `7ada9e5`'s message opens a bullet with
+- **One transcription slip, published and left published.** Commit `4f8f4a1`'s message opens a bullet with
   "`SliceForge.exe` in `launch/` is `75e8af...`-no: `75eaf3e3829fc230`" - a half-deleted keystroke that
   survived into the text. `75eaf3e3829fc230` is the hash; nothing else in that message was affected, and every
   figure in it was re-taken from its own command. Corrected here rather than by amending, the same way
-  `a116532`'s stale `:304` was handled, because the convention this branch has settled on is that the record
+  `314ba1c`'s stale `:304` was handled, because the convention this branch has settled on is that the record
   keeps its mistakes where they were made and says so.
 
 ### The install caught up with the re-export, and the host test stopped testing a proxy (2026-11-21 21:45-21:50)
@@ -3322,7 +3322,7 @@ it is zero is worth more than the fix.
 
 - **What was actually unclaimed.** `README.md:548` publishes `| Browser end-to-end | npm run test:browser | 27/27 checks
   passed, exit 0 |`, and the newest runs of that suite recorded anywhere in this plan are `:297` (2026-11-15) and 8M's gate
-  bullet at `:2446` (2026-11-18). In between, `7a92a6d` (11-21 12:07) became the last commit to touch `src/` and it rewrote the browser
+  bullet at `:2446` (2026-11-18). In between, `7530952` (11-21 12:07) became the last commit to touch `src/` and it rewrote the browser
   edition's slicer - `src/audio/slicer.ts`, `src/state/useKit.ts`, `src/state/factoryPresets.ts` - moving the six tuning
   literals into `src/audio/slicerTuning.ts`. So the row was describing a tree three days and one refactor older than the
   sentences around it. `npm test`'s 68/68 pinned the *constants'* parity across the editions; it never starts an engine.
@@ -3380,7 +3380,7 @@ it is zero is worth more than the fix.
   corpus or the pending one speaks to it, so Step 7 inherits it as a product-side limit rather than a solved case. The one
   deferred category that is cheaply buildable is the piano phrase - a note-time reference for a struck, decaying instrument is
   honest - and it needs only a preset the owner picks, plus the same single export.
-- **The authorship needs no setup when the audio lands.** Both reproducibility checks re-run 2026-11-21 22:09 against `dd38bc4`,
+- **The authorship needs no setup when the audio lands.** Both reproducibility checks re-run 2026-11-21 22:09 against `1d05a29`,
   each with its own exit status: `python fixtures/tools/make-takes.py --check` → 0, *"OK - every tracked .mid and notes grid is
   re-derived by this script (18 files: 18 byte-exact, 0 identical once the checkout's LF->CRLF is undone)"*, and
   `node fixtures/tools/synth-takes.cjs --check` → 0 with `synth-clean.wav 15dbd719330faa64 / 1411244 B` and
@@ -3486,23 +3486,23 @@ Nothing here runs a render. What landed is the preparation, plus the gate that r
   any audio addition, and any binary rebuild. **Now on the owner:** the render itself, then the listening pass and the bless
   approval; the source tier for `ride-32nd`, `swing-16ths` and `crash-tail` (private pack vs an original recording that could be
   committed); `fixtures/user-groove.wav` (see the audit below - as first written here, this bullet called it referenced by no code,
-  which was wrong and is corrected there). And the push: `3e421cc` was pushed on his word, `667007b..3e421cc`.
+  which was wrong and is corrected there). And the push: `2ac7554` was pushed on his word, `83a0351..2ac7554`.
 
 ### The user-groove provenance audit, and the false claim it began with (2026-11-22 21:05-21:22)
 
-- **The claim I had to retract first.** `3e421cc` states that `fixtures/user-groove.wav` "is referenced
+- **The claim I had to retract first.** `2ac7554` states that `fixtures/user-groove.wav` "is referenced
   by no code, no doc, no test and no marks file". The grep behind it searched `src/`, `native/`,
   `scripts/` and `fixtures/` for the string but its pattern set omitted `.mjs`, so it missed
   `scripts/e2e.mjs`, which uploads the file as the browser suite's custom-sample leg. `git grep` at HEAD
   finds it. It is load-bearing, not orphaned. The same commit's other clause holds: no marks file names
   it, so it cannot affect any slicer score.
 - **A second regression, found while correcting the first.** `README.md` used to say the browser test
-  depends on this fixture; commit `9659b78` deleted that sentence while the code kept consuming it. The
+  depends on this fixture; commit `7b6601b` deleted that sentence while the code kept consuming it. The
   dependency is now documented again in `README.md`'s suite paragraph, and it is the kind of loss that
   makes a later "nobody uses this" claim sound plausible. That is what this whole bullet is: my own
   grep, made to look like a fact about the tree.
 - **Origin is not establishable.** Git: one blob (`493a3d05379a…`, 768 044 B, sha256 `3040b1fd70cff830…`,
-  binary so blob == worktree bytes) entering in the initial import `192df10` and never modified - and that
+  binary so blob == worktree bytes) entering in the initial import `0ac5439` and never modified - and that
   commit's message documents the provenance of the six `Resources/library` WAVs and the fonts while saying
   nothing about this seventh audio file. The file: `fmt ` + `data` and zero bytes outside them, which is a
   hand-rolled writer, not ffmpeg/Audacity/a DAW. The audio: exactly 4.0000 s, sound at exactly 0.2000 →
@@ -3533,7 +3533,7 @@ Nothing here runs a render. What landed is the preparation, plus the gate that r
 
 ### The fixture is generated now, and two of my own graders failed before it did (2026-11-22 21:30-21:51)
 
-He approved pushing both correction commits - `70c1df3` and `45806a6` are on `origin/master`, verified as
+He approved pushing both correction commits - `49a6ae6` and `1070c44` are on `origin/master`, verified as
 a fast-forward with `git ls-remote` agreeing with local HEAD - and ruled on the uncertain fixture: replace
 it with a project-owned synthetic take, keep the thresholds, add a byte-reproducibility check, do not
 rewrite history, and do not push the replacement until he has reviewed it.
@@ -3581,6 +3581,6 @@ rewrite history, and do not push the replacement until he has reviewed it.
 - **What did not happen.** No `marks` file for the new fixture, so `loadTakes` never sees it and
   `fixtures/slicer-baseline.json` is untouched - `--publish` and `--bless-slicer-baseline` remain gated on
   the nine renders and his listening approval. No threshold moved: the e2e legs still assert `slices >= 4`
-  and `peak > 0.001`. No history rewritten: the old blob is still in `192df10` and in every commit after
+  and `peak > 0.001`. No history rewritten: the old blob is still in `0ac5439` and in every commit after
   it, and replacing the working file does not remove it from the repository's past.
 
